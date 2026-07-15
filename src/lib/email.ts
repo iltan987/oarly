@@ -1,4 +1,4 @@
-import { Resend } from 'resend';
+import { Resend, type CreateEmailOptions } from 'resend';
 import { env } from '@/env';
 
 export type SendEmailInput = {
@@ -15,12 +15,14 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
     return;
   }
   const resend = new Resend(env.RESEND_API_KEY);
-  await resend.emails.send({
+  // Resend's CreateEmailOptions is a content-field union; our sendEmail guarantees html or text at call sites.
+  const payload = {
     from: env.EMAIL_FROM,
     to: input.to,
     subject: input.subject,
     html: input.html ?? undefined,
     text: input.text ?? undefined,
     attachments: input.attachments,
-  });
+  } as CreateEmailOptions;
+  await resend.emails.send(payload);
 }
