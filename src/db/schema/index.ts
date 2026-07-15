@@ -5,3 +5,5 @@ export * from './clubs';
 export * from './boats';
 export * from './schedule';
 export * from './bookings';
+export * from './holidays';
+export * from './system';
