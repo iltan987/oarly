@@ -7,5 +7,11 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    env: {
+      DATABASE_URL: 'postgresql://user:pass@localhost:5432/oarly_test',
+      BETTER_AUTH_SECRET: 'test-secret',
+      BETTER_AUTH_URL: 'http://localhost:3000',
+      APP_URL: 'http://localhost:3000',
+    },
   },
 });
