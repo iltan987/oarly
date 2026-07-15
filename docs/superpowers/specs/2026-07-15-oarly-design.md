@@ -13,7 +13,13 @@ payment happens in person at the club before the activity.
 
 ## 1. Scope
 
-### In scope (MVP)
+> **On the "v1" label:** this is a complete first release, not a thin MVP. The product's value lives
+> entirely in the interlocked booking loop (capacity + waitlist + auto-promotion + MultiSport priority
+> + no-show penalties), which can't be shipped in halves and needs auth, multi-tenancy, and scheduling
+> underneath it. What is genuinely optional (payments, reminders) is deferred to the **Post-v1 Roadmap**
+> (§16).
+
+### In scope (v1)
 - Multi-club platform with three roles: **admin** (platform), **owner** (per club), **member** (per club).
 - Club onboarding (admin-created, optionally admin-configured; or owner-requested).
 - Member accounts that can belong to **multiple clubs**.
@@ -24,15 +30,19 @@ payment happens in person at the club before the activity.
 - Admin **hidden pre-reservation** of a future session.
 - Global holiday calendar (admin-managed, Turkish national holidays), per-club overrides.
 - Notifications via email (booking confirmation + calendar invite, waitlist promotion, cancellation).
+- **Email verification** at sign-up, and **basic rate-limiting / anti-abuse** on auth and booking
+  endpoints (the 20–25-person rush is where duplicate-account gaming and abuse surface).
 - i18n (Turkish default + English), light/dark theme.
 
-### Out of scope (MVP)
+### Out of scope (v1)
 - In-app payments or MultiSport card validation (payment is in person; the app only records the
-  chosen payment type).
+  chosen payment type). → §16
 - Recurring/all-clubs holidays beyond national holidays.
 - Native mobile apps (responsive web only).
 - Session reminders are a **stretch goal** (see §11), cut if Vercel cron constraints make them costly.
 - Freed-seat "hold for a few minutes" grace period — **deferred** (conflicts with instant auto-promotion).
+- Boat/equipment management — **not built in v1**, but the session/capacity model is kept boat-ready
+  (see §6 and §16) so adding it later is not a rewrite.
 
 ---
 
@@ -85,7 +95,7 @@ payment happens in person at the club before the activity.
 
 - **Store all timestamps in UTC.**
 - **Display in the club's timezone**, a per-club setting defaulting to `Europe/Istanbul`.
-- Turkey is fixed at **UTC+3 with no daylight-saving since 2016**, so MVP has no DST edge cases.
+- Turkey is fixed at **UTC+3 with no daylight-saving since 2016**, so v1 has no DST edge cases.
   Parameterizing display by club timezone future-proofs non-Turkish clubs at near-zero cost.
 
 ---
@@ -104,6 +114,9 @@ payment happens in person at the club before the activity.
   horizon (far enough ahead to cover the maximum booking-open lead), applying holiday rules (§9).
 - The owner can **override** individual sessions: change length/boundaries, capacity, or manually
   **open/close/cancel** a session. Overrides are preserved when the generator runs again.
+- **Boat-ready (not built in v1):** `capacity` is a plain integer for now. Boat/equipment management
+  (§16) would later let capacity *derive* from an assigned boat (single=1, double=2, quad=4, eight=8).
+  Keep `capacity` authoritative on the session so a future `boat_id` can populate it without a rewrite.
 
 ### Booking-open
 - Configurable per club:
@@ -189,7 +202,7 @@ The signature feature: the admin guarantees a seat on a busy future session befo
   `date-holidays`), then **reviews and approves** them. Holidays are a **global** list.
 - Each club sets **"open on holidays?"** and can **override specific dates** (force-open or force-close).
 - The session generator (§6) consults approved holidays + per-club overrides when materializing sessions.
-- MVP: **national holidays only.**
+- v1: **national holidays only.**
 
 ---
 
@@ -292,11 +305,36 @@ tables below reference the Better Auth `user.id`.
 
 ---
 
-## 16. Open Questions / Future
+## 16. Post-v1 Roadmap
 
-- Freed-seat short "hold" grace period (deferred).
-- Session reminders (stretch; cron-cost dependent).
+Ordered roughly by expected value; none are in v1.
+
+**Deferred from v1 (already designed around)**
+- **In-app payments** + MultiSport card validation (v1 only records the chosen payment type).
+- **Session reminders** (stretch; needs frequent Vercel Cron — typically the Pro plan).
+- Freed-seat **hold-grace** on cancellation (conflicts with instant auto-promotion; revisit).
+- Multi-country **timezone/holiday** support (v1 is Turkey-only, `Europe/Istanbul`).
+
+**New capabilities (not yet scoped)**
+- **Owner announcements / broadcast** — e.g. "no rowing today, storm." Likely wants **WhatsApp/SMS**
+  in Turkey, not just email. High value, low cost.
+- **Owner analytics** — attendance %, no-show rates, utilization, busiest times.
+- **Boat / equipment management** — sessions tied to a boat type (single/double/quad/eight) with seat
+  counts; capacity derives from the boat (see §6 boat-ready note). The most rowing-specific feature.
+- **Coach/instructor role** + assigning a coach to sessions; **multiple staff per club** (co-owner,
+  front desk) beyond the single-owner v1 model.
+- **Recurring bookings** ("every Tuesday 08:00").
+- **Membership / dues tracking** — who is paid up; session packages (10-pack, monthly) — even without
+  in-app payment.
+- **Skill levels / eligibility** — beginners cannot book advanced sessions.
+- **KVKK compliance** (Turkey's GDPR) — consent capture, data export, account deletion. A *legal*
+  workstream; plan even if built minimally.
+
+## 17. Open Questions
+
+- Whether displaced MultiSport members (Priority mode) get a dedicated "moved to waitlist"
+  notification. **Default: yes**, reusing a neutral template.
 - Subdomain vs. path canonicalization SEO details.
-- Whether displaced MultiSport members get a dedicated notification (leaning yes).
-- Multi-country timezone/holiday support beyond Turkey.
-- MultiSport card validation / real payments (explicitly out of MVP).
+- Exact rate-limiting thresholds for the booking rush (per-account and per-IP).
+- Whether **boats** should influence the v1 session model beyond the boat-ready note (current
+  decision: no — keep `capacity` a plain integer, add boats post-v1).

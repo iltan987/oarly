@@ -62,7 +62,7 @@ in person at the club.
 
 ## 5. Screen inventory
 
-Priority: **P0** = required for a usable MVP, **P1** = important, **P2** = nice-to-have.
+Priority: **P0** = required for a usable v1, **P1** = important, **P2** = nice-to-have.
 
 ### A. Public & Auth
 | Screen | Purpose | Key states / notes | Priority |
@@ -70,7 +70,8 @@ Priority: **P0** = required for a usable MVP, **P1** = important, **P2** = nice-
 | **Platform landing** (`oarly.sbs`) | Explain Oarly; entry to sign in / sign up. | Logged-out vs logged-in. | P1 |
 | **Club public page** (`{slug}.oarly.sbs`) | A club's front door: name, logo, phone, socials; "Join this club" CTA. | Not-a-member (Join CTA), pending approval, already a member (enter app). | P0 |
 | **Sign up** | Create account. | Required: first name, last name, phone, email, password. Optional: birthday, gender, socials. Default payment preference (regular/MultiSport). Field-level validation. | P0 |
-| **Sign in** | Email/password + **Google**. | Error, loading. | P0 |
+| **Sign in** | Email/password + **Google**. | Error, loading, **rate-limited ("too many attempts")**. | P0 |
+| **Email verification** | Confirm email after sign-up before booking. | Awaiting verification, resend link, verified, expired link. | P0 |
 | **Forgot password / reset** | Request + set new password. | Sent, invalid/expired token, success. | P0 |
 | **Change password** | From account settings. | — | P1 |
 | **Join a club** | Via club link or a **club code** entry. | Submitting, pending owner approval, approved, rejected. | P0 |
@@ -146,7 +147,7 @@ Design these end-to-end; each names the screens it touches.
   waitlist) · booked-by-me · waitlisted-by-me (position) · closed/past · cancelled · unavailable
   because banned.
 - **Booking action button:** Book · Join waitlist · Cancel (enabled/disabled-by-cutoff) · loading ·
-  success · error.
+  success · error · **rate-limited** (too many rapid attempts during the rush).
 - **Membership status:** pending approval · approved · rejected · banned (until date).
 - **Club/session lifecycle:** pending · active · suspended (club); scheduled · open · closed ·
   cancelled (session).
@@ -185,5 +186,13 @@ Design these end-to-end; each names the screens it touches.
 - The **7 key flows** in §6 as connected screens.
 - The **component states** in §7 (especially the session card and booking action).
 - A component/pattern set consistent enough that engineering can map it to shadcn/ui primitives.
+
+## 12. Out of scope for this design (v1 boundary)
+
+Please **do not** design these now — they are planned for after v1 and would only add noise:
+in-app payments, WhatsApp/SMS announcements, owner analytics dashboards, **boat/equipment
+management**, coach/instructor roles, recurring bookings, membership/dues tracking, and skill-level
+eligibility. If you want to leave room in a layout for a future "boat type" on a session, that's
+welcome, but no dedicated screens for it.
 
 Anything ambiguous, ask — the engineering spec has the underlying rules, and we can clarify behavior.
