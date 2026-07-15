@@ -66,6 +66,23 @@ MultiSport-card priority rules, and a special admin pre-reservation feature. **N
 - **Owner** and **member** are roles held *within* a club, expressed as membership rows. One person can
   be a member of several clubs and an owner of others.
 
+### Admin access & impersonation
+Admin keeps a **native admin console** for platform-only functions (clubs list, activate/suspend,
+holiday calendar, hidden pre-reservations, club requests). To do **owner-level** work in any club, admin
+uses **"Act as owner"** impersonation — driving the *real* owner UI rather than a duplicate set of admin
+screens. This reuses the owner console and lets support see exactly what a (often non-technical) owner
+sees. Bounds and guardrails:
+- **Scope: owner only** (v1). Admin cannot impersonate a member; member issues are handled through the
+  owner's roster/members tools. (Read-only "view as member" is a post-v1 consideration, §19.)
+- **Audit log:** every action performed while impersonating is recorded as "admin X acting as owner of
+  club Y" with a timestamp — actions must never silently appear as the owner's own.
+- **Persistent banner:** while impersonating, an always-visible "Acting as [Club] — Exit" banner.
+- **Filtering follows the acting role, not the admin identity:** while acting-as-owner, admin sees only
+  what an owner sees — in particular, **unrevealed hidden pre-reservations stay hidden** (§11). The
+  visibility filter keys off the effective role being impersonated.
+- **Privacy:** impersonation exposes members' personal data; the KVKK text discloses that platform
+  admins may access club data for support (§14).
+
 ---
 
 ## 3. Onboarding
@@ -304,6 +321,8 @@ Turkey's KVKK (≈ GDPR) is a **legal** requirement, in v1:
 - **Data export:** a member can download their personal data.
 - **Account deletion:** a member can delete their account (or request deletion), with defined handling of
   historical bookings (anonymize rather than break referential history).
+- **Admin access disclosure:** the clarification text states that platform admins may access club data
+  (including members' data) for support, via audited owner impersonation (§2).
 - Store only what's needed; personal fields (birthday, gender, socials) remain optional.
 
 ### Retention policy (decided)
@@ -403,6 +422,8 @@ the Better Auth `user.id`.
   `status` (`pending`|`approved`), `year`.
 - **club_holiday_overrides** — `club_id`, `date`, `is_open`.
 - **notifications** *(log)* — `id`, `user_id`, `type`, `session_id?`, `sent_at`.
+- **audit_log** — `id`, `actor_user_id`, `acting_as_role?` (`owner` when impersonating), `club_id?`,
+  `action`, `target?`, `created_at`. Records admin actions and impersonation ("acting as owner of club Y").
 
 ---
 
@@ -414,7 +435,8 @@ the Better Auth `user.id`.
 - **Banned members** cannot book (checked against `banned_until`).
 - **Cancellation cutoff** blocks self-cancel inside the window; owner override always allowed.
 - **Seating recompute** is transactional and idempotent.
-- **Hidden pre-reservations** never appear to owner/members before reveal (queries filter `hidden`).
+- **Hidden pre-reservations** never appear to owner/members before reveal (queries filter `hidden`) —
+  including to an **admin acting as owner** (visibility follows the impersonated role, §2).
 - **Guest bookings** have `user_id = null`, `guest_name` set, no email.
 - **Auto-promotion** never asks for confirmation; it registers and emails.
 - **Boat picker** only appears when a slot has more than one boat-session.
@@ -438,6 +460,7 @@ the Better Auth `user.id`.
 - **Owner analytics** — attendance %, no-show rates, utilization, busiest times.
 - **Coach/instructor role** + assigning a coach to sessions; **multiple staff per club**.
 - **Recurring bookings** ("every Tuesday 08:00").
+- **Read-only "view as member"** admin impersonation (v1 is owner-only impersonation, §2).
 
 ---
 

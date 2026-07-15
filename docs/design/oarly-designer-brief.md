@@ -55,6 +55,10 @@ in person at the club.
 - **Confirmation & feedback** pattern for actions (booked, cancelled, promoted, saved).
 - **Role-aware chrome** — the same person may be a member of one club and owner of another; make the
   current context obvious.
+- **Admin "acting as owner" banner** — when an admin impersonates a club owner, a **persistent,
+  always-visible banner** ("Acting as [Club] — Exit") sits above the owner UI. Admin drives the *real*
+  owner screens (not a duplicate), so design the owner console with room for this banner. Admin
+  impersonation is **owner-only** (never member).
 
 ---
 
@@ -102,7 +106,7 @@ Priority: **P0** = required for a usable v1, **P1** = important, **P2** = nice-t
 ### D. Admin console
 | Screen | Purpose | Key states / notes | Priority |
 |--------|---------|--------------------|----------|
-| **Clubs list** | All clubs; create; activate requested; suspend. | Pending, active, suspended. | P0 |
+| **Clubs list** | All clubs; create; activate requested; suspend; **"Act as owner"** entry (starts owner impersonation). | Pending, active, suspended. | P0 |
 | **Create/configure club** | Create + **optionally pre-fill the owner's setup**; assign an owner. | Draft, created, owner-assigned. | P0 |
 | **Club requests** | Review owner-submitted requests. | Pending, approved, rejected. | P1 |
 | **Holiday calendar** | **Auto-generate ~1 year** of Turkish national holidays; **review & approve**; add manual entries. | Pending (needs approval), approved, manual. | P0 |
