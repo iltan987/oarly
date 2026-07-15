@@ -38,7 +38,8 @@ MultiSport-card priority rules, and a special admin pre-reservation feature. **N
   anti-abuse** on auth and booking endpoints.
 - **KVKK compliance** (Turkey's data-protection law): explicit consent at sign-up, privacy policy,
   member data export, and account deletion.
-- i18n (Turkish default + English), light/dark theme.
+- i18n (Turkish default + English), light/dark theme, and a **per-club brand palette** (accent
+  color + optional heading font) on a single tokenized design system (§15).
 
 ### Out of scope (v1)
 - In-app payments or MultiSport card validation (payment is in person; the app records the chosen
@@ -323,8 +324,14 @@ Destruction or Anonymization of Personal Data:
 
 - **i18n:** `next-intl`. **Turkish default**, English included. Detect from device (`Accept-Language`),
   fall back to Turkish.
-- **Theme:** light/dark via `next-themes` (class strategy), follows system by default with a manual
+- **User theme:** light/dark via `next-themes` (class strategy), follows system by default with a manual
   toggle. Every screen must render correctly in both.
+- **Club brand skin (orthogonal to light/dark):** the visual language is a single **tokenized design
+  system** (base direction: "Clean & Sporty" — card-based, high state-legibility, mobile-first).
+  Each club sets a **brand palette** — an accent color and an optional heading font — expressed as CSS
+  variables/tokens, so it drops in without new components and **automatically yields light + dark
+  variants**. Admin/owner can set it during club setup; a sensible default applies otherwise.
+  Full *structural* alternate themes are post-v1 (§19); v1 is one system, re-skinned per club.
 
 ---
 
@@ -369,7 +376,8 @@ the Better Auth `user.id`.
   `status` (`pending`|`active`|`suspended`), `multisport_mode` (`equal`|`priority`),
   `booking_open_mode` (`always`|`lead`), `booking_open_lead_days?`,
   `self_cancel_enabled`, `cancel_cutoff_hours?`,
-  `noshow_penalty` (`off`|`2d`|`1w`|`2w`|`1m`|`never`), `open_on_holidays`, `created_by`, `created_at`.
+  `noshow_penalty` (`off`|`2d`|`1w`|`2w`|`1m`|`never`), `open_on_holidays`,
+  `brand_accent?` (hex), `heading_font?` (`default`|`premium`), `created_by`, `created_at`.
   Socials in **club_socials**.
 - **memberships** — `id`, `user_id`, `club_id`, `role` (`owner`|`member`),
   `status` (`pending`|`approved`|`rejected`|`banned`), `banned_until?`, `skill_level_id?`, `joined_at`.

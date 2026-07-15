@@ -171,8 +171,13 @@ Priority: **P0** = required for a usable v1, **P1** = important, **P2** = nice-t
 
 - **Turkish default; English included.** Design with Turkish copy as the reference (it runs longer;
   avoid fixed-width labels and tight truncation).
-- **Light and dark** are both first-class — provide both for every mock.
+- **Light and dark** (user preference) are both first-class — provide both for every mock.
 - Language and theme are user-switchable.
+- **Per-club brand skin (orthogonal to light/dark):** one **tokenized** design system, re-skinned per
+  club via a **brand accent color** and an **optional heading font**. Design it as tokens (CSS
+  variables) so a club's palette drops in without new components and works in **both** light and dark.
+  A club that sets nothing gets a sensible default. This is *not* two structural designs — it's one
+  system, many palettes.
 
 ## 10. Responsive priorities
 
@@ -194,6 +199,18 @@ Priority: **P0** = required for a usable v1, **P1** = important, **P2** = nice-t
 Please **do not** design these now — they're planned for after v1: in-app payments, **memberships /
 dues / session packages**, WhatsApp/SMS announcements, owner analytics dashboards, coach/instructor
 roles, recurring bookings, and physical boat-inventory management. (Boat *types* and skill levels **are**
-in v1 — see above; it's per-hull inventory that's deferred.)
+in v1 — see above; it's per-hull inventory that's deferred.) A **full structural alternate theme** (a
+second design system like the "Calm & Premium" hero) is also post-v1 — v1 ships one tokenized system
+re-skinned per club (§9).
 
 Anything ambiguous, ask — the engineering spec has the underlying rules, and we can clarify behavior.
+
+## 13. Chosen direction & next round (round-1 outcome)
+
+- **Direction: 1a "Clean & Sporty"** is the base system, built as **design tokens** so per-club brand
+  palettes (accent color + optional heading font) drop in and yield light+dark automatically.
+- 1b "Calm & Premium" is **not** adopted as a separate system; its typographic restraint may inform the
+  optional "premium" heading font and calmer screens (profile, club public page).
+- **Next screens to extend in 1a:** join / approval (incl. waiting-for-approval), banned notice, and
+  profile + privacy/KVKK (consent, data export, delete account). Plus: define the **token set** and show
+  **2–3 example brand palettes** (light+dark), and the **TR→EN toggle** in-frame.
