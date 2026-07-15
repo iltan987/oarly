@@ -1,0 +1,13 @@
+{
+  "common": {
+    "appName": "Oarly",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "signOut": "Sign out",
+    "loading": "Loading…"
+  },
+  "payment": {
+    "regular": "Cash",
+    "multisport": "MultiSport"
+  }
+}

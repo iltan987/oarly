@@ -1,0 +1,13 @@
+{
+  "common": {
+    "appName": "Oarly",
+    "signIn": "Giriş yap",
+    "signUp": "Kayıt ol",
+    "signOut": "Çıkış yap",
+    "loading": "Yükleniyor…"
+  },
+  "payment": {
+    "regular": "Nakit",
+    "multisport": "MultiSport"
+  }
+}
