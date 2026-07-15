@@ -95,6 +95,22 @@ MultiSport-card priority rules, and a special admin pre-reservation feature. **N
 - **Auth cookie domain is `.oarly.sbs`** so a member stays authenticated across subdomains.
 - **Local dev:** `{slug}.localhost:3000` or `lvh.me`.
 
+### SEO & indexing (decided)
+Subdomains are the right call for a multi-tenant SaaS (tenant isolation, branding), even though
+subdirectories consolidate domain authority better — because Oarly's **indexable surface is tiny**:
+almost everything is behind auth. Best-practice hygiene:
+- **Indexable pages only:** the apex marketing/landing (`oarly.sbs`), each **club public/join page**
+  (`{slug}.oarly.sbs`), and the **privacy/KVKK page**. Everything authenticated (member app, owner and
+  admin consoles) is `noindex, nofollow`.
+- **Canonical:** each indexable page carries a self-referential `rel=canonical` to its **subdomain**
+  URL; `oarly.sbs/{slug}` 301-redirects to the subdomain, so there is no duplicate content to resolve.
+- **hreflang:** TR/EN language alternates via Next.js Metadata `alternates.languages`.
+- **Per-club metadata:** title, description, Open Graph tags derived from the club profile; per-club
+  `robots.txt` and `sitemap.xml` via route handlers.
+- The **apex marketing site** holds brand authority; club subdomains are shareable landing pages
+  reached mainly via a direct link, not organic search, so non-consolidated subdomain authority is a
+  non-issue here.
+
 ---
 
 ## 5. Time Handling
@@ -289,6 +305,18 @@ Turkey's KVKK (≈ GDPR) is a **legal** requirement, in v1:
   historical bookings (anonymize rather than break referential history).
 - Store only what's needed; personal fields (birthday, gender, socials) remain optional.
 
+### Retention policy (decided)
+Aligned with KVKK's "retain only as long as necessary" principle and the Regulation on Deletion,
+Destruction or Anonymization of Personal Data:
+- **On deletion request:** personal data is **anonymized within 30 days** (auth identity, profile,
+  contact, optional fields). Auth sessions/tokens are purged **immediately**.
+- **Bookings** are **anonymized, not deleted** — `user_id` detached, personal fields stripped — so
+  attendance/no-show history and club statistics stay intact. Anonymized (non-personal) records may be
+  kept indefinitely.
+- **Consent records** (KVKK proof) are retained for the duration of the legal obligation, then
+  destroyed in a **periodic destruction cycle (max 6 months)** after the obligation ends.
+- These are sensible defaults; a lawyer should confirm before launch (flagged, not a blocker).
+
 ---
 
 ## 15. Internationalization & Theming
@@ -318,6 +346,12 @@ Turkey's KVKK (≈ GDPR) is a **legal** requirement, in v1:
 - **DB:** Neon Postgres (Vercel Marketplace), **Drizzle ORM**. **Email:** Resend.
 - **Hosting:** Vercel (Fluid Compute); middleware for tenant resolution.
 - **Rate-limiting:** edge limiter backed by a Redis-style store (e.g. Upstash via Marketplace).
+  Default thresholds (tunable in one config):
+  - **Login:** 5 failed attempts / 15 min per account (then exponential backoff), 20 / min per IP.
+  - **Sign-up:** 5 / hour per IP. **Password reset / verify resend:** 3 / hour per email, 10 / hour per IP.
+  - **Booking submit:** 10 / min per account, 60 / min per IP (idempotency, §10, absorbs the legitimate
+    double-taps of the rush; this only stops scripted spam).
+  - **General API baseline:** 100 / min per IP.
 - **Cron (Vercel):** nightly slot/session generation; frequent (few minutes) slot-open + pre-reservation
   reveal + seating recompute; hourly reminders *(stretch)*.
 - **Time:** store UTC; render in club timezone (`Europe/Istanbul` default).
@@ -399,10 +433,16 @@ the Better Auth `user.id`.
 
 ---
 
-## 20. Open Questions
+## 20. Decisions Log (previously open)
 
-- Exact rate-limiting thresholds for the booking rush (per-account and per-IP).
-- Data-retention specifics for KVKK account deletion (how long anonymized records persist).
-- Whether an owner can run **multiple boats of the same type** in one slot with independent waitlists
-  (current model: yes — each is its own session).
-- Subdomain vs. path canonicalization SEO details.
+All prior open questions are resolved:
+- **Rate-limiting thresholds** — decided; see §17 (tunable defaults).
+- **KVKK deletion retention** — decided; see §14 (anonymize personal data within 30 days, retain
+  anonymized bookings, consent records destroyed in ≤6-month cycles). Lawyer to confirm pre-launch.
+- **Multiple boats of the same type per slot** — **yes**; each is its own session with an independent
+  waitlist (§6, §7).
+- **Subdomain vs. path SEO** — decided; subdomain canonical with a small indexable surface,
+  self-referential canonicals, hreflang, and `noindex` on the authenticated app (§4).
+
+The only remaining pre-launch external check is **legal sign-off on the KVKK texts and retention
+policy** — a review item, not a design gap.
