@@ -1649,7 +1649,7 @@ git commit -m "feat: wire better-auth server, client and route handler"
 
 **Interfaces:**
 - Consumes: `env` (`@/env`).
-- Produces: `RATE_LIMITS` (spec thresholds) from `@/lib/rate-limit-config`; `rateLimit(key: string, rule: RateРule, now?: number): Promise<{ success: boolean; remaining: number }>` from `@/lib/rate-limit`, where `RateRule = { limit: number; windowSec: number }`. Uses Upstash when configured, else an in-memory fixed-window store.
+- Produces: `RATE_LIMITS` (spec thresholds) from `@/lib/rate-limit-config`; `rateLimit(key: string, rule: RateRule, now?: number): Promise<{ success: boolean; remaining: number }>` from `@/lib/rate-limit`, where `RateRule = { limit: number; windowSec: number }`. Uses Upstash when configured, else an in-memory fixed-window store.
 
 - [ ] **Step 1: Write the failing test**
 
