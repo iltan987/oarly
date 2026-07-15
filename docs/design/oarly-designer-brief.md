@@ -2,61 +2,59 @@
 
 **For:** the visual/UX designer producing mockups
 **From:** product + engineering
-**Date:** 2026-07-15
+**Date:** 2026-07-15 (rev. 2 — boats, skill levels, KVKK)
 
 This brief describes **what each screen must do, the flows they connect, and the states they must
 handle** — so you can design the interface. It deliberately makes **no visual styling decisions**
 (color, type, spacing, imagery, brand): those are yours. Where behavior constrains layout, it's noted.
 
 The engineering spec (data model, rules) lives at
-`docs/superpowers/specs/2026-07-15-oarly-design.md` — read it if you want the full logic, but this
-brief is self-contained.
+`docs/superpowers/specs/2026-07-15-oarly-design.md` — read it for the full logic, but this brief is
+self-contained.
 
 ---
 
 ## 1. What Oarly is
 
-A multi-club web app that lets rowing clubs manage session appointments. Members book sessions;
-owners run their club; a platform admin oversees everything. **No payments in the app** — members pay
+A multi-club web app that lets rowing clubs manage session appointments. A club runs **boats** of
+different sizes (e.g. single/1, double/2, quad/4); members book a **seat in a boat** at a given time.
+Which boats a member may book depends on their **skill level** and the boat's **allowed payment type**.
+Owners run their club; a platform admin oversees everything. **No payments in the app** — members pay
 in person at the club.
 
 ## 2. Who uses it, and how
 
-- **Members** — book and manage sessions, mostly **on a phone**, often **in a rush** the moment
-  booking opens (20–25 people competing for a handful of seats within seconds). Speed and clarity of
-  "am I in, waitlisted, or too late?" matter more than anything.
+- **Members** — book and manage seats, mostly **on a phone**, often **in a rush** the moment a slot
+  opens (20–25 people competing for a handful of seats within seconds). Speed and clarity of "am I in,
+  waitlisted, or too late?" matter more than anything.
 - **Owners** — often **non-technical or older**; run one club. Their tools must be forgiving, guided,
-  and hard to misconfigure. Used on desktop and phone.
+  and hard to misconfigure. Desktop and phone.
 - **Admin** — the platform operator (technical). Efficiency over hand-holding.
 
 ## 3. Design principles (behavioral, not visual)
 
-- **Mobile-first for members.** The booking moment happens on a phone. Optimize the session list and
-  the book/waitlist action for one-handed, fast use.
-- **Guided for owners.** The setup is multi-step and consequential; prefer wizards, sensible defaults,
-  inline explanation, and confirmation on destructive actions.
-- **State legibility.** A session's status (open, full, waitlisted, booked, banned-from-booking,
-  closed) must be unmistakable at a glance.
+- **Mobile-first for members.** The booking moment happens on a phone. Optimize the slot list, the
+  **boat choice**, and the book/waitlist action for one-handed, fast use.
+- **Guided for owners.** Setup is multi-step and consequential (boats, skill levels, schedule, policies);
+  prefer wizards, sensible defaults, inline explanation, confirmation on destructive actions.
+- **State legibility.** A seat's status (open, full, waitlisted, booked, **ineligible**, closed) must be
+  unmistakable at a glance — including *why* something is ineligible.
 - **Two themes, two languages.** Every screen must work in **light and dark**, and in **Turkish
-  (default) and English**. Turkish strings run longer than English — leave room; don't design to
-  fixed-width labels.
-- **Accessible.** Sufficient contrast in both themes, keyboard operable, clear focus, touch targets
-  comfortable on mobile.
+  (default) and English**. Turkish runs longer — leave room; don't design to fixed-width labels.
+- **Accessible.** Sufficient contrast in both themes, keyboard operable, clear focus, comfortable touch
+  targets.
 
 ---
 
-## 4. Global patterns (design once, reused everywhere)
+## 4. Global patterns
 
-- **Top-level navigation** for each role (member / owner / admin), adapted to mobile (bottom bar or
-  drawer) and desktop.
-- **Club switcher** — a member can belong to **multiple clubs**; they need a fast way to switch the
-  active club. Owners with one club don't need it; design for both.
-- **Language switcher** and **theme toggle** — reachable from account/settings, and ideally from the
-  public/auth screens too.
-- **Empty / loading / error states** for every list and data view.
-- **Confirmation & toast/feedback** pattern for actions (booked, cancelled, promoted, saved).
-- **Role-aware chrome** — the same person may be a member of one club and owner of another; the UI
-  should make the current context obvious.
+- **Top-level navigation** per role (member / owner / admin), adapted to mobile and desktop.
+- **Club switcher** — a member can belong to **multiple clubs**; fast switching of the active club.
+- **Language switcher** and **theme toggle** — from settings and, ideally, the public/auth screens.
+- **Empty / loading / error** states for every list and data view.
+- **Confirmation & feedback** pattern for actions (booked, cancelled, promoted, saved).
+- **Role-aware chrome** — the same person may be a member of one club and owner of another; make the
+  current context obvious.
 
 ---
 
@@ -68,131 +66,134 @@ Priority: **P0** = required for a usable v1, **P1** = important, **P2** = nice-t
 | Screen | Purpose | Key states / notes | Priority |
 |--------|---------|--------------------|----------|
 | **Platform landing** (`oarly.sbs`) | Explain Oarly; entry to sign in / sign up. | Logged-out vs logged-in. | P1 |
-| **Club public page** (`{slug}.oarly.sbs`) | A club's front door: name, logo, phone, socials; "Join this club" CTA. | Not-a-member (Join CTA), pending approval, already a member (enter app). | P0 |
-| **Sign up** | Create account. | Required: first name, last name, phone, email, password. Optional: birthday, gender, socials. Default payment preference (regular/MultiSport). Field-level validation. | P0 |
+| **Club public page** (`{slug}.oarly.sbs`) | A club's front door: name, logo, phone, socials; "Join" CTA. | Not-a-member (Join), pending approval, already a member (enter app). | P0 |
+| **Sign up** | Create account. | Required: first/last name, phone, email, password, **KVKK consent** (accept privacy/clarification text — with link). Optional: birthday, gender, socials. Default payment preference. Field-level validation. | P0 |
 | **Sign in** | Email/password + **Google**. | Error, loading, **rate-limited ("too many attempts")**. | P0 |
-| **Email verification** | Confirm email after sign-up before booking. | Awaiting verification, resend link, verified, expired link. | P0 |
-| **Forgot password / reset** | Request + set new password. | Sent, invalid/expired token, success. | P0 |
-| **Change password** | From account settings. | — | P1 |
-| **Join a club** | Via club link or a **club code** entry. | Submitting, pending owner approval, approved, rejected. | P0 |
+| **Email verification** | Confirm email after email/password sign-up before booking (Google is pre-verified). | Awaiting verification, resend link, verified, expired link. | P0 |
+| **Forgot / reset password** | Request + set new password. | Sent, invalid/expired token, success. | P0 |
+| **Change password** | From settings. | — | P1 |
+| **Privacy / KVKK policy** | Public clarification + privacy text (TR/EN). | — | P0 |
+| **Join a club** | Via club link or **club code**. | Submitting, pending owner approval, approved, rejected. | P0 |
 
 ### B. Member app
 | Screen | Purpose | Key states / notes | Priority |
 |--------|---------|--------------------|----------|
-| **Session list / calendar** | Browse a club's upcoming sessions and book. | Per-session: not-yet-open, open-with-seats, full (join waitlist), already booked, waitlisted, closed/past, banned (can't book). Day/week grouping. **This is the highest-traffic, most time-critical screen.** | P0 |
-| **Session detail** | Confirm booking; choose **payment type** for this booking (default pre-selected, changeable). | Seats remaining, waitlist length/position, booking-open countdown, cutoff for cancellation, book / join-waitlist / cancel actions. | P0 |
-| **My bookings** | Upcoming and past bookings across the active club. | Booked, waitlisted (with position), attended, no-show, cancelled. Cancel action honors cutoff. | P0 |
+| **Slot list / calendar** | Browse a club's upcoming **slots**; each slot shows the **boats** running in it with seats + eligibility. | Per boat-seat: not-yet-open (countdown), open with seats (N left), full (waitlist), booked-by-me, waitlisted-by-me (position), **ineligible** (why: skill/payment), closed/past. **Highest-traffic, most time-critical screen.** | P0 |
+| **Slot / boat detail** | Pick a **boat** (if the slot has more than one), choose **payment type** (default pre-selected, changeable, limited by the boat), then book. | Seats remaining, waitlist length/position, booking-open countdown, cancel cutoff, eligibility-blocked with reason, book / join-waitlist / cancel. | P0 |
+| **My bookings** | Upcoming + past across the active club. | Booked, waitlisted (position), attended, no-show, cancelled. Cancel honors cutoff. | P0 |
 | **Profile & preferences** | Edit profile, default payment type, socials, language, theme. | Saved/error. | P0 |
-| **My clubs** | List memberships, switch active club, join another. | Approved, pending, banned (with ban-until). | P0 |
-| **Banned notice** | When a member is under a no-show penalty. | Show reason + when the ban lifts; block booking. | P1 |
+| **Privacy & data** | **Export my data**, **delete account** (KVKK). | Confirm destructive delete; export ready/download. | P0 |
+| **My clubs** | List memberships, switch active club, join another; shows **my skill level** per club. | Approved, pending, banned (until date). | P0 |
+| **Banned notice** | Under a no-show penalty. | Reason + when the ban lifts; block booking. | P1 |
 
 ### C. Owner console
 | Screen | Purpose | Key states / notes | Priority |
 |--------|---------|--------------------|----------|
-| **Setup wizard** | First-run configuration (may arrive **pre-filled by admin**). Steps: working days & **time windows** (multiple per day) → **session length** (default + per-window) & **capacity** → **booking-open** (always / N days-weeks) → **cancellation** (on/off + cutoff) → **no-show penalty** (off/2d/1w/2w/1m/never) → **holidays** (open on holidays? overrides) → **public profile** (logo, phone, socials). | Draft/incomplete, pre-filled, saved. Each step editable later. | P0 |
-| **Schedule manager** | See generated sessions; **override** individual session length/boundaries/capacity; **open/close/cancel** a session manually. | Generated vs overridden, open/closed/cancelled, holiday-affected. | P0 |
-| **Session roster** | View a session's booked + waitlisted people; after the session **mark attendance / no-show**. | Seated list, waitlist (ordered), attendance marking, penalty auto-applied feedback. | P0 |
-| **Join requests** | Approve/reject members. | Pending, approved, rejected. | P0 |
-| **Members list** | Manage current members; see/lift bans; cancel on behalf. | Active, banned (with until date). | P1 |
-| **Club profile settings** | Edit name, logo, phone, socials, timezone, MultiSport mode (equal/priority). | Saved/error. | P0 |
-| **Policies settings** | Edit booking-open, cancellation, no-show penalty, holiday behavior (same fields as wizard, standalone). | — | P1 |
+| **Setup wizard** | First-run config (may arrive **pre-filled by admin**). Steps: **skill levels** (define ordered levels) → **boat types** (name, seats, min skill level, allowed payment types, advisory min attendance) → **working days & time windows** → **which boats run in each window** (+ how many) → **session length** (default + override) → **booking-open** (always / N days-weeks) → **cancellation** (on/off + cutoff) → **no-show penalty** → **holidays** → **public profile**. | Draft/incomplete, pre-filled, saved; each step editable later. | P0 |
+| **Skill levels** | Define/reorder the club's levels. | Empty, in-use (can't delete a level assigned to members without reassigning). | P0 |
+| **Boat types** | Manage boats: seats, min skill, allowed payment types, advisory minimum. | Active/inactive. | P0 |
+| **Schedule manager** | See generated **slots & boats**; **override** length/boundaries/capacity/min; **open/close/cancel** a slot or a single boat. Flag **under-minimum** sessions. | Generated vs overridden; open/closed/cancelled; below-minimum indicator; holiday-affected. | P0 |
+| **Session roster** | A session's booked + waitlisted people; after the session **mark attendance / no-show**. | Seated list, ordered waitlist, attendance marking, penalty-applied feedback, below-minimum warning. | P0 |
+| **Join requests** | Approve/reject members; optionally set skill level on approval. | Pending, approved, rejected. | P0 |
+| **Members list** | Manage members; **assign/change skill level**; see/lift bans; cancel on behalf. | Active, banned (until date), skill level per member. | P0 |
+| **Club profile settings** | Name, logo, phone, socials, timezone, **MultiSport mode** (equal/priority). | Saved/error. | P0 |
+| **Policies settings** | Booking-open, cancellation, no-show penalty, holiday behavior (standalone from wizard). | — | P1 |
 
 ### D. Admin console
 | Screen | Purpose | Key states / notes | Priority |
 |--------|---------|--------------------|----------|
-| **Clubs list** | All clubs; create a club; activate requested clubs; suspend. | Pending, active, suspended. | P0 |
-| **Create/configure club** | Create a club and **optionally pre-fill the owner's setup wizard**; assign an owner. | Draft, created, owner-assigned. | P0 |
-| **Club requests** | Review owner-submitted club requests. | Pending, approved, rejected. | P1 |
-| **Holiday calendar** | **Auto-generate ~1 year** of Turkish national holidays, **review & approve**, add manual entries. | Pending (needs approval), approved, manual. | P0 |
-| **Hidden pre-reservation** | Place a pre-reservation on a **future session before it opens**: pick session, **who it's for** (a member / free-text guest / admin), **payment type**. | Hidden until session opens; feedback that it will materialize on open; guaranteed vs may-be-displaced (MultiSport in priority mode). | P0 |
+| **Clubs list** | All clubs; create; activate requested; suspend. | Pending, active, suspended. | P0 |
+| **Create/configure club** | Create + **optionally pre-fill the owner's setup**; assign an owner. | Draft, created, owner-assigned. | P0 |
+| **Club requests** | Review owner-submitted requests. | Pending, approved, rejected. | P1 |
+| **Holiday calendar** | **Auto-generate ~1 year** of Turkish national holidays; **review & approve**; add manual entries. | Pending (needs approval), approved, manual. | P0 |
+| **Hidden pre-reservation** | Place a pre-reservation on a **future session before its slot opens**: pick slot + boat, **who it's for** (member / guest / admin), **payment type**. | Hidden until open; feedback that it materializes on open; **guaranteed** (regular) vs **may-be-displaced** (MultiSport in priority mode). | P0 |
 
 ---
 
 ## 6. Key user flows
 
-Design these end-to-end; each names the screens it touches.
+1. **Member joins a club** — Club public page → Sign up (with KVKK consent) → verify email → Join
+   (link/code) → *pending approval* → owner approves (sets skill level) → member can book. Handle the
+   **waiting-for-approval** state gracefully.
 
-1. **Member joins a club** — Club public page → Sign up / Sign in → Join (link/code) → *pending
-   approval* → owner approves → member can book. Handle the **waiting-for-approval** state gracefully.
+2. **Member books at the rush** *(most critical)* — Slot list (countdown → opens) → **pick a boat** (if
+   more than one) → choose payment type → **Book**. Outcomes to design distinctly: **Seated ✓**,
+   **Waitlisted (position N)**, **Too late / full**, and **Ineligible** (skill or payment) shown *before*
+   the tap wastes their time. Must feel fast and unambiguous on a phone.
 
-2. **Member books at the rush** *(most critical)* — Session list (booking-open countdown → opens) →
-   Session detail → choose payment type → **Book**. Outcomes to design distinctly: **Seated ✓**,
-   **Waitlisted (position N)**, **Too late / full**. Must feel fast and unambiguous on a phone.
+3. **Waitlist auto-promotion** — someone cancels → next eligible person is **automatically booked** (no
+   confirmation) and emailed. "My bookings" reflects it; consider a subtle in-app signal next visit.
 
-3. **Waitlist auto-promotion** — someone cancels → the next person is **automatically booked** (no
-   confirmation) and emailed. In-app, "My bookings" should reflect the change; consider a subtle
-   in-app signal on next visit. (No modal to accept — it's automatic.)
+4. **Member cancels** — My bookings / detail → Cancel, respecting the **cutoff** (disabled inside the
+   window, with explanation). Confirm before cancelling.
 
-4. **Member cancels** — My bookings / Session detail → Cancel. Respect the **cutoff**: if inside the
-   window, disable with an explanation. Confirm before cancelling.
+5. **Owner setup** — Wizard (possibly pre-filled): **skill levels → boats → windows → boats-per-window →
+   policies**. Forgiving and explanatory for non-technical owners.
 
-5. **Owner setup** — Setup wizard (possibly pre-filled) → save → schedule generates → Schedule
-   manager. Design the wizard to be **forgiving and explanatory** for non-technical owners.
+6. **Owner runs a session** — Roster → after the session, **mark no-shows** → penalty applies. Show who
+   got banned and until when. See **under-minimum** sessions and decide manually.
 
-6. **Owner runs a session** — Session roster → after the session, **mark no-shows** → penalty applies
-   automatically. Show which members got banned and until when.
+7. **Admin pre-reservation** — Pick a future (not-yet-open) slot + boat → set who-it's-for + payment type
+   → saved **hidden**; appears when the slot opens. Communicate **guaranteed vs possibly-displaced**.
 
-7. **Admin pre-reservation** — Admin picks a future (not-yet-open) session → sets who-it's-for +
-   payment type → saved **hidden**. When the session opens it appears as a booking. Communicate the
-   **guaranteed vs. possibly-displaced** distinction in the UI.
+8. **Admin onboards a club** — Clubs list → Create club (optionally pre-fill setup) → assign owner → active.
 
-8. **Admin onboards a club** — Clubs list → Create club (optionally pre-fill setup) → assign owner →
-   club active.
+9. **Member exercises KVKK rights** — Privacy & data → **export data** / **delete account** (confirmed).
 
 ---
 
 ## 7. Component state catalog (design each state)
 
-- **Session card / row:** not-yet-open (with countdown) · open with seats (N left) · full (join
-  waitlist) · booked-by-me · waitlisted-by-me (position) · closed/past · cancelled · unavailable
-  because banned.
+- **Boat-seat card / row:** not-yet-open (countdown) · open with seats (N left) · full (waitlist) ·
+  booked-by-me · waitlisted-by-me (position) · **ineligible — skill** ("Requires Intermediate") ·
+  **ineligible — payment** ("MultiSport not allowed on this boat") · closed/past · cancelled.
+- **Boat picker:** shown only when a slot has more than one boat; each option shows seats + eligibility.
 - **Booking action button:** Book · Join waitlist · Cancel (enabled/disabled-by-cutoff) · loading ·
-  success · error · **rate-limited** (too many rapid attempts during the rush).
-- **Membership status:** pending approval · approved · rejected · banned (until date).
-- **Club/session lifecycle:** pending · active · suspended (club); scheduled · open · closed ·
-  cancelled (session).
+  success · error · **rate-limited** (too many rapid attempts).
+- **Skill-level badge:** the member's level within a club; the owner's assign/change control.
+- **Under-minimum indicator:** on a session in the owner's schedule/roster (advisory, not blocking).
+- **Membership status:** pending · approved · rejected · banned (until date).
+- **Club/slot/session lifecycle:** pending · active · suspended (club); scheduled · open · closed ·
+  cancelled (slot/session).
 - **Lists:** empty · loading · error · normal.
-- **Payment type selector:** regular vs MultiSport, with the club's mode affecting availability
-  (in priority mode, communicate that MultiSport may not get a seat if regulars fill up).
+- **KVKK:** consent checkbox (with policy link) at sign-up; delete-account confirmation.
 
 ---
 
 ## 8. Content & tone
 
 - Friendly, plain-language, encouraging. Members are athletes, not power users.
-- Explain consequences before they happen (e.g. "You can't cancel within 8 hours of the session",
-  "No-shows may be penalized").
-- Errors are actionable, never blaming.
-- All copy must be translatable (TR/EN) — no text baked into images.
+- Explain consequences before they happen (cancel cutoffs, no-show penalties, **why a boat is
+  ineligible**).
+- Errors are actionable, never blaming. All copy translatable (TR/EN) — no text baked into images.
 
 ## 9. i18n & theming requirements
 
-- **Turkish is the default; English is included.** Design with Turkish copy as the primary reference —
-  it runs longer; avoid fixed-width labels and tight truncation.
-- **Light and dark** must both be first-class. Provide both for every screen you mock.
-- Language and theme are user-switchable; show the controls somewhere sensible.
+- **Turkish default; English included.** Design with Turkish copy as the reference (it runs longer;
+  avoid fixed-width labels and tight truncation).
+- **Light and dark** are both first-class — provide both for every mock.
+- Language and theme are user-switchable.
 
 ## 10. Responsive priorities
 
-- **Member experience is mobile-first.** The session list, session detail, and book/waitlist action
-  must be excellent on a phone. Desktop is secondary but should be clean.
-- **Owner console** is used on both; the **setup wizard** and **roster** should be comfortable on
-  desktop and usable on phone.
-- **Admin console** is desktop-first.
+- **Member experience is mobile-first.** Slot list, boat pick, and book/waitlist must be excellent on a
+  phone. Desktop secondary but clean.
+- **Owner console** used on both; the **setup wizard** and **roster** comfortable on desktop, usable on
+  phone.
+- **Admin console** desktop-first.
 
 ## 11. What we need from you (deliverables)
 
 - Mockups for the **P0 screens** in **light and dark**, mobile + desktop where relevant.
-- The **7 key flows** in §6 as connected screens.
-- The **component states** in §7 (especially the session card and booking action).
+- The **key flows** in §6 as connected screens.
+- The **component states** in §7 (especially the boat-seat card, boat picker, and booking action).
 - A component/pattern set consistent enough that engineering can map it to shadcn/ui primitives.
 
 ## 12. Out of scope for this design (v1 boundary)
 
-Please **do not** design these now — they are planned for after v1 and would only add noise:
-in-app payments, WhatsApp/SMS announcements, owner analytics dashboards, **boat/equipment
-management**, coach/instructor roles, recurring bookings, membership/dues tracking, and skill-level
-eligibility. If you want to leave room in a layout for a future "boat type" on a session, that's
-welcome, but no dedicated screens for it.
+Please **do not** design these now — they're planned for after v1: in-app payments, **memberships /
+dues / session packages**, WhatsApp/SMS announcements, owner analytics dashboards, coach/instructor
+roles, recurring bookings, and physical boat-inventory management. (Boat *types* and skill levels **are**
+in v1 — see above; it's per-hull inventory that's deferred.)
 
 Anything ambiguous, ask — the engineering spec has the underlying rules, and we can clarify behavior.
