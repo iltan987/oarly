@@ -1,13 +1,19 @@
 import { getRequestConfig } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
-import { LOCALE_COOKIE, type Locale } from './config';
+import { locales, LOCALE_COOKIE, type Locale } from './config';
 import { resolveLocale } from './resolve-locale';
+
+/** Narrow an arbitrary string to a supported Locale, or undefined. */
+export function asLocale(value: string | undefined | null): Locale | undefined {
+  return value && (locales as readonly string[]).includes(value) ? (value as Locale) : undefined;
+}
 
 export default getRequestConfig(async ({ locale: override }) => {
   const cookieStore = await cookies();
-  const cookieLocale = cookieStore.get(LOCALE_COOKIE)?.value as Locale | undefined;
+  const cookieLocale = asLocale(cookieStore.get(LOCALE_COOKIE)?.value);
   const acceptLanguage = (await headers()).get('accept-language') ?? '';
-  const locale = (override as Locale) || cookieLocale || resolveLocale(acceptLanguage);
+  const locale =
+    asLocale(override as string | undefined) ?? cookieLocale ?? resolveLocale(acceptLanguage);
   const messages = (await import(`../../messages/${locale}.json`)).default;
   return { locale, messages };
 });
