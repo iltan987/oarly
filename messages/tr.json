@@ -98,5 +98,14 @@
     "errorOwnerNotFound": "Bu e-postayla bir kullanıcı bulunamadı. Önce hesabı oluşturulmalı.",
     "errorNameInvalid": "Kulüp adı en az 2 karakter olmalı.",
     "errorOwnerEmailInvalid": "Geçerli bir e-posta gir."
+  },
+  "requestClub": {
+    "title": "Kulüp başvurusu",
+    "body": "Kulübünü Oarly'ye taşımak için başvur. Yönetici onayladığında kulüp yayına alınır.",
+    "name": "Kulüp adı",
+    "slug": "Alan adı (slug)",
+    "submit": "Başvur",
+    "submittedTitle": "Başvurun alındı",
+    "submittedBody": "Yönetici incelemesinden sonra kulübün etkinleştirilecek."
   }
 }

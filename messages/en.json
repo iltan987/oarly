@@ -98,5 +98,14 @@
     "errorOwnerNotFound": "No user with that email. The account must be created first.",
     "errorNameInvalid": "Club name must be at least 2 characters.",
     "errorOwnerEmailInvalid": "Enter a valid email."
+  },
+  "requestClub": {
+    "title": "Club request",
+    "body": "Request to bring your club onto Oarly. Once an admin approves it, the club goes live.",
+    "name": "Club name",
+    "slug": "Slug",
+    "submit": "Submit",
+    "submittedTitle": "Your request was received",
+    "submittedBody": "Your club will be activated after admin review."
   }
 }
