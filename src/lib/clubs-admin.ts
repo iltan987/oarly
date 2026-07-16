@@ -30,3 +30,18 @@ export async function createClub(
     return { ok: true, clubId: club.id };
   });
 }
+
+export async function setClubStatus(
+  db: DB,
+  input: { clubId: string; status: 'active' | 'suspended'; actorId: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.update(clubs).set({ status: input.status }).where(eq(clubs.id, input.clubId));
+    await logAudit(tx as unknown as DB, {
+      actorUserId: input.actorId,
+      clubId: input.clubId,
+      action: input.status === 'active' ? 'club.activate' : 'club.suspend',
+      target: input.clubId,
+    });
+  });
+}

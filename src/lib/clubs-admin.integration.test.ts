@@ -4,7 +4,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '@/db/schema';
-import { createClub } from './clubs-admin';
+import { createClub, setClubStatus } from './clubs-admin';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -49,5 +49,15 @@ describe.skipIf(!url)('createClub', () => {
     await createClub(db, { name: 'A', slug, ownerEmail: owner.email, createdBy: admin.id });
     expect(await createClub(db, { name: 'B', slug, ownerEmail: owner.email, createdBy: admin.id }))
       .toMatchObject({ ok: false, error: 'slug_taken' });
+  });
+
+  it('setClubStatus flips status and audits', async () => {
+    const admin = await mkUser();
+    const [club] = await db.insert(schema.clubs).values({ slug: `st-${Date.now()}`, name: 'S', status: 'pending' }).returning();
+    await setClubStatus(db, { clubId: club.id, status: 'active', actorId: admin.id });
+    const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
+    expect(after.status).toBe('active');
+    const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id));
+    expect(audit.some((a) => a.action === 'club.activate')).toBe(true);
   });
 });
