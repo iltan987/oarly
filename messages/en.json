@@ -65,5 +65,9 @@
     "errorCredentials": "Wrong email or password.",
     "errorConsent": "You must accept the KVKK text to continue.",
     "errorGeneric": "Something went wrong. Please try again."
+  },
+  "privacy": {
+    "title": "Privacy & KVKK",
+    "stub": "The full clarification text and privacy policy will be published before launch."
   }
 }

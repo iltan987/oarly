@@ -65,5 +65,9 @@
     "errorCredentials": "E-posta veya şifre hatalı.",
     "errorConsent": "Devam etmek için KVKK metnini kabul etmelisin.",
     "errorGeneric": "Bir şeyler ters gitti. Lütfen tekrar dene."
+  },
+  "privacy": {
+    "title": "Gizlilik ve KVKK",
+    "stub": "Aydınlatma metni ve gizlilik politikası yayın öncesi eklenecektir."
   }
 }
