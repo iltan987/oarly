@@ -1,3 +1,13 @@
+# Test database only — intentionally EPHEMERAL (no volume): integration tests
+# migrate + insert throwaway data and want a clean, deterministic state each run.
+# For a persistent local *dev* DB, add a volume but PIN PGDATA — pg18's default
+# data dir is version-coupled (/var/lib/postgresql/18/docker), not the old
+# /var/lib/postgresql/data, so mounting the legacy path would persist nothing:
+#   environment: { PGDATA: /var/lib/postgresql/data }
+#   volumes: [ oarly_pgdata:/var/lib/postgresql/data ]
+# A Redis container is deferred to Plan 6 (rate-limiter wiring); note @upstash/redis
+# needs the Upstash REST API, so local testing needs a serverless-redis-http proxy,
+# not a vanilla redis container.
 services:
   postgres:
     image: postgres:18
