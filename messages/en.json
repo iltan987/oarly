@@ -10,6 +10,12 @@
     "regular": "Cash",
     "multisport": "MultiSport"
   },
+  "club": {
+    "joinCta": "Join this club",
+    "joinTitle": "Join {name}",
+    "joinBody": "Once the club owner approves your request you can start booking sessions.",
+    "metaDescription": "{name} — online booking for rowing sessions."
+  },
   "emails": {
     "verify": {
       "subject": "Oarly — Verify your email",

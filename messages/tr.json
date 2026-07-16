@@ -10,6 +10,12 @@
     "regular": "Nakit",
     "multisport": "MultiSport"
   },
+  "club": {
+    "joinCta": "Kulübe katıl",
+    "joinTitle": "{name} kulübüne katıl",
+    "joinBody": "Katılma isteğiniz kulüp yöneticisi tarafından onaylandığında seans rezervasyonu yapabilirsiniz.",
+    "metaDescription": "{name} — kürek seansları için çevrimiçi rezervasyon."
+  },
   "emails": {
     "verify": {
       "subject": "Oarly — E-postanızı doğrulayın",
