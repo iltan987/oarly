@@ -8,12 +8,12 @@ export function asLocale(value: string | undefined | null): Locale | undefined {
   return value && (locales as readonly string[]).includes(value) ? (value as Locale) : undefined;
 }
 
-export default getRequestConfig(async ({ locale: override }) => {
+export default getRequestConfig(async ({ requestLocale }) => {
+  const override = asLocale(await requestLocale);
   const cookieStore = await cookies();
   const cookieLocale = asLocale(cookieStore.get(LOCALE_COOKIE)?.value);
   const acceptLanguage = (await headers()).get('accept-language') ?? '';
-  const locale =
-    asLocale(override as string | undefined) ?? cookieLocale ?? resolveLocale(acceptLanguage);
+  const locale = override ?? cookieLocale ?? resolveLocale(acceptLanguage);
   const messages = (await import(`../../messages/${locale}.json`)).default;
   return { locale, messages };
 });
