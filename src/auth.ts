@@ -4,7 +4,7 @@ import { nextCookies } from 'better-auth/next-js';
 import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { sendEmail } from '@/lib/email';
-import { env } from '@/env';
+import { env, trustedOrigins } from '@/env';
 
 const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
@@ -70,7 +70,7 @@ export const auth = betterAuth({
     ? { crossSubDomainCookies: { enabled: true, domain: env.COOKIE_DOMAIN } }
     : {},
 
-  trustedOrigins: env.TRUSTED_ORIGINS,
+  trustedOrigins,
 
   // Built-in per-endpoint limiter (our own limiter — Task 15 — covers app routes).
   rateLimit: { enabled: true, window: 60, max: 100 },
