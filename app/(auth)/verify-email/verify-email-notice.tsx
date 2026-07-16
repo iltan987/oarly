@@ -27,7 +27,7 @@ export function VerifyEmailNotice({ title, body }: { title: string; body: string
     const { error } = await authClient.sendVerificationEmail({ email: values.email, callbackURL: '/sign-in' });
     setPending(false);
     if (error) { toast.error(t('errorGeneric')); return; }
-    toast.success(t('forgotSent'));
+    toast.success(t('verifySent'));
   }
 
   return (

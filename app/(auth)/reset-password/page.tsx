@@ -15,7 +15,7 @@ export default async function ResetPasswordPage({
       <div className="w-full">
         <h1 className="mb-4 font-heading text-2xl font-bold">{t('resetTitle')}</h1>
         <p className="mb-6 text-sm text-muted-foreground">{t('errorGeneric')}</p>
-        <Link href="/forgot-password" className="text-sm hover:underline">{t('forgotLink')}</Link>
+        <Link href="/forgot-password" className="text-sm hover:underline">{t('requestNewLink')}</Link>
       </div>
     );
   }
