@@ -16,6 +16,14 @@
     "joinBody": "Once the club owner approves your request you can start booking sessions.",
     "metaDescription": "{name} — online booking for rowing sessions."
   },
+  "join": {
+    "signInToJoin": "Sign in to join",
+    "requestToJoin": "Request to join",
+    "pending": "Your request to join is pending approval.",
+    "approved": "You're a member of this club.",
+    "rejected": "Your request to join was rejected.",
+    "banned": "You can't book sessions at this club right now."
+  },
   "emails": {
     "verify": {
       "subject": "Oarly — Verify your email",

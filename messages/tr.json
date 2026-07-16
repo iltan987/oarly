@@ -16,6 +16,14 @@
     "joinBody": "Katılma isteğiniz kulüp yöneticisi tarafından onaylandığında seans rezervasyonu yapabilirsiniz.",
     "metaDescription": "{name} — kürek seansları için çevrimiçi rezervasyon."
   },
+  "join": {
+    "signInToJoin": "Katılmak için giriş yap",
+    "requestToJoin": "Katılma isteği gönder",
+    "pending": "Katılma isteğin onay bekliyor.",
+    "approved": "Bu kulübün üyesisin.",
+    "rejected": "Katılma isteğin reddedildi.",
+    "banned": "Şu anda bu kulüpte rezervasyon yapamazsın."
+  },
   "emails": {
     "verify": {
       "subject": "Oarly — E-postanızı doğrulayın",
