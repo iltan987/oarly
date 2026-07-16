@@ -49,6 +49,10 @@ describe('routeRequest — apex host', () => {
   it('does not treat a multi-segment path as a club link', () => {
     expect(routeRequest({ ...base, pathname: '/demo/book' })).toEqual({ type: 'next' });
   });
+  it('does not treat a dotted single-segment path (asset request) as a club link', () => {
+    expect(routeRequest({ ...base, pathname: '/apple-touch-icon.png' })).toEqual({ type: 'next' });
+    expect(routeRequest({ ...base, pathname: '/logo.png' })).toEqual({ type: 'next' });
+  });
   it('redirects www to the bare apex, preserving the path', () => {
     expect(routeRequest({ host: 'www.oarly.sbs', pathname: '/privacy', search: '', origin: PROD })).toEqual({
       type: 'redirect', url: 'https://oarly.sbs/privacy', status: 301,

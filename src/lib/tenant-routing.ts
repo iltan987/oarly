@@ -60,7 +60,7 @@ export function routeRequest(input: {
     }
     // Path-form club link: single non-reserved segment -> canonical subdomain.
     const segments = pathname.split('/').filter(Boolean);
-    if (segments.length === 1 && !RESERVED_APEX_SEGMENTS.has(segments[0])) {
+    if (segments.length === 1 && !segments[0].includes('.') && !RESERVED_APEX_SEGMENTS.has(segments[0])) {
       return { type: 'redirect', url: `${clubUrl(segments[0], origin)}${search}`, status: 301 };
     }
     return { type: 'next' };
