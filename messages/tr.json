@@ -71,5 +71,30 @@
   "privacy": {
     "title": "Gizlilik ve KVKK",
     "stub": "Aydınlatma metni ve gizlilik politikası yayın öncesi eklenecektir."
+  },
+  "admin": {
+    "title": "Yönetim",
+    "clubs": "Kulüpler",
+    "requests": "Kulüp istekleri",
+    "newClub": "Yeni kulüp",
+    "name": "Ad",
+    "slug": "Alan adı (slug)",
+    "ownerEmail": "Yönetici e-postası",
+    "create": "Oluştur",
+    "activate": "Etkinleştir",
+    "suspend": "Askıya al",
+    "status": "Durum",
+    "statusActive": "Aktif",
+    "statusPending": "Beklemede",
+    "statusSuspended": "Askıda",
+    "noClubs": "Henüz kulüp yok.",
+    "noRequests": "Bekleyen istek yok.",
+    "created": "Kulüp oluşturuldu.",
+    "activated": "Kulüp etkinleştirildi.",
+    "suspended2": "Kulüp askıya alındı.",
+    "errorSlugInvalid": "Geçersiz slug.",
+    "errorSlugReserved": "Bu slug ayrılmış, kullanılamaz.",
+    "errorSlugTaken": "Bu slug zaten kullanımda.",
+    "errorOwnerNotFound": "Bu e-postayla bir kullanıcı bulunamadı. Önce hesabı oluşturulmalı."
   }
 }

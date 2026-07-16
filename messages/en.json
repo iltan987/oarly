@@ -71,5 +71,30 @@
   "privacy": {
     "title": "Privacy & KVKK",
     "stub": "The full clarification text and privacy policy will be published before launch."
+  },
+  "admin": {
+    "title": "Admin",
+    "clubs": "Clubs",
+    "requests": "Club requests",
+    "newClub": "New club",
+    "name": "Name",
+    "slug": "Slug",
+    "ownerEmail": "Owner email",
+    "create": "Create",
+    "activate": "Activate",
+    "suspend": "Suspend",
+    "status": "Status",
+    "statusActive": "Active",
+    "statusPending": "Pending",
+    "statusSuspended": "Suspended",
+    "noClubs": "No clubs yet.",
+    "noRequests": "No pending requests.",
+    "created": "Club created.",
+    "activated": "Club activated.",
+    "suspended2": "Club suspended.",
+    "errorSlugInvalid": "Invalid slug.",
+    "errorSlugReserved": "That slug is reserved.",
+    "errorSlugTaken": "That slug is already taken.",
+    "errorOwnerNotFound": "No user with that email. The account must be created first."
   }
 }
