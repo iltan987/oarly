@@ -7,6 +7,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    setupFiles: ['./vitest.setup.ts'],
     env: {
       DATABASE_URL: 'postgresql://user:pass@localhost:5432/oarly_test',
       BETTER_AUTH_SECRET: 'test-secret',
