@@ -1,4 +1,4 @@
-import { render } from '@react-email/render';
+import { render } from 'react-email';
 import { createTranslator } from 'next-intl';
 import { locales, type Locale } from '@/i18n/config';
 import { ResetPasswordEmail } from './reset-password';
