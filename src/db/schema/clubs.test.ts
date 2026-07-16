@@ -8,7 +8,7 @@ describe('clubs schema', () => {
     const cfg = getTableConfig(clubs);
     const cols = Object.fromEntries(cfg.columns.map((c) => [c.name, c]));
     expect(cols['slug'].isUnique).toBe(true);
-    for (const name of ['multisport_mode', 'booking_open_mode', 'noshow_penalty', 'brand_accent', 'timezone']) {
+    for (const name of ['multisport_mode', 'booking_open_mode', 'noshow_penalty', 'brand_accent', 'timezone', 'tagline', 'description']) {
       expect(cols[name]).toBeDefined();
     }
   });

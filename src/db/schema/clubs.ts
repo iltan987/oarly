@@ -13,6 +13,8 @@ export const clubs = pgTable('clubs', {
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   logoUrl: text('logo_url'),
+  tagline: text('tagline'),
+  description: text('description'),
   phone: text('phone'),
   timezone: text('timezone').notNull().default('Europe/Istanbul'),
   status: clubStatusEnum('status').notNull().default('pending'),
