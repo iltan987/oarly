@@ -18,7 +18,7 @@ export async function generateMetadata({
   const t = await getTranslations('club');
   return buildClubMetadata({
     club,
-    description: t('metaDescription', { name: club.name }),
+    description: club.description ?? club.tagline ?? t('metaDescription', { name: club.name }),
     origin: parseAppOrigin(env.APP_URL),
   });
 }
@@ -39,7 +39,12 @@ export default async function ClubPublicPage({
         <img src={club.logoUrl} alt={club.name} className="h-20 w-20 rounded-full object-cover" />
       ) : null}
       <h1 className="font-heading text-3xl font-bold text-brand">{club.name}</h1>
-      <p className="text-muted-foreground">{t('joinBody')}</p>
+      {club.tagline ? <p className="text-lg text-muted-foreground">{club.tagline}</p> : null}
+      {club.description ? (
+        <p className="text-muted-foreground">{club.description}</p>
+      ) : (
+        <p className="text-muted-foreground">{t('joinBody')}</p>
+      )}
       {club.phone ? <p className="text-sm text-muted-foreground">{club.phone}</p> : null}
       <Link href="/join" className={buttonVariants({ className: 'w-full' })}>
         {t('joinCta')}

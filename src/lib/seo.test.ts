@@ -25,6 +25,15 @@ describe('buildClubMetadata', () => {
     const m = buildClubMetadata({ club: activeClub, description: 'x', origin: ORIGIN });
     expect(m.alternates?.languages).toBeUndefined();
   });
+  it('uses the provided description and the club logo for OpenGraph', () => {
+    const meta = buildClubMetadata({
+      club: { slug: 'bebek', name: 'Bebek', status: 'active', logoUrl: 'https://blob/logo.png' } as never,
+      description: 'Boğaz’da kürek',
+      origin: ORIGIN,
+    });
+    expect(meta.description).toBe('Boğaz’da kürek');
+    expect(meta.openGraph?.images).toEqual(['https://blob/logo.png']);
+  });
 });
 
 describe('buildRobots', () => {
