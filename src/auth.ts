@@ -5,6 +5,7 @@ import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { renderResetEmail, renderVerifyEmail } from '@/emails';
 import { sendEmail } from '@/lib/email';
+import { recordSignupConsent } from '@/lib/consent';
 import { env, trustedOrigins } from '@/env';
 
 /** Better Auth doesn't type our `locale` additionalField on the user object. */
@@ -76,6 +77,18 @@ export const auth = betterAuth({
 
   // Built-in per-endpoint limiter (our own limiter — Task 15 — covers app routes).
   rateLimit: { enabled: true, window: 60, max: 100 },
+
+  // KVKK requires recording consent at sign-up, for every account creation path
+  // (email/password AND Google) — this hook fires unconditionally, by design.
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          await recordSignupConsent(db, user.id);
+        },
+      },
+    },
+  },
 
   plugins: [nextCookies()], // MUST be last
 });
