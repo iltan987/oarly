@@ -40,8 +40,8 @@ _(Carried verbatim from the foundation plan; every task's requirements implicitl
 - `src/lib/urls.test.ts` — unit tests.
 - `src/lib/tenant-routing.ts` — pure host resolution + routing decision (`resolveHost`, `routeRequest`, reserved-word sets).
 - `src/lib/tenant-routing.test.ts` — unit tests (the bulk of routing coverage).
-- `src/proxy.ts` — thin `NextRequest` → `NextResponse` adapter over `routeRequest`.
-- `src/proxy.test.ts` — adapter smoke tests.
+- `proxy.ts` (repo ROOT — Next only picks up `src/proxy.ts` when the app is under `src/app`; our `app/` is at the root) — thin `NextRequest` → `NextResponse` adapter over `routeRequest`.
+- `src/proxy.test.ts` — adapter smoke tests (imports `../proxy`).
 - `src/lib/tenant.ts` — DB-backed tenant resolution (`getClubBySlug` memoized with React `cache`, `getTenantSlug`, `requireClub`).
 - `src/lib/tenant.integration.test.ts` — integration test against Docker PG.
 - `src/lib/seo.ts` — pure SEO builders (`buildClubMetadata`, `buildRobots`, `buildApexSitemap`, `buildTenantSitemap`).
@@ -350,10 +350,10 @@ git commit -m "feat(routing): add pure host resolution and route-decision core"
 
 ---
 
-## Task 3: Proxy adapter (`src/proxy.ts`)
+## Task 3: Proxy adapter (`proxy.ts` at repo root)
 
 **Files:**
-- Create: `src/proxy.ts`, `src/proxy.test.ts`
+- Create: `proxy.ts` (repo ROOT, NOT `src/` — our `app/` dir is at the root, and Next only reads `src/proxy.ts` when the app lives under `src/app`), `src/proxy.test.ts`
 
 **Interfaces:**
 - Consumes: `env.APP_URL`, `parseAppOrigin`, `routeRequest`.
@@ -414,7 +414,7 @@ Expected: FAIL — `proxy.ts` missing.
 > Version-exact types (confirmed in `node_modules/next/dist/server/web/types.d.ts` for 16.2.10): the handler type is `NextProxy` and the config type is `ProxyConfig`, both exported from `next/server`. `NextMiddleware`/`MiddlewareConfig` still exist but are `@deprecated` (renamed to Proxy). Use `ProxyConfig` for the `config` export.
 
 ```ts
-// src/proxy.ts
+// proxy.ts  (repo ROOT — see Files note above)
 import { NextResponse } from 'next/server';
 import type { NextRequest, ProxyConfig } from 'next/server';
 import { env } from '@/env';
