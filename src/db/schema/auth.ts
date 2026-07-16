@@ -1,58 +1,106 @@
-import { pgTable, text, timestamp, boolean, date } from 'drizzle-orm/pg-core';
-import { paymentTypeEnum } from './enums';
+// Generated via `pnpm auth:generate` (better-auth CLI), then hand-edited: keep pgEnum on default_payment_type, timestamptz on all timestamps, date() for birthday, and NOT NULL + defaults on locale/theme/isAdmin. Re-apply these edits after any future regen.
+import { relations } from "drizzle-orm";
+import { pgTable, text, timestamp, boolean, date, index } from "drizzle-orm/pg-core";
+import { paymentTypeEnum } from "./enums";
 
-export const user = pgTable('user', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  email: text('email').notNull().unique(),
-  emailVerified: boolean('email_verified').notNull().default(false),
-  image: text('image'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  // profile (Better Auth additionalFields — see Task 14)
-  firstName: text('first_name'),
-  lastName: text('last_name'),
-  phone: text('phone'),
-  birthday: date('birthday'),
-  gender: text('gender'),
-  defaultPaymentType: paymentTypeEnum('default_payment_type').notNull().default('regular'),
-  locale: text('locale').notNull().default('tr'),
-  theme: text('theme').notNull().default('system'),
-  isAdmin: boolean('is_admin').notNull().default(false),
+export const user = pgTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").default(false).notNull(),
+  image: text("image"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  phone: text("phone"),
+  birthday: date("birthday"),
+  gender: text("gender"),
+  defaultPaymentType: paymentTypeEnum("default_payment_type").notNull().default("regular"),
+  locale: text("locale").notNull().default("tr"),
+  theme: text("theme").notNull().default("system"),
+  isAdmin: boolean("is_admin").notNull().default(false),
 });
 
-export const session = pgTable('session', {
-  id: text('id').primaryKey(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  token: text('token').notNull().unique(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  ipAddress: text('ip_address'),
-  userAgent: text('user_agent'),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-});
+export const session = pgTable(
+  "session",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("session_userId_idx").on(table.userId)],
+);
 
-export const account = pgTable('account', {
-  id: text('id').primaryKey(),
-  accountId: text('account_id').notNull(),
-  providerId: text('provider_id').notNull(),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  accessToken: text('access_token'),
-  refreshToken: text('refresh_token'),
-  idToken: text('id_token'),
-  accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
-  refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
-  scope: text('scope'),
-  password: text('password'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const account = pgTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [index("account_userId_idx").on(table.userId)],
+);
 
-export const verification = pgTable('verification', {
-  id: text('id').primaryKey(),
-  identifier: text('identifier').notNull(),
-  value: text('value').notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const verification = pgTable(
+  "verification",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [index("verification_identifier_idx").on(table.identifier)],
+);
+
+export const userRelations = relations(user, ({ many }) => ({
+  sessions: many(session),
+  accounts: many(account),
+}));
+
+export const sessionRelations = relations(session, ({ one }) => ({
+  user: one(user, {
+    fields: [session.userId],
+    references: [user.id],
+  }),
+}));
+
+export const accountRelations = relations(account, ({ one }) => ({
+  user: one(user, {
+    fields: [account.userId],
+    references: [user.id],
+  }),
+}));
