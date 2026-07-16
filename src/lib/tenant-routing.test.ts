@@ -63,6 +63,13 @@ describe('routeRequest — apex host', () => {
       type: 'redirect', url: 'https://oarly.sbs/', status: 301,
     });
   });
+  it('does not treat reserved auth routes as club slugs', () => {
+    const origin = { protocol: 'https:', rootDomain: 'oarly.sbs' };
+    for (const seg of ['verify-email', 'forgot-password', 'reset-password', 'request-club']) {
+      const d = routeRequest({ host: 'oarly.sbs', pathname: `/${seg}`, search: '', origin });
+      expect(d.type).toBe('next');
+    }
+  });
 });
 
 describe('routeRequest — tenant host', () => {

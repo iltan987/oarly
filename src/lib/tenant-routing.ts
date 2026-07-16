@@ -13,6 +13,7 @@ export const RESERVED_SUBDOMAINS: ReadonlySet<string> = new Set([
  */
 export const RESERVED_APEX_SEGMENTS: ReadonlySet<string> = new Set([
   's', 'api', 'admin', 'sign-in', 'sign-up', 'sign-out', 'privacy', 'kvkk',
+  'verify-email', 'forgot-password', 'reset-password', 'request-club',
   'favicon.ico', 'robots.txt', 'sitemap.xml', 'opengraph-image', 'icon',
 ]);
 

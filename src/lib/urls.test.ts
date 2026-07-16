@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAppOrigin, clubUrl, apexUrl } from './urls';
+import { parseAppOrigin, clubUrl, apexUrl, safeRedirect } from './urls';
 
 describe('parseAppOrigin', () => {
   it('parses a prod https origin', () => {
@@ -23,5 +23,21 @@ describe('clubUrl / apexUrl', () => {
   it('builds an apex URL with a path', () => {
     expect(apexUrl('/', prod)).toBe('https://oarly.sbs/');
     expect(apexUrl('/privacy', prod)).toBe('https://oarly.sbs/privacy');
+  });
+});
+
+describe('safeRedirect', () => {
+  const origin = parseAppOrigin('https://oarly.sbs');
+  it('allows relative paths', () => {
+    expect(safeRedirect('/admin', origin)).toBe('/admin');
+  });
+  it('allows the apex and any subdomain of the root', () => {
+    expect(safeRedirect('https://oarly.sbs/x', origin)).toBe('https://oarly.sbs/x');
+    expect(safeRedirect('https://demo.oarly.sbs/join', origin)).toBe('https://demo.oarly.sbs/join');
+  });
+  it('rejects foreign hosts and protocol-relative tricks, using the fallback', () => {
+    expect(safeRedirect('https://evil.com/x', origin)).toBe('/');
+    expect(safeRedirect('//evil.com', origin)).toBe('/');
+    expect(safeRedirect(null, origin, '/home')).toBe('/home');
   });
 });
