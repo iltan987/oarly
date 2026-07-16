@@ -95,6 +95,8 @@
     "errorSlugInvalid": "Invalid slug.",
     "errorSlugReserved": "That slug is reserved.",
     "errorSlugTaken": "That slug is already taken.",
-    "errorOwnerNotFound": "No user with that email. The account must be created first."
+    "errorOwnerNotFound": "No user with that email. The account must be created first.",
+    "errorNameInvalid": "Club name must be at least 2 characters.",
+    "errorOwnerEmailInvalid": "Enter a valid email."
   }
 }
