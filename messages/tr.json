@@ -9,5 +9,19 @@
   "payment": {
     "regular": "Nakit",
     "multisport": "MultiSport"
+  },
+  "emails": {
+    "verify": {
+      "subject": "Oarly — E-postanızı doğrulayın",
+      "heading": "E-postanızı doğrulayın",
+      "body": "Oarly hesabınızı etkinleştirmek için lütfen e-posta adresinizi doğrulayın. Bu bağlantıya tıklamanız yeterli.",
+      "button": "E-postamı doğrula"
+    },
+    "reset": {
+      "subject": "Oarly — Şifrenizi sıfırlayın",
+      "heading": "Şifrenizi sıfırlayın",
+      "body": "Şifrenizi sıfırlamak için bir istek aldık. Yeni bir şifre belirlemek için aşağıdaki bağlantıya tıklayın.",
+      "button": "Şifremi sıfırla"
+    }
   }
 }

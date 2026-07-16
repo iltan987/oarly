@@ -3,8 +3,14 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { nextCookies } from 'better-auth/next-js';
 import { db } from '@/db';
 import * as schema from '@/db/schema';
+import { renderResetEmail, renderVerifyEmail } from '@/emails';
 import { sendEmail } from '@/lib/email';
 import { env, trustedOrigins } from '@/env';
+
+/** Better Auth doesn't type our `locale` additionalField on the user object. */
+function userLocale(user: object): 'tr' | 'en' {
+  return (user as { locale?: string }).locale === 'en' ? 'en' : 'tr';
+}
 
 const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
@@ -17,11 +23,9 @@ export const auth = betterAuth({
     enabled: true,
     requireEmailVerification: true,
     sendResetPassword: async ({ user, url }) => {
-      await sendEmail({
-        to: user.email,
-        subject: 'Oarly — Şifre sıfırlama / Reset your password',
-        text: `Şifrenizi sıfırlamak için tıklayın / Reset your password: ${url}`,
-      });
+      const locale = userLocale(user);
+      const { subject, html, text } = await renderResetEmail(locale, { url });
+      await sendEmail({ to: user.email, subject, html, text });
     },
   },
 
@@ -29,11 +33,9 @@ export const auth = betterAuth({
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
-      await sendEmail({
-        to: user.email,
-        subject: 'Oarly — E-posta doğrulama / Verify your email',
-        text: `E-postanızı doğrulamak için tıklayın / Verify your email: ${url}`,
-      });
+      const locale = userLocale(user);
+      const { subject, html, text } = await renderVerifyEmail(locale, { url });
+      await sendEmail({ to: user.email, subject, html, text });
     },
   },
 

@@ -9,5 +9,19 @@
   "payment": {
     "regular": "Cash",
     "multisport": "MultiSport"
+  },
+  "emails": {
+    "verify": {
+      "subject": "Oarly — Verify your email",
+      "heading": "Verify your email",
+      "body": "Please verify your email address to activate your Oarly account. Just click the link below.",
+      "button": "Verify my email"
+    },
+    "reset": {
+      "subject": "Oarly — Reset your password",
+      "heading": "Reset your password",
+      "body": "We received a request to reset your password. Click the link below to set a new one.",
+      "button": "Reset my password"
+    }
   }
 }
