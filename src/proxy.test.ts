@@ -32,8 +32,11 @@ describe('proxy', () => {
   });
 
   it('strips an inbound x-tenant-slug on apex pass-through', () => {
-    const res = proxy(req('http://localhost:3000/', 'localhost:3000'));
-    // The forwarded request header is cleared (only our rewrite path sets it).
+    const request = req('http://localhost:3000/', 'localhost:3000');
+    request.headers.set('x-tenant-slug', 'evil');
+    const res = proxy(request);
+    // pass-through now forwards request headers via { request: { headers } };
+    // a stripped header yields no x-middleware-request-* entry.
     expect(res.headers.get('x-middleware-request-x-tenant-slug')).toBeNull();
   });
 
