@@ -107,5 +107,14 @@
     "submit": "Submit",
     "submittedTitle": "Your request was received",
     "submittedBody": "Your club will be activated after admin review."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "The page you're looking for doesn't exist.",
+    "home": "Back to home"
+  },
+  "unavailable": {
+    "title": "This club is currently unavailable",
+    "body": "This club isn't active yet. Please check back later."
   }
 }

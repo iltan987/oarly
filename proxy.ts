@@ -11,6 +11,10 @@ export function proxy(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl;
   const decision = routeRequest({ host, pathname, search, origin });
 
+  // Never trust an inbound tenant header — strip it on every request.
+  const headers = new Headers(request.headers);
+  headers.delete('x-tenant-slug');
+
   if (decision.type === 'redirect') {
     return NextResponse.redirect(decision.url, decision.status);
   }
@@ -18,12 +22,11 @@ export function proxy(request: NextRequest): NextResponse {
   if (decision.type === 'rewrite') {
     const url = request.nextUrl.clone();
     url.pathname = decision.pathname;
-    const headers = new Headers(request.headers);
     headers.set('x-tenant-slug', decision.slug);
     return NextResponse.rewrite(url, { request: { headers } });
   }
 
-  return NextResponse.next();
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config: ProxyConfig = {

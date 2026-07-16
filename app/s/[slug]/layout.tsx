@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ClubTheme } from '@/components/club-theme';
+import { ClubUnavailable } from '@/components/club-unavailable';
 import { requireClub } from '@/lib/tenant';
 
 export default async function TenantLayout({
@@ -11,5 +12,9 @@ export default async function TenantLayout({
 }) {
   const { slug } = await params;
   const club = await requireClub(slug);
-  return <ClubTheme accent={club.brandAccent}>{children}</ClubTheme>;
+  return (
+    <ClubTheme accent={club.brandAccent}>
+      {club.status === 'active' ? children : <ClubUnavailable name={club.name} />}
+    </ClubTheme>
+  );
 }

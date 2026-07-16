@@ -30,4 +30,17 @@ describe('proxy', () => {
     // normalizes an empty path to '/', so the Location header carries a trailing slash.
     expect(res.headers.get('location')).toBe('http://demo.localhost:3000/');
   });
+
+  it('strips an inbound x-tenant-slug on apex pass-through', () => {
+    const res = proxy(req('http://localhost:3000/', 'localhost:3000'));
+    // The forwarded request header is cleared (only our rewrite path sets it).
+    expect(res.headers.get('x-middleware-request-x-tenant-slug')).toBeNull();
+  });
+
+  it('ignores a spoofed inbound x-tenant-slug on a tenant rewrite, using the host-derived slug', () => {
+    const request = req('http://demo.localhost:3000/join', 'demo.localhost:3000');
+    request.headers.set('x-tenant-slug', 'evil');
+    const res = proxy(request);
+    expect(res.headers.get('x-middleware-request-x-tenant-slug')).toBe('demo');
+  });
 });

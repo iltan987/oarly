@@ -107,5 +107,14 @@
     "submit": "Başvur",
     "submittedTitle": "Başvurun alındı",
     "submittedBody": "Yönetici incelemesinden sonra kulübün etkinleştirilecek."
+  },
+  "notFound": {
+    "title": "Sayfa bulunamadı",
+    "body": "Aradığın sayfa mevcut değil.",
+    "home": "Ana sayfaya dön"
+  },
+  "unavailable": {
+    "title": "Bu kulüp şu anda kullanılamıyor",
+    "body": "Kulüp henüz etkin değil. Daha sonra tekrar dene."
   }
 }
