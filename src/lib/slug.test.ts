@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { validateSlug, RESERVED_SLUGS } from './slug';
+import { describe, expect, it } from 'vitest';
+
+import { RESERVED_SLUGS, validateSlug } from './slug';
 
 describe('validateSlug', () => {
   it('accepts a simple lowercase slug', () => {

@@ -1,10 +1,11 @@
 'use server';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+
 import { db } from '@/db';
-import { requireUser } from '@/lib/session';
 import { requestClub } from '@/lib/club-request';
 import { clubRequestSchema } from '@/lib/schemas';
+import { requireUser } from '@/lib/session';
 
 export type RequestClubState = { errors?: Record<string, string> };
 

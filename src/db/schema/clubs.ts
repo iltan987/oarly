@@ -1,11 +1,12 @@
 import {
-  pgTable, uuid, text, integer, boolean, timestamp, uniqueIndex,
-} from 'drizzle-orm/pg-core';
+boolean, integer,   pgTable, text, timestamp, uniqueIndex,
+uuid, } from 'drizzle-orm/pg-core';
+
 import { user } from './auth';
 import {
-  clubStatusEnum, multisportModeEnum, bookingOpenModeEnum,
-  noshowPenaltyEnum, headingFontEnum, membershipRoleEnum, membershipStatusEnum,
-} from './enums';
+bookingOpenModeEnum,
+  clubStatusEnum, headingFontEnum, membershipRoleEnum, membershipStatusEnum,
+multisportModeEnum,   noshowPenaltyEnum, } from './enums';
 
 export const clubs = pgTable('clubs', {
   id: uuid('id').defaultRandom().primaryKey(),

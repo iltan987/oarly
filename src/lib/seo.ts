@@ -1,6 +1,7 @@
 import type { Metadata, MetadataRoute } from 'next';
+
 import type { Club } from '@/lib/tenant';
-import { type AppOrigin, clubUrl, apexUrl } from '@/lib/urls';
+import { apexUrl, type AppOrigin, clubUrl } from '@/lib/urls';
 
 const TENANT_DISALLOW = ['/join', '/book', '/bookings', '/settings'];
 const APEX_DISALLOW = ['/admin'];

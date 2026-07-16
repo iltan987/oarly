@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { user, session, account, verification } from '@/db/schema/auth';
+import { describe, expect, it } from 'vitest';
+
+import { account, session, user, verification } from '@/db/schema/auth';
 
 describe('auth schema', () => {
   it('user has a text primary key and profile columns', () => {

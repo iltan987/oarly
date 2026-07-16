@@ -1,9 +1,10 @@
 import {
-  pgTable, uuid, integer, boolean, date, time, timestamp, index,
-} from 'drizzle-orm/pg-core';
-import { clubs } from './clubs';
+boolean, date, index,
+integer,   pgTable, time, timestamp, uuid, } from 'drizzle-orm/pg-core';
+
 import { boatTypes } from './boats';
-import { slotStatusEnum, sessionStatusEnum } from './enums';
+import { clubs } from './clubs';
+import { sessionStatusEnum, slotStatusEnum } from './enums';
 
 export const scheduleWindows = pgTable('schedule_windows', {
   id: uuid('id').defaultRandom().primaryKey(),

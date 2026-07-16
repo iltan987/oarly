@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
-import { redirect, notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+
 import { auth } from '@/auth';
 
 export type SessionResult = Awaited<ReturnType<typeof auth.api.getSession>>;

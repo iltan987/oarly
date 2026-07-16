@@ -1,17 +1,18 @@
 'use client';
-import { useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useForm, Controller, type Resolver } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { Controller, type Resolver, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+
 import { authClient } from '@/auth-client';
-import { signUpSchema } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Field, FieldLabel, FieldError, FieldGroup } from '@/components/ui/field';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { signUpSchema } from '@/lib/schemas';
 
 // Form-input type: `consent` is a boolean the resolver forces to `true`
 // (the schema's `z.literal(true)` would otherwise force the input type to

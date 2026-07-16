@@ -1,4 +1,4 @@
-import { RESERVED_SUBDOMAINS, RESERVED_APEX_SEGMENTS } from './tenant-routing';
+import { RESERVED_APEX_SEGMENTS, RESERVED_SUBDOMAINS } from './tenant-routing';
 
 /** Slugs that would collide with a reserved subdomain or top-level apex route. */
 export const RESERVED_SLUGS: ReadonlySet<string> = new Set([

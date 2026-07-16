@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { userSocials, consents } from '@/db/schema/profile';
+import { describe, expect, it } from 'vitest';
+
+import { consents, userSocials } from '@/db/schema/profile';
 
 describe('profile schema', () => {
   it('user_socials FKs to user', () => {

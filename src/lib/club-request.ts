@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm';
+
 import { clubs, memberships } from '@/db/schema';
-import { validateSlug } from '@/lib/slug';
 import type { DB } from '@/lib/membership';
+import { validateSlug } from '@/lib/slug';
 
 export async function requestClub(
   db: DB,

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
+import { describe, expect, it } from 'vitest';
+
 import { bookings, penalties } from '@/db/schema/bookings';
 
 describe('bookings schema', () => {
@@ -19,7 +20,7 @@ describe('bookings schema', () => {
     expect(idx).toBeDefined();
     expect(idx!.config.unique).toBe(true);
     expect(idx!.config.where).toBeDefined();
-    expect(idx!.config.columns.map((c: any) => c.name).sort()).toEqual(['session_id', 'user_id']);
+    expect(idx!.config.columns.map((c) => (c as { name: string }).name).sort()).toEqual(['session_id', 'user_id']);
   });
 
   it('has an idempotency partial unique index', () => {

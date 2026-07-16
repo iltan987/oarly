@@ -1,13 +1,21 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { useTheme } from 'next-themes';
 import { Moon, Sun } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { useSyncExternalStore } from 'react';
+
 import { Button } from '@/components/ui/button';
+
+// Client-mount flag without setState-in-effect: getServerSnapshot returns false
+// (server + initial hydration), getSnapshot returns true (post-hydration client).
+const emptySubscribe = () => () => {};
 
 export function ThemeToggle() {
   const { setTheme, resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
   if (!mounted) return <Button variant="ghost" size="icon" aria-label="Toggle theme" />;
 

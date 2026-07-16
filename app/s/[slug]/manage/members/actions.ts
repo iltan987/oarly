@@ -1,8 +1,9 @@
 'use server';
 import { revalidatePath } from 'next/cache';
+
 import { db } from '@/db';
+import { assignSkillLevel, setMembershipStatus } from '@/lib/members-admin';
 import { requireOwner } from '@/lib/membership';
-import { setMembershipStatus, assignSkillLevel } from '@/lib/members-admin';
 
 export async function approveMemberAction(slug: string, formData: FormData) {
   const { club } = await requireOwner(slug);

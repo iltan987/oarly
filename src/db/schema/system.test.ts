@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { holidays, clubHolidayOverrides } from '@/db/schema/holidays';
-import { notifications, auditLog } from '@/db/schema/system';
+import { describe, expect, it } from 'vitest';
+
+import { clubHolidayOverrides, holidays } from '@/db/schema/holidays';
+import { auditLog, notifications } from '@/db/schema/system';
 
 describe('holidays & system schema', () => {
   it('holidays record source and approval status', () => {
@@ -11,7 +12,7 @@ describe('holidays & system schema', () => {
   it('overrides are unique per (club, date)', () => {
     const uq = getTableConfig(clubHolidayOverrides).indexes.find((i) => i.config.unique);
     expect(uq).toBeDefined();
-    expect(uq!.config.columns.map((c: any) => c.name).sort()).toEqual(['club_id', 'date']);
+    expect(uq!.config.columns.map((c) => (c as { name: string }).name).sort()).toEqual(['club_id', 'date']);
   });
   it('notifications are unique per (user, type, session) for idempotency', () => {
     const uq = getTableConfig(notifications).indexes.find((i) => i.config.name === 'notifications_idem_uq');

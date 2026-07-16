@@ -1,6 +1,7 @@
-import { getRequestConfig } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
-import { locales, LOCALE_COOKIE, type Locale } from './config';
+import { getRequestConfig } from 'next-intl/server';
+
+import { type Locale, LOCALE_COOKIE, locales } from './config';
 import { resolveLocale } from './resolve-locale';
 
 /** Narrow an arbitrary string to a supported Locale, or undefined. */

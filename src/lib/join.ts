@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
+
 import { clubs, memberships } from '@/db/schema';
-import { getMembership, type DB } from '@/lib/membership';
+import { type DB, getMembership } from '@/lib/membership';
 
 export async function requestToJoin(
   db: DB,

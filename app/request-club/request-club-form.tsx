@@ -1,10 +1,12 @@
 'use client';
-import { useActionState } from 'react';
 import { useTranslations } from 'next-intl';
-import { requestClubAction, type RequestClubState } from './actions';
+import { useActionState } from 'react';
+
 import { Button } from '@/components/ui/button';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Field, FieldLabel, FieldError, FieldGroup } from '@/components/ui/field';
+
+import { requestClubAction, type RequestClubState } from './actions';
 
 export function RequestClubForm() {
   const t = useTranslations('requestClub');

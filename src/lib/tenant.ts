@@ -1,7 +1,8 @@
-import { cache } from 'react';
+import { eq } from 'drizzle-orm';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { eq } from 'drizzle-orm';
+import { cache } from 'react';
+
 import { db } from '@/db';
 import { clubs } from '@/db/schema';
 

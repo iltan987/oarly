@@ -1,8 +1,9 @@
 'use server';
 import { revalidatePath } from 'next/cache';
+
 import { db } from '@/db';
-import { requireAdmin } from '@/lib/session';
 import { setClubStatus } from '@/lib/clubs-admin';
+import { requireAdmin } from '@/lib/session';
 
 export async function setClubStatusAction(formData: FormData) {
   const admin = await requireAdmin();

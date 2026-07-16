@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { env } from '@/env';
-import { parseAppOrigin } from '@/lib/urls';
-import { requireClub } from '@/lib/tenant';
-import { buildClubMetadata } from '@/lib/seo';
+
 import { buttonVariants } from '@/components/ui/button';
+import { env } from '@/env';
+import { buildClubMetadata } from '@/lib/seo';
+import { requireClub } from '@/lib/tenant';
+import { parseAppOrigin } from '@/lib/urls';
 
 export async function generateMetadata({
   params,

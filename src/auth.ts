@@ -1,12 +1,13 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { nextCookies } from 'better-auth/next-js';
+
 import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { renderResetEmail, renderVerifyEmail } from '@/emails';
-import { sendEmail } from '@/lib/email';
-import { recordSignupConsent } from '@/lib/consent';
 import { env, trustedOrigins } from '@/env';
+import { recordSignupConsent } from '@/lib/consent';
+import { sendEmail } from '@/lib/email';
 
 /** Better Auth doesn't type our `locale` additionalField on the user object. */
 function userLocale(user: object): 'tr' | 'en' {

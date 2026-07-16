@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
+import { describe, expect, it } from 'vitest';
+
 import { clubs, memberships, skillLevels } from '@/db/schema/clubs';
 
 describe('clubs schema', () => {
@@ -16,7 +17,7 @@ describe('clubs schema', () => {
     const cfg = getTableConfig(memberships);
     const uq = cfg.indexes.find((i) => i.config.unique);
     expect(uq).toBeDefined();
-    expect(uq!.config.columns.map((c: any) => c.name).sort()).toEqual(['club_id', 'user_id']);
+    expect(uq!.config.columns.map((c) => (c as { name: string }).name).sort()).toEqual(['club_id', 'user_id']);
   });
 
   it('skill levels order by rank within a club', () => {

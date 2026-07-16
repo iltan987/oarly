@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+
 import { VerifyEmailNotice } from './verify-email-notice';
 
 export default async function VerifyEmailPage() {

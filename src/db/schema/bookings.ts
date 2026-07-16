@@ -1,11 +1,12 @@
 import { sql } from 'drizzle-orm';
 import {
-  pgTable, uuid, text, integer, boolean, timestamp, uniqueIndex, index,
-} from 'drizzle-orm/pg-core';
+boolean, index,
+integer,   pgTable, text, timestamp, uniqueIndex, uuid, } from 'drizzle-orm/pg-core';
+
 import { user } from './auth';
 import { clubs, memberships } from './clubs';
+import { bookingSourceEnum, bookingStatusEnum, paymentTypeEnum } from './enums';
 import { sessions } from './schedule';
-import { paymentTypeEnum, bookingStatusEnum, bookingSourceEnum } from './enums';
 
 export const bookings = pgTable(
   'bookings',

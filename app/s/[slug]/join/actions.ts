@@ -1,9 +1,10 @@
 'use server';
 import { revalidatePath } from 'next/cache';
+
 import { db } from '@/db';
+import { requestToJoin } from '@/lib/join';
 import { getSession } from '@/lib/session';
 import { requireClub } from '@/lib/tenant';
-import { requestToJoin } from '@/lib/join';
 
 export async function joinAction(slug: string) {
   const session = await getSession();

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
+
 import { buttonVariants } from '@/components/ui/button';
 
 export default async function NotFound() {

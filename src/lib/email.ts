@@ -1,4 +1,5 @@
-import { Resend, type CreateEmailOptions } from 'resend';
+import { type CreateEmailOptions, Resend } from 'resend';
+
 import { env } from '@/env';
 
 export type SendEmailInput = {

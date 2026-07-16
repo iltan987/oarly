@@ -1,5 +1,7 @@
 import { getTranslations } from 'next-intl/server';
+
 import { requireUser } from '@/lib/session';
+
 import { RequestClubForm } from './request-club-form';
 
 export default async function RequestClubPage({

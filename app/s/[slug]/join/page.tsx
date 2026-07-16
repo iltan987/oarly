@@ -1,12 +1,14 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
-import { env } from '@/env';
-import { parseAppOrigin, apexUrl, clubUrl } from '@/lib/urls';
-import { requireClub } from '@/lib/tenant';
-import { getSession } from '@/lib/session';
-import { getMembership } from '@/lib/membership';
-import { db } from '@/db';
+
 import { buttonVariants } from '@/components/ui/button';
+import { db } from '@/db';
+import { env } from '@/env';
+import { getMembership } from '@/lib/membership';
+import { getSession } from '@/lib/session';
+import { requireClub } from '@/lib/tenant';
+import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
+
 import { joinAction } from './actions';
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };

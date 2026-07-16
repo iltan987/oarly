@@ -1,11 +1,13 @@
 import { and, eq } from 'drizzle-orm';
-import { redirect, notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+
+import { type DB, db as appDb } from '@/db';
 import { memberships } from '@/db/schema';
-import { db as appDb, type DB } from '@/db';
 import { env } from '@/env';
-import { parseAppOrigin, apexUrl, clubUrl } from '@/lib/urls';
-import { getClubBySlug, type Club } from '@/lib/tenant';
-import { getCurrentUser, type CurrentUser } from '@/lib/session';
+import { type CurrentUser, getCurrentUser } from '@/lib/session';
+import { type Club, getClubBySlug } from '@/lib/tenant';
+import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
+
 // Self-import so `requireOwner` calls `getMembership` through the module's own
 // export object rather than the local binding directly. This keeps
 // `vi.spyOn(mod, 'getMembership')` honest in unit tests: the spy mutates the

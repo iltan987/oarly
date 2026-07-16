@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/session';
+import type { ReactNode } from 'react';
+
 import { SignOutButton } from '@/components/sign-out-button';
+import { requireAdmin } from '@/lib/session';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   await requireAdmin();

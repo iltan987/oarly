@@ -1,8 +1,9 @@
-import { pgTable, uuid, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+
 import { user } from './auth';
 import { clubs } from './clubs';
-import { sessions } from './schedule';
 import { membershipRoleEnum, notificationTypeEnum } from './enums';
+import { sessions } from './schedule';
 
 export const notifications = pgTable(
   'notifications',

@@ -1,9 +1,11 @@
-import type { Metadata } from 'next';
 import { eq } from 'drizzle-orm';
+import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
+
 import { db } from '@/db';
 import { memberships, skillLevels, user } from '@/db/schema';
 import { requireOwner } from '@/lib/membership';
+
 import { approveMemberAction, rejectMemberAction } from './actions';
 import { SkillLevelSelect } from './skill-level-select';
 

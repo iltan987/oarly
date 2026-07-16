@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { signUpSchema, createClubSchema } from './schemas';
+import { describe, expect, it } from 'vitest';
+
+import { createClubSchema, signUpSchema } from './schemas';
 
 describe('schemas', () => {
   it('signUpSchema requires consent === true and an 8+ char password', () => {

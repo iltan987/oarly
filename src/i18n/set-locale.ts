@@ -1,6 +1,7 @@
 'use server';
 import { cookies } from 'next/headers';
-import { LOCALE_COOKIE, type Locale } from './config';
+
+import { type Locale, LOCALE_COOKIE } from './config';
 
 const ONE_YEAR = 60 * 60 * 24 * 365;
 

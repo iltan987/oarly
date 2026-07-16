@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { getSessionMock, redirectMock, notFoundMock } = vi.hoisted(() => {
   const getSessionMock = vi.fn();
@@ -14,7 +14,7 @@ vi.mock('next/navigation', () => ({
   notFound: () => notFoundMock(),
 }));
 
-import { getCurrentUser, requireUser, requireAdmin } from './session';
+import { getCurrentUser, requireAdmin, requireUser } from './session';
 
 beforeEach(() => { getSessionMock.mockReset(); redirectMock.mockClear(); notFoundMock.mockClear(); });
 

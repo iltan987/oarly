@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { scheduleWindows, windowBoats, slots, sessions } from '@/db/schema/schedule';
+import { describe, expect, it } from 'vitest';
+
+import { scheduleWindows, sessions, slots, windowBoats } from '@/db/schema/schedule';
 
 describe('schedule schema', () => {
   it('windows store weekday and session length', () => {

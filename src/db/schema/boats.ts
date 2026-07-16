@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, integer, boolean } from 'drizzle-orm/pg-core';
+import { boolean, integer, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+
 import { clubs, skillLevels } from './clubs';
 import { allowedPaymentEnum } from './enums';
 

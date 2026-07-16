@@ -1,6 +1,7 @@
 // Generated via `pnpm auth:generate` (better-auth CLI), then hand-edited: keep pgEnum on default_payment_type, timestamptz on all timestamps, date() for birthday, and NOT NULL + defaults on locale/theme/isAdmin. Re-apply these edits after any future regen.
 import { relations } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, date, index } from "drizzle-orm/pg-core";
+import { boolean, date, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
 import { paymentTypeEnum } from "./enums";
 
 export const user = pgTable("user", {

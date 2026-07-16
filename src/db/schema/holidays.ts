@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, integer, boolean, date, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, date, integer, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+
 import { clubs } from './clubs';
 import { holidaySourceEnum, holidayStatusEnum } from './enums';
 

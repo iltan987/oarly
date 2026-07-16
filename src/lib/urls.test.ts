@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { parseAppOrigin, clubUrl, apexUrl, safeRedirect } from './urls';
+import { describe, expect, it } from 'vitest';
+
+import { apexUrl, clubUrl, parseAppOrigin, safeRedirect } from './urls';
 
 describe('parseAppOrigin', () => {
   it('parses a prod https origin', () => {

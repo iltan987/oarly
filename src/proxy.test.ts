@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { NextRequest } from 'next/server';
+import { describe, expect, it } from 'vitest';
+
 import { proxy } from '../proxy';
 
 // vitest.config sets APP_URL=http://localhost:3000 -> rootDomain 'localhost:3000'.

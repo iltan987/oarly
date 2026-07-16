@@ -1,16 +1,17 @@
 'use client';
-import { useState } from 'react';
-import Link from 'next/link';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { z } from 'zod';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import type { z } from 'zod';
+
 import { authClient } from '@/auth-client';
-import { signInSchema } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Field, FieldLabel, FieldError, FieldGroup } from '@/components/ui/field';
+import { signInSchema } from '@/lib/schemas';
 
 type Values = z.infer<typeof signInSchema>;
 

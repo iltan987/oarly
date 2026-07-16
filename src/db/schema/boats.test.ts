@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
+import { describe, expect, it } from 'vitest';
+
 import { boatTypes } from '@/db/schema/boats';
 
 describe('boat_types schema', () => {

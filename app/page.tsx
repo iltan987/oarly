@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 

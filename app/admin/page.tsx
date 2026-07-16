@@ -1,7 +1,9 @@
-import { getTranslations } from 'next-intl/server';
 import { desc } from 'drizzle-orm';
+import { getTranslations } from 'next-intl/server';
+
 import { db } from '@/db';
 import { clubs } from '@/db/schema';
+
 import { setClubStatusAction } from './actions';
 
 export default async function AdminClubsPage() {

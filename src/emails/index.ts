@@ -1,6 +1,8 @@
-import { render } from 'react-email';
 import { createTranslator } from 'next-intl';
-import { locales, type Locale } from '@/i18n/config';
+import { render } from 'react-email';
+
+import { type Locale, locales } from '@/i18n/config';
+
 import { ResetPasswordEmail } from './reset-password';
 import { VerifyEmail } from './verify-email';
 

@@ -1,5 +1,5 @@
 import type { AppOrigin } from './urls';
-import { clubUrl, apexUrl } from './urls';
+import { apexUrl, clubUrl } from './urls';
 
 /** Subdomains that are never a tenant. `www` redirects to apex; the rest fall through. */
 export const RESERVED_SUBDOMAINS: ReadonlySet<string> = new Set([

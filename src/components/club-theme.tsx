@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+
 import { accentStyle } from '@/lib/theme';
 
 /** Scopes a per-club brand accent to its subtree. */

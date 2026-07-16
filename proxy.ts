@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
 import type { NextRequest, ProxyConfig } from 'next/server';
+import { NextResponse } from 'next/server';
+
 import { env } from '@/env';
-import { parseAppOrigin } from '@/lib/urls';
 import { routeRequest } from '@/lib/tenant-routing';
+import { parseAppOrigin } from '@/lib/urls';
 
 const origin = parseAppOrigin(env.APP_URL);
 

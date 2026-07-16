@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { buildClubMetadata, buildRobots, buildApexSitemap, buildTenantSitemap } from './seo';
+import { describe, expect, it } from 'vitest';
+
+import { buildApexSitemap, buildClubMetadata, buildRobots, buildTenantSitemap } from './seo';
 
 const ORIGIN = { protocol: 'https:', rootDomain: 'oarly.sbs' };
 const NOW = new Date('2026-07-16T00:00:00.000Z');

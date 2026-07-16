@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
+
 import { clubs, memberships, user } from '@/db/schema';
-import { validateSlug } from '@/lib/slug';
 import { logAudit } from '@/lib/audit';
 import type { DB } from '@/lib/membership';
+import { validateSlug } from '@/lib/slug';
 
 // Better Auth's internal adapter lowercases `email` on both `createUser` and
 // `findUserByEmail` (see internal-adapter.ts), so every row Better Auth writes

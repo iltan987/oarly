@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
 import {
-  paymentTypeEnum,
-  noshowPenaltyEnum,
-  bookingStatusEnum,
   allowedPaymentEnum,
+  bookingStatusEnum,
+  noshowPenaltyEnum,
+  paymentTypeEnum,
 } from '@/db/schema/enums';
 
 describe('enums', () => {
