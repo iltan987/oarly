@@ -1,9 +1,7 @@
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { and, eq } from 'drizzle-orm';
 import { redirect, notFound } from 'next/navigation';
-import * as schema from '@/db/schema';
 import { memberships } from '@/db/schema';
-import { db as appDb } from '@/db';
+import { db as appDb, type DB } from '@/db';
 import { env } from '@/env';
 import { parseAppOrigin, apexUrl, clubUrl } from '@/lib/urls';
 import { getClubBySlug, type Club } from '@/lib/tenant';
@@ -14,7 +12,7 @@ import { getCurrentUser, type CurrentUser } from '@/lib/session';
 // same exports object this module reads from at call time.
 import * as self from './membership';
 
-export type DB = NodePgDatabase<typeof schema>;
+export type { DB };
 export type Membership = typeof memberships.$inferSelect;
 
 export async function getMembership(db: DB, userId: string, clubId: string): Promise<Membership | null> {

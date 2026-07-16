@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { getSessionMock, redirectMock, notFoundMock } = vi.hoisted(() => {
   const getSessionMock = vi.fn();
-  const redirectMock = vi.fn(() => { throw new Error('REDIRECT'); });
+  const redirectMock = vi.fn<(...a: unknown[]) => never>(() => { throw new Error('REDIRECT'); });
   const notFoundMock = vi.fn(() => { throw new Error('NOT_FOUND'); });
   return { getSessionMock, redirectMock, notFoundMock };
 });

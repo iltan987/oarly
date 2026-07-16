@@ -5,7 +5,6 @@ const getClubBySlug = vi.fn();
 vi.mock('@/lib/tenant', () => ({ getClubBySlug: (s: string) => getClubBySlug(s) }));
 const getCurrentUser = vi.fn();
 vi.mock('@/lib/session', () => ({ getCurrentUser: () => getCurrentUser() }));
-const dbGetMembership = vi.fn();
 // getMembership is exported from the module under test; spy via a partial mock:
 vi.mock('@/db', () => ({ db: {} }));
 const redirectMock = vi.fn<(u: string) => never>(() => { throw new Error('REDIRECT'); });
