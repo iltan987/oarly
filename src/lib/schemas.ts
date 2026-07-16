@@ -25,3 +25,38 @@ export const clubRequestSchema = z.object({
 export const createClubSchema = clubRequestSchema.extend({
   ownerEmail: z.email(),
 });
+
+// --- club config (Plan 4): server actions re-parse these; pure-core adds the
+//     cross-club FK checks the schema cannot express (e.g. skill level belongs
+//     to the same club). ---
+const hexColor = z.string().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'invalid hex');
+
+export const clubProfileSchema = z.object({
+  name: z.string().min(2).max(80),
+  tagline: z.string().max(120).optional(),
+  description: z.string().max(2000).optional(),
+  phone: z.string().max(40).optional(),
+  brandAccent: hexColor.optional(),
+  headingFont: z.enum(['default', 'premium']).default('default'),
+  logoUrl: z.union([z.url(), z.literal('')]).optional(),
+});
+
+export const skillLevelNameSchema = z.object({ name: z.string().min(1).max(40) });
+
+export const socialSchema = z.object({
+  platform: z.string().min(1).max(40),
+  handle: z.string().min(1).max(80),
+});
+
+export const boatSchema = z
+  .object({
+    name: z.string().min(1).max(60),
+    seats: z.coerce.number().int().min(1).max(16),
+    minSkillLevelId: z.uuid().nullable().default(null),
+    allowedPayment: z.enum(['regular_only', 'multisport_only', 'both']),
+    minAttendance: z.coerce.number().int().min(1).nullable().default(null),
+  })
+  .refine((v) => v.minAttendance === null || v.minAttendance <= v.seats, {
+    message: 'min_attendance must be <= seats',
+    path: ['minAttendance'],
+  });
