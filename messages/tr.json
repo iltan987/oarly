@@ -124,5 +124,17 @@
   "unavailable": {
     "title": "Bu kulüp şu anda kullanılamıyor",
     "body": "Kulüp henüz etkin değil. Daha sonra tekrar dene."
+  },
+  "manage": {
+    "title": "Kulüp yönetimi",
+    "members": "Üyeler",
+    "pendingHeading": "Onay bekleyenler",
+    "approvedHeading": "Üyeler",
+    "approve": "Onayla",
+    "reject": "Reddet",
+    "skillLevel": "Seviye",
+    "noSkillLevels": "Henüz seviye tanımlanmadı.",
+    "none": "—",
+    "empty": "Henüz üye yok."
   }
 }

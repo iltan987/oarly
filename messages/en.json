@@ -124,5 +124,17 @@
   "unavailable": {
     "title": "This club is currently unavailable",
     "body": "This club isn't active yet. Please check back later."
+  },
+  "manage": {
+    "title": "Club management",
+    "members": "Members",
+    "pendingHeading": "Pending approval",
+    "approvedHeading": "Members",
+    "approve": "Approve",
+    "reject": "Reject",
+    "skillLevel": "Level",
+    "noSkillLevels": "No skill levels defined yet.",
+    "none": "—",
+    "empty": "No members yet."
   }
 }
