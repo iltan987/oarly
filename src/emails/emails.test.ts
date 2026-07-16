@@ -9,6 +9,7 @@ describe('renderVerifyEmail', () => {
     expect(subject).toBe('Oarly — E-postanızı doğrulayın');
     expect(html).toContain(url);
     expect(html).toContain('E-postanızı doğrulayın');
+    expect(html).toContain('lang="tr"');
     expect(text).toContain(url);
   });
 
@@ -19,6 +20,7 @@ describe('renderVerifyEmail', () => {
     expect(subject).toBe('Oarly — Verify your email');
     expect(html).toContain(url);
     expect(html).toContain('Verify your email');
+    expect(html).toContain('lang="en"');
     expect(text).toContain(url);
   });
 });
@@ -31,6 +33,18 @@ describe('renderResetEmail', () => {
     expect(subject).toBe('Oarly — Şifrenizi sıfırlayın');
     expect(html).toContain(url);
     expect(html).toContain('Şifrenizi sıfırlayın');
+    expect(html).toContain('lang="tr"');
+    expect(text).toContain(url);
+  });
+
+  it('renders en copy with the reset url', async () => {
+    const url = 'https://x/reset?token=xyz';
+    const { subject, html, text } = await renderResetEmail('en', { url });
+
+    expect(subject).toBe('Oarly — Reset your password');
+    expect(html).toContain(url);
+    expect(html).toContain('Reset your password');
+    expect(html).toContain('lang="en"');
     expect(text).toContain(url);
   });
 });

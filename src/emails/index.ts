@@ -24,12 +24,14 @@ export async function renderVerifyEmail(
   locale: string,
   { url }: { url: string },
 ): Promise<RenderedEmail> {
-  const t = await loadEmailsTranslator(toLocale(locale));
+  const validLocale = toLocale(locale);
+  const t = await loadEmailsTranslator(validLocale);
   const props = {
     heading: t('verify.heading'),
     body: t('verify.body'),
     button: t('verify.button'),
     url,
+    locale: validLocale,
   };
   const element = VerifyEmail(props);
   const [html, text] = await Promise.all([
@@ -43,12 +45,14 @@ export async function renderResetEmail(
   locale: string,
   { url }: { url: string },
 ): Promise<RenderedEmail> {
-  const t = await loadEmailsTranslator(toLocale(locale));
+  const validLocale = toLocale(locale);
+  const t = await loadEmailsTranslator(validLocale);
   const props = {
     heading: t('reset.heading'),
     body: t('reset.body'),
     button: t('reset.button'),
     url,
+    locale: validLocale,
   };
   const element = ResetPasswordEmail(props);
   const [html, text] = await Promise.all([

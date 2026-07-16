@@ -6,15 +6,16 @@ export type VerifyEmailProps = {
   body: string;
   button: string;
   url: string;
+  locale: string;
 };
 
 /**
  * Pure presentational template — takes already-translated strings as props
  * rather than a translator, so the template itself stays i18n-agnostic.
  */
-export function VerifyEmail({ heading, body, button, url }: VerifyEmailProps) {
+export function VerifyEmail({ heading, body, button, url, locale }: VerifyEmailProps) {
   return (
-    <EmailLayout preview={heading}>
+    <EmailLayout preview={heading} locale={locale}>
       <Heading style={headingStyle}>{heading}</Heading>
       <Text style={textStyle}>{body}</Text>
       <Button href={url} style={buttonStyle}>

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 export type EmailLayoutProps = {
   preview: string;
+  locale: string;
   children: ReactNode;
 };
 
@@ -11,9 +12,9 @@ export type EmailLayoutProps = {
  * email clients have wildly inconsistent CSS support, so we avoid anything
  * that relies on external stylesheets, custom fonts, or `prefers-color-scheme`.
  */
-export function EmailLayout({ preview, children }: EmailLayoutProps) {
+export function EmailLayout({ preview, locale, children }: EmailLayoutProps) {
   return (
-    <Html lang="en">
+    <Html lang={locale}>
       <Head />
       <Preview>{preview}</Preview>
       <Body style={main}>
