@@ -12,6 +12,7 @@
     "test:integration": "TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test vitest run --no-file-parallelism",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx scripts/seed-dev.ts",
     "auth:generate": "better-auth generate --config ./src/auth.ts --output ./src/db/schema/auth.ts"
   },
   "dependencies": {
@@ -56,6 +57,7 @@
     "jsdom": "^29.1.1",
     "shadcn": "^4.13.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^4.1.10"
