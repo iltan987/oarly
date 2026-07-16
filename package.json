@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test vitest run",
+    "test:integration": "TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test vitest run --no-file-parallelism",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "auth:generate": "better-auth generate --config ./src/auth.ts --output ./src/db/schema/auth.ts"
@@ -52,6 +52,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "jsdom": "^29.1.1",
+    "shadcn": "^4.13.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite-tsconfig-paths": "^6.1.1",
