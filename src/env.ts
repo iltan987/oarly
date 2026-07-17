@@ -16,6 +16,7 @@ export const env = createEnv({
     EMAIL_FROM: z.string().optional(),
     UPSTASH_REDIS_REST_URL: z.string().optional(),
     UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+    BLOB_READ_WRITE_TOKEN: z.string().optional(),
   },
   client: {
     NEXT_PUBLIC_BETTER_AUTH_URL: z.string().url().optional(),
