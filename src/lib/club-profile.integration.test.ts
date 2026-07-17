@@ -27,6 +27,9 @@ describe.skipIf(!url)('club-profile', () => {
     const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, c.id));
     expect(after.name).toBe('Bebek Kürek');
     expect(after.tagline).toBe('İstanbul');
+    expect(after.description).toBe('Bir kulüp');
+    expect(after.phone).toBe('555');
+    expect(after.brandAccent).toBe('#0E9E93');
     expect(after.headingFont).toBe('premium');
     expect(after.logoUrl).toBe('https://blob/x.png');
   });
@@ -36,8 +39,11 @@ describe.skipIf(!url)('club-profile', () => {
     const c2 = await newClub('cp-s2');
     const id = await addSocial(db, { clubId: c1.id, platform: 'instagram', handle: 'bebek' });
     expect((await listSocials(db, c1.id)).map((s) => s.handle)).toEqual(['bebek']);
-    // wrong club cannot remove
+    // wrong club cannot remove, and the social row must still exist
     expect(await removeSocial(db, { clubId: c2.id, socialId: id })).toBe(false);
+    const stillThere = await listSocials(db, c1.id);
+    expect(stillThere).toHaveLength(1);
+    expect(stillThere[0].handle).toBe('bebek');
     expect(await removeSocial(db, { clubId: c1.id, socialId: id })).toBe(true);
     expect(await listSocials(db, c1.id)).toHaveLength(0);
   });
@@ -46,11 +52,19 @@ describe.skipIf(!url)('club-profile', () => {
     const c = await newClub('cp-own');
     const owner = `o-${Date.now()}`;
     const member = `m-${Date.now()}`;
-    await db.insert(schema.user).values([{ id: owner, name: 'O', email: `${owner}@t.co` }, { id: member, name: 'M', email: `${member}@t.co` }]);
+    const pendingOwner = `po-${Date.now()}`;
+    await db.insert(schema.user).values([
+      { id: owner, name: 'O', email: `${owner}@t.co` },
+      { id: member, name: 'M', email: `${member}@t.co` },
+      { id: pendingOwner, name: 'PO', email: `${pendingOwner}@t.co` },
+    ]);
     await db.insert(schema.memberships).values({ userId: owner, clubId: c.id, role: 'owner', status: 'approved' });
     await db.insert(schema.memberships).values({ userId: member, clubId: c.id, role: 'member', status: 'approved' });
+    await db.insert(schema.memberships).values({ userId: pendingOwner, clubId: c.id, role: 'owner', status: 'pending' });
     expect(await ownedClubId(db, owner, c.slug)).toBe(c.id);
     expect(await ownedClubId(db, member, c.slug)).toBeNull();
+    // owner role alone is not sufficient — status must also be 'approved'
+    expect(await ownedClubId(db, pendingOwner, c.slug)).toBeNull();
     expect(await ownedClubId(db, owner, 'no-such-slug')).toBeNull();
   });
 });
