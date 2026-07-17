@@ -18,35 +18,35 @@ type Labels = {
 
 const selectClass = 'h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs';
 
-function BoatFields({ boat, levels, labels }: { boat?: Boat; levels: Level[]; labels: Labels }) {
+function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Level[]; labels: Labels; formId: string }) {
   return (
     <div className="grid grid-cols-2 gap-3">
       <Field>
-        <FieldLabel htmlFor="name">{labels.name}</FieldLabel>
-        <Input id="name" name="name" defaultValue={boat?.name} required />
+        <FieldLabel htmlFor={`name-${formId}`}>{labels.name}</FieldLabel>
+        <Input id={`name-${formId}`} name="name" defaultValue={boat?.name} required />
       </Field>
       <Field>
-        <FieldLabel htmlFor="seats">{labels.seats}</FieldLabel>
-        <Input id="seats" name="seats" type="number" min={1} max={16} defaultValue={boat?.seats ?? 1} required />
+        <FieldLabel htmlFor={`seats-${formId}`}>{labels.seats}</FieldLabel>
+        <Input id={`seats-${formId}`} name="seats" type="number" min={1} max={16} defaultValue={boat?.seats ?? 1} required />
       </Field>
       <Field>
-        <FieldLabel htmlFor="minSkillLevelId">{labels.minSkill}</FieldLabel>
-        <select id="minSkillLevelId" name="minSkillLevelId" defaultValue={boat?.minSkillLevelId ?? ''} className={selectClass}>
+        <FieldLabel htmlFor={`minSkillLevelId-${formId}`}>{labels.minSkill}</FieldLabel>
+        <select id={`minSkillLevelId-${formId}`} name="minSkillLevelId" defaultValue={boat?.minSkillLevelId ?? ''} className={selectClass}>
           <option value="">{labels.noMinSkill}</option>
           {levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
       </Field>
       <Field>
-        <FieldLabel htmlFor="allowedPayment">{labels.payment}</FieldLabel>
-        <select id="allowedPayment" name="allowedPayment" defaultValue={boat?.allowedPayment ?? 'both'} className={selectClass}>
+        <FieldLabel htmlFor={`allowedPayment-${formId}`}>{labels.payment}</FieldLabel>
+        <select id={`allowedPayment-${formId}`} name="allowedPayment" defaultValue={boat?.allowedPayment ?? 'both'} className={selectClass}>
           <option value="both">{labels.paymentBoth}</option>
           <option value="regular_only">{labels.paymentRegular}</option>
           <option value="multisport_only">{labels.paymentMultisport}</option>
         </select>
       </Field>
       <Field className="col-span-2">
-        <FieldLabel htmlFor="minAttendance">{labels.minAttendance}</FieldLabel>
-        <Input id="minAttendance" name="minAttendance" type="number" min={1} defaultValue={boat?.minAttendance ?? ''} />
+        <FieldLabel htmlFor={`minAttendance-${formId}`}>{labels.minAttendance}</FieldLabel>
+        <Input id={`minAttendance-${formId}`} name="minAttendance" type="number" min={1} defaultValue={boat?.minAttendance ?? ''} />
       </Field>
     </div>
   );
@@ -66,7 +66,7 @@ export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boa
               {editing === b.id ? (
                 <form action={updateBoatAction.bind(null, slug)} className="flex flex-col gap-3" onSubmit={() => setEditing(null)}>
                   <input type="hidden" name="boatId" value={b.id} />
-                  <BoatFields boat={b} levels={levels} labels={labels} />
+                  <BoatFields boat={b} levels={levels} labels={labels} formId={b.id} />
                   <div className="flex gap-2">
                     <Button type="submit" size="sm">{labels.save}</Button>
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>{labels.cancel}</Button>
@@ -94,7 +94,7 @@ export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boa
       )}
       {adding ? (
         <form action={createBoatAction.bind(null, slug)} className="flex flex-col gap-3 rounded-lg border p-3" onSubmit={() => setAdding(false)}>
-          <BoatFields levels={levels} labels={labels} />
+          <BoatFields levels={levels} labels={labels} formId="new" />
           <div className="flex gap-2">
             <Button type="submit" size="sm">{labels.save}</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>{labels.cancel}</Button>
