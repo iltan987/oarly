@@ -61,5 +61,45 @@ describe.skipIf(!url)('boats', () => {
     expect(await setBoatActive(db, { clubId: c.id, boatId: created.id, active: false })).toBe(true);
     const [row] = await db.select().from(schema.boatTypes).where(eq(schema.boatTypes.id, created.id));
     expect(row.active).toBe(false);
+    expect(await setBoatActive(db, { clubId: c.id, boatId: created.id, active: true })).toBe(true);
+    const [row2] = await db.select().from(schema.boatTypes).where(eq(schema.boatTypes.id, created.id));
+    expect(row2.active).toBe(true);
+  });
+
+  it('rejects an update that references a skill level from another club and leaves the row unchanged', async () => {
+    const c1 = await newClub('boat-uf1');
+    const c2 = await newClub('boat-uf2');
+    const created = await createBoat(db, c1.id, { name: 'Single', seats: 1, minSkillLevelId: null, allowedPayment: 'both', minAttendance: null });
+    if (!created.ok) throw new Error('setup');
+    const [otherLvl] = await db.insert(schema.skillLevels).values({ clubId: c2.id, name: 'Adv', rank: 1 }).returning();
+    const r = await updateBoat(db, { clubId: c1.id, boatId: created.id, name: 'Hacked', seats: 9, minSkillLevelId: otherLvl.id, allowedPayment: 'multisport_only', minAttendance: 5 });
+    expect(r).toEqual({ ok: false, error: 'skill_not_in_club' });
+    const [row] = await db.select().from(schema.boatTypes).where(eq(schema.boatTypes.id, created.id));
+    expect(row.name).toBe('Single');
+    expect(row.minSkillLevelId).toBeNull();
+    expect(row.seats).toBe(1);
+    expect(row.allowedPayment).toBe('both');
+  });
+
+  it('does not deactivate a boat when scoped to the wrong club', async () => {
+    const c1 = await newClub('boat-w1');
+    const c2 = await newClub('boat-w2');
+    const created = await createBoat(db, c1.id, { name: 'Quad', seats: 4, minSkillLevelId: null, allowedPayment: 'both', minAttendance: null });
+    if (!created.ok) throw new Error('setup');
+    expect(await setBoatActive(db, { clubId: c2.id, boatId: created.id, active: false })).toBe(false);
+    const [row] = await db.select().from(schema.boatTypes).where(eq(schema.boatTypes.id, created.id));
+    expect(row.active).toBe(true);
+  });
+
+  it('lists boats scoped to their own club only', async () => {
+    const c1 = await newClub('boat-l1');
+    const c2 = await newClub('boat-l2');
+    const b1 = await createBoat(db, c1.id, { name: 'Club1Boat', seats: 2, minSkillLevelId: null, allowedPayment: 'both', minAttendance: null });
+    const b2 = await createBoat(db, c2.id, { name: 'Club2Boat', seats: 2, minSkillLevelId: null, allowedPayment: 'both', minAttendance: null });
+    if (!b1.ok || !b2.ok) throw new Error('setup');
+    const boats = await listBoats(db, c1.id);
+    expect(boats).toHaveLength(1);
+    expect(boats[0].id).toBe(b1.id);
+    expect(boats.some((b) => b.id === b2.id)).toBe(false);
   });
 });
