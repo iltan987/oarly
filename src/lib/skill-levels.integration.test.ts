@@ -81,4 +81,33 @@ describe.skipIf(!url)('skill-levels', () => {
     expect(await deleteSkillLevel(db, { clubId: c2.id, skillLevelId: lvl.id })).toBe(false);
     expect(await listSkillLevels(db, c1.id)).toHaveLength(1);
   });
+
+  it('does not reorder a level belonging to another club', async () => {
+    const c1 = await newClub('sl-ro1');
+    const c2 = await newClub('sl-ro2');
+    const lvl = await createSkillLevel(db, { clubId: c1.id, name: 'Solo' });
+    expect(await reorderSkillLevel(db, { clubId: c2.id, skillLevelId: lvl.id, direction: 'up' })).toBe(false);
+    const [after] = await listSkillLevels(db, c1.id);
+    expect(after.rank).toBe(lvl.rank);
+  });
+
+  it('moving the bottom-most level down is a no-op returning false', async () => {
+    const c = await newClub('sl-bot');
+    await createSkillLevel(db, { clubId: c.id, name: 'A' }); // rank 1
+    const b = await createSkillLevel(db, { clubId: c.id, name: 'B' }); // rank 2
+    expect(await reorderSkillLevel(db, { clubId: c.id, skillLevelId: b.id, direction: 'down' })).toBe(false);
+    expect((await listSkillLevels(db, c.id)).map((l) => l.name)).toEqual(['A', 'B']);
+  });
+
+  it('scopes countSkillLevelRefs to the given club, seeing no refs for another club\'s level', async () => {
+    const c1 = await newClub('sl-cr1');
+    const c2 = await newClub('sl-cr2');
+    const lvl = await createSkillLevel(db, { clubId: c1.id, name: 'Ref' });
+    const uid = `u-${Date.now()}`;
+    await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
+    await db.insert(schema.memberships).values({ userId: uid, clubId: c1.id, role: 'member', status: 'approved', skillLevelId: lvl.id }).returning();
+    await db.insert(schema.boatTypes).values({ clubId: c1.id, name: 'Quad', seats: 4, minSkillLevelId: lvl.id }).returning();
+    expect(await countSkillLevelRefs(db, { clubId: c1.id, skillLevelId: lvl.id })).toEqual({ members: 1, boats: 1 });
+    expect(await countSkillLevelRefs(db, { clubId: c2.id, skillLevelId: lvl.id })).toEqual({ members: 0, boats: 0 });
+  });
 });
