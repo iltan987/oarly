@@ -236,6 +236,31 @@
       "socialRemove": "Kaldır",
       "save": "Profili kaydet",
       "saved": "Profil kaydedildi."
+    },
+    "policies": {
+      "navLabel": "Kurallar",
+      "title": "Rezervasyon kuralları",
+      "intro": "Rezervasyonun ne zaman açılacağını, iptal kurallarını, gelmeme cezalarını, MultiSport önceliğini ve tatilleri yönetin.",
+      "save": "Kaydet",
+      "bookingOpen": "Rezervasyon açılışı",
+      "bookingOpenAlways": "Her zaman açık",
+      "bookingOpenLead": "Seanstan belirli gün önce",
+      "leadDays": "Kaç gün önce (belirli gün seçildiğinde)",
+      "selfCancel": "Üyeler kendi rezervasyonunu iptal edebilsin",
+      "cancelCutoff": "İptal son süresi (başlamadan kaç saat önce; boş = sınır yok)",
+      "noshow": "Gelmeme cezası",
+      "noshowOff": "Kapalı",
+      "noshow2d": "2 gün yasak",
+      "noshow1w": "1 hafta yasak",
+      "noshow2w": "2 hafta yasak",
+      "noshow1m": "1 ay yasak",
+      "noshowNever": "Kalıcı yasak",
+      "multisport": "MultiSport modu",
+      "multisportEqual": "Eşit — ilk gelen alır",
+      "multisportPriority": "Öncelik — normal rezervasyonlar önce",
+      "multisportHint": "Öncelik modunda MultiSport rezervasyonu, normal rezervasyonlar tekneyi doldurmazsa yer tutar.",
+      "openOnHolidays": "Resmi tatillerde seans yapılsın",
+      "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin."
     }
   }
 }
