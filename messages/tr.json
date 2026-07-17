@@ -135,6 +135,22 @@
     "skillLevel": "Seviye",
     "noSkillLevels": "Henüz seviye tanımlanmadı.",
     "none": "—",
-    "empty": "Henüz üye yok."
+    "empty": "Henüz üye yok.",
+    "skillLevels": {
+      "navLabel": "Seviyeler",
+      "title": "Seviyeler",
+      "intro": "Kulübünüzün sıralı seviyelerini tanımlayın. Üyelere seviye atanır; tekneler asgari seviye gerektirebilir.",
+      "addPlaceholder": "Yeni seviye adı",
+      "add": "Seviye ekle",
+      "moveUp": "Yukarı taşı",
+      "moveDown": "Aşağı taşı",
+      "rename": "Yeniden adlandır",
+      "save": "Kaydet",
+      "cancel": "İptal",
+      "delete": "Sil",
+      "deleteConfirm": "Bu seviye silinsin mi? {members} üye ve {boats} tekne bu seviyeye bağlı ve seviyesiz olarak sıfırlanacak.",
+      "deleteConfirmYes": "Sil",
+      "empty": "Henüz seviye yok."
+    }
   }
 }

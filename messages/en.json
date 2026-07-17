@@ -135,6 +135,22 @@
     "skillLevel": "Level",
     "noSkillLevels": "No skill levels defined yet.",
     "none": "—",
-    "empty": "No members yet."
+    "empty": "No members yet.",
+    "skillLevels": {
+      "navLabel": "Skill levels",
+      "title": "Skill levels",
+      "intro": "Define your club's ordered levels. Members are assigned a level; boats can require a minimum level.",
+      "addPlaceholder": "New level name",
+      "add": "Add level",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "rename": "Rename",
+      "save": "Save",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "deleteConfirm": "Delete this level? {members} member(s) and {boats} boat(s) reference it and will be reset to no level.",
+      "deleteConfirmYes": "Delete",
+      "empty": "No skill levels yet."
+    }
   }
 }
