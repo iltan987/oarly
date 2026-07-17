@@ -151,6 +151,29 @@
       "deleteConfirm": "Delete this level? {members} member(s) and {boats} boat(s) reference it and will be reset to no level.",
       "deleteConfirmYes": "Delete",
       "empty": "No skill levels yet."
+    },
+    "boats": {
+      "navLabel": "Boats",
+      "title": "Boats",
+      "intro": "Define your boat types. Seats set the session capacity; eligibility limits who can book.",
+      "name": "Name",
+      "seats": "Seats",
+      "minSkill": "Minimum skill level",
+      "noMinSkill": "No requirement",
+      "payment": "Allowed payment",
+      "paymentRegular": "Cash only",
+      "paymentMultisport": "MultiSport only",
+      "paymentBoth": "Both",
+      "minAttendance": "Advisory minimum attendance",
+      "add": "Add boat",
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel",
+      "deactivate": "Deactivate",
+      "activate": "Activate",
+      "inactive": "Inactive",
+      "empty": "No boats yet.",
+      "needSkillLevels": "Tip: add skill levels first if you want to require a minimum level."
     }
   }
 }

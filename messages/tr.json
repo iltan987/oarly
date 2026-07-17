@@ -151,6 +151,29 @@
       "deleteConfirm": "Bu seviye silinsin mi? {members} üye ve {boats} tekne bu seviyeye bağlı ve seviyesiz olarak sıfırlanacak.",
       "deleteConfirmYes": "Sil",
       "empty": "Henüz seviye yok."
+    },
+    "boats": {
+      "navLabel": "Tekneler",
+      "title": "Tekneler",
+      "intro": "Tekne tiplerinizi tanımlayın. Koltuklar oturum kapasitesini belirler; uygunluk kimin rezervasyon yapabileceğini sınırlar.",
+      "name": "Ad",
+      "seats": "Koltuk",
+      "minSkill": "Asgari seviye",
+      "noMinSkill": "Şart yok",
+      "payment": "İzinli ödeme",
+      "paymentRegular": "Sadece nakit",
+      "paymentMultisport": "Sadece MultiSport",
+      "paymentBoth": "İkisi de",
+      "minAttendance": "Tavsiye edilen asgari katılım",
+      "add": "Tekne ekle",
+      "edit": "Düzenle",
+      "save": "Kaydet",
+      "cancel": "İptal",
+      "deactivate": "Pasifleştir",
+      "activate": "Aktifleştir",
+      "inactive": "Pasif",
+      "empty": "Henüz tekne yok.",
+      "needSkillLevels": "İpucu: asgari seviye şartı koymak istiyorsanız önce seviye ekleyin."
     }
   }
 }
