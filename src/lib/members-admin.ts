@@ -25,7 +25,11 @@ export async function assignSkillLevel(
   }
   const res = await db.update(memberships)
     .set({ skillLevelId: input.skillLevelId })
-    .where(and(eq(memberships.id, input.membershipId), eq(memberships.clubId, input.clubId)))
+    .where(and(
+      eq(memberships.id, input.membershipId),
+      eq(memberships.clubId, input.clubId),
+      eq(memberships.status, 'approved'),
+    ))
     .returning({ id: memberships.id });
   return res.length > 0;
 }

@@ -69,4 +69,15 @@ describe.skipIf(!url)('members-admin', () => {
     const [after] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, m.id));
     expect(after.skillLevelId).toBeNull();
   });
+
+  it('does not assign a skill level to a non-approved membership', async () => {
+    const uid = `u-${Date.now()}`;
+    await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
+    const [c1] = await db.insert(schema.clubs).values({ slug: `c1p-${Date.now()}`, name: 'C1', status: 'active' }).returning();
+    const [m] = await db.insert(schema.memberships).values({ userId: uid, clubId: c1.id, role: 'member', status: 'pending' }).returning();
+    const [lvl] = await db.insert(schema.skillLevels).values({ clubId: c1.id, name: 'Beginner', rank: 1 }).returning();
+    expect(await assignSkillLevel(db, { membershipId: m.id, clubId: c1.id, skillLevelId: lvl.id })).toBe(false);
+    const [after] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, m.id));
+    expect(after.skillLevelId).toBeNull();
+  });
 });
