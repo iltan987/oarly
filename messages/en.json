@@ -133,6 +133,7 @@
     "setupSkill": "Add skill levels",
     "setupBoats": "Add at least one boat",
     "setupProfile": "Complete your public profile",
+    "setupSchedule": "Set your weekly schedule",
     "setupDone": "Done",
     "setupTodo": "To do",
     "members": "Members",
@@ -182,6 +183,34 @@
       "inactive": "Inactive",
       "empty": "No boats yet.",
       "needSkillLevels": "Tip: add skill levels first if you want to require a minimum level."
+    },
+    "schedule": {
+      "navLabel": "Schedule",
+      "title": "Weekly schedule",
+      "intro": "Set the recurring time windows for each weekday and which boats run in each.",
+      "addWindow": "+ Window",
+      "noWindows": "No windows",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "startTime": "Start",
+      "endTime": "End",
+      "sessionMinutes": "Session (min)",
+      "minutesShort": "min",
+      "boats": "Boats",
+      "addBoat": "+ Boat",
+      "removeBoat": "Remove",
+      "needBoats": "Add at least one active boat type first, on the Boats page.",
+      "weekdays": { "0": "Sunday", "1": "Monday", "2": "Tuesday", "3": "Wednesday", "4": "Thursday", "5": "Friday", "6": "Saturday" },
+      "errors": {
+        "end_before_start": "End time must be after the start time.",
+        "uneven_tiling": "Session length must divide the window evenly (no leftover minutes).",
+        "overlap": "This window overlaps another window on the same day.",
+        "invalid_boats": "Pick at least one active boat; no duplicates, quantity at least 1.",
+        "not_found": "That window no longer exists.",
+        "generic": "Could not save. Check the values and try again."
+      }
     },
     "profile": {
       "navLabel": "Profile",
