@@ -9,13 +9,20 @@ import { addSocialAction, removeSocialAction, saveProfileAction } from './action
 import { LogoUpload } from './logo-upload';
 
 type Social = { id: string; platform: string; handle: string };
-type Club = { name: string; tagline: string | null; description: string | null; phone: string | null; brandAccent: string | null; headingFont: 'default' | 'premium'; logoUrl: string | null };
+type Club = { name: string; tagline: string | null; description: string | null; phone: string | null; brandAccent: string | null; headingFont: 'default' | 'premium'; logoUrl: string | null; updatedAt: Date };
 
 export function ProfileForm({ slug, club, socials }: { slug: string; club: Club; socials: Social[] }) {
   const t = useTranslations('manage.profile');
+  // The Base UI inputs below are uncontrolled — they seed their state from
+  // `defaultValue` at mount. After Save, the server action refreshes this
+  // route and re-feeds the just-saved values as new `defaultValue`s on the
+  // live inputs, which Base UI warns about. Keying the form on the club's
+  // `updatedAt` remounts it with fresh defaults after each save (and only
+  // then — the timestamp changes when the row is persisted, never while
+  // typing), which is the intended "reset to saved state" behaviour.
   return (
     <div className="flex flex-col gap-6">
-      <form action={saveProfileAction.bind(null, slug)} className="flex flex-col gap-4">
+      <form key={club.updatedAt.getTime()} action={saveProfileAction.bind(null, slug)} className="flex flex-col gap-4">
         <LogoUpload slug={slug} initialUrl={club.logoUrl} labels={{ logo: t('logo'), logoUpload: t('logoUpload'), logoUploading: t('logoUploading'), logoError: t('logoError') }} />
         <Field>
           <FieldLabel htmlFor="name">{t('name')}</FieldLabel>

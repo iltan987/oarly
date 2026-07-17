@@ -23,7 +23,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ slug: 
       </div>
       <ProfileForm
         slug={slug}
-        club={{ name: club.name, tagline: club.tagline, description: club.description, phone: club.phone, brandAccent: club.brandAccent, headingFont: club.headingFont, logoUrl: club.logoUrl }}
+        club={{ name: club.name, tagline: club.tagline, description: club.description, phone: club.phone, brandAccent: club.brandAccent, headingFont: club.headingFont, logoUrl: club.logoUrl, updatedAt: club.updatedAt }}
         socials={socials.map((s) => ({ id: s.id, platform: s.platform, handle: s.handle }))}
       />
     </div>

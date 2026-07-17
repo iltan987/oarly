@@ -29,6 +29,7 @@ export const clubs = pgTable('clubs', {
   headingFont: headingFontEnum('heading_font').notNull().default('default'),
   createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const clubSocials = pgTable('club_socials', {

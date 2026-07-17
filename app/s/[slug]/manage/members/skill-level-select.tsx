@@ -24,7 +24,16 @@ export function SkillLevelSelect({
       <input type="hidden" name="membershipId" value={membershipId} />
       <Field>
         <FieldLabel htmlFor={`skill-${membershipId}`} className="sr-only">{label}</FieldLabel>
+        {/*
+          Uncontrolled select: it seeds from `defaultValue` at mount. When a
+          pick auto-submits, the server action refreshes this route with the
+          persisted `currentSkillLevelId`; keying on that value remounts the
+          select so it re-syncs to the saved level instead of falling back to
+          its stale mounted state. The key only changes once the change is
+          persisted, so it never disturbs the pick mid-interaction.
+        */}
         <select
+          key={currentSkillLevelId ?? 'none'}
           id={`skill-${membershipId}`}
           name="skillLevelId"
           defaultValue={currentSkillLevelId ?? ''}
