@@ -41,6 +41,13 @@ export const clubProfileSchema = z.object({
   logoUrl: z.union([z.url(), z.literal('')]).optional(),
 });
 
+// Logo persists on upload/remove via /api/club-logo/save (not the profile form),
+// so it sticks immediately. Empty string clears the logo.
+export const logoSaveSchema = z.object({
+  slug: z.string().min(1),
+  url: z.union([z.url(), z.literal('')]),
+});
+
 export const skillLevelNameSchema = z.object({ name: z.string().min(1).max(40) });
 
 export const socialSchema = z.object({

@@ -23,7 +23,7 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
   return (
     <div className="flex flex-col gap-6">
       <form key={club.updatedAt.getTime()} action={saveProfileAction.bind(null, slug)} className="flex flex-col gap-4">
-        <LogoUpload slug={slug} initialUrl={club.logoUrl} labels={{ logo: t('logo'), logoUpload: t('logoUpload'), logoUploading: t('logoUploading'), logoError: t('logoError') }} />
+        <LogoUpload slug={slug} initialUrl={club.logoUrl} labels={{ logo: t('logo'), logoUpload: t('logoUpload'), logoUploading: t('logoUploading'), logoError: t('logoError'), logoRemove: t('logoRemove') }} />
         <Field>
           <FieldLabel htmlFor="name">{t('name')}</FieldLabel>
           <Input id="name" name="name" defaultValue={club.name} required minLength={2} maxLength={80} />

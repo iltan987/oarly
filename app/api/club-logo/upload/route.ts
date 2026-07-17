@@ -27,8 +27,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         };
       },
       // No onUploadCompleted callback: the browser receives the blob URL directly
-      // from upload() and submits it with the profile form, which persists it.
-      // (An onUploadCompleted webhook cannot reach localhost during dev anyway.)
+      // from upload() and persists it via POST /api/club-logo/save. (An
+      // onUploadCompleted webhook cannot reach localhost during dev anyway.)
     });
     return NextResponse.json(json);
   } catch (error) {

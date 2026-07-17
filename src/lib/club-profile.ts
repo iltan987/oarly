@@ -22,6 +22,12 @@ export async function updateClubProfile(db: DB, clubId: string, input: ProfileIn
   return res.length > 0;
 }
 
+/** Persists just the logo, independent of the profile form, so an upload sticks
+ *  immediately (no separate Save click). `null` clears it. */
+export async function setClubLogo(db: DB, clubId: string, logoUrl: string | null): Promise<void> {
+  await db.update(clubs).set({ logoUrl }).where(eq(clubs.id, clubId));
+}
+
 export type ClubSocial = typeof clubSocials.$inferSelect;
 
 export function listSocials(db: DB, clubId: string): Promise<ClubSocial[]> {

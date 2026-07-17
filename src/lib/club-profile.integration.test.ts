@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
-import { addSocial, listSocials, ownedClubId, removeSocial, updateClubProfile } from './club-profile';
+import { addSocial, listSocials, ownedClubId, removeSocial, setClubLogo, updateClubProfile } from './club-profile';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -32,6 +32,19 @@ describe.skipIf(!url)('club-profile', () => {
     expect(after.brandAccent).toBe('#0E9E93');
     expect(after.headingFont).toBe('premium');
     expect(after.logoUrl).toBe('https://blob/x.png');
+  });
+
+  it('sets and clears the logo independently of other profile fields', async () => {
+    const c = await newClub('cp-logo');
+    await updateClubProfile(db, c.id, { name: 'Keep Me', tagline: null, description: null, phone: null, brandAccent: null, headingFont: 'default', logoUrl: null });
+    await setClubLogo(db, c.id, 'https://blob/logo.png');
+    let [row] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, c.id));
+    expect(row.logoUrl).toBe('https://blob/logo.png');
+    expect(row.name).toBe('Keep Me'); // other fields untouched
+    await setClubLogo(db, c.id, null);
+    [row] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, c.id));
+    expect(row.logoUrl).toBeNull();
+    expect(row.name).toBe('Keep Me');
   });
 
   it('adds, lists, and removes socials scoped to the club', async () => {

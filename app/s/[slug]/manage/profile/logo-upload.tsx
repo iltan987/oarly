@@ -8,11 +8,23 @@ import { cn } from '@/lib/utils';
 export function LogoUpload({ slug, initialUrl, labels }: {
   slug: string;
   initialUrl: string | null;
-  labels: { logo: string; logoUpload: string; logoUploading: string; logoError: string };
+  labels: { logo: string; logoUpload: string; logoUploading: string; logoError: string; logoRemove: string };
 }) {
   const [url, setUrl] = useState(initialUrl ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+
+  // Persist immediately so the logo sticks without a separate profile Save.
+  // Plain fetch (not a server action) avoids refreshing the route and remounting
+  // the profile form, which would drop any unsaved text edits.
+  async function persist(nextUrl: string) {
+    const res = await fetch('/api/club-logo/save', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug, url: nextUrl }),
+    });
+    if (!res.ok) throw new Error('save failed');
+  }
 
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -25,7 +37,21 @@ export function LogoUpload({ slug, initialUrl, labels }: {
         handleUploadUrl: '/api/club-logo/upload',
         clientPayload: slug,
       });
+      await persist(blob.url);
       setUrl(blob.url);
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemove() {
+    setBusy(true);
+    setError(false);
+    try {
+      await persist('');
+      setUrl('');
     } catch {
       setError(true);
     } finally {
@@ -62,6 +88,17 @@ export function LogoUpload({ slug, initialUrl, labels }: {
           />
           {busy ? labels.logoUploading : labels.logoUpload}
         </label>
+        {url && !busy && (
+          // type="button": this lives inside the profile <form>, so without it
+          // a click would submit the form instead of removing the logo.
+          <button
+            type="button"
+            onClick={onRemove}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
+          >
+            {labels.logoRemove}
+          </button>
+        )}
       </div>
       {error && <p className="text-sm text-destructive">{labels.logoError}</p>}
     </div>
