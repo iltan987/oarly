@@ -1,7 +1,8 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { ThemeToggle } from '@/components/theme-toggle';
-import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 
 export default async function Home() {
   const t = await getTranslations('common');
@@ -11,7 +12,7 @@ export default async function Home() {
         <span className="font-heading text-2xl font-bold text-brand">{t('appName')}</span>
         <ThemeToggle />
       </div>
-      <Button className="w-full">{t('signIn')}</Button>
+      <Link href="/sign-in" className={buttonVariants({ className: 'w-full' })}>{t('signIn')}</Link>
     </main>
   );
 }

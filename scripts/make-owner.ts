@@ -1,4 +1,6 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
+
+config({ path: ['.env.local', '.env'] }); // Next.js reads .env.local; plain dotenv/config would miss it
 
 import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
