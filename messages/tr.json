@@ -210,7 +210,8 @@
         "invalid_boats": "En az bir aktif tekne seçin; tekrar olmasın, adet en az 1 olsun.",
         "not_found": "Bu aralık artık mevcut değil.",
         "generic": "Kaydedilemedi. Değerleri kontrol edip tekrar deneyin."
-      }
+      },
+      "previewLink": "Önizleme ve kapalı günler"
     },
     "profile": {
       "navLabel": "Profil",
@@ -261,6 +262,17 @@
       "multisportHint": "Öncelik modunda MultiSport rezervasyonu, normal rezervasyonlar tekneyi doldurmazsa yer tutar.",
       "openOnHolidays": "Resmi tatillerde seans yapılsın",
       "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin."
+    },
+    "schedulePreview": {
+      "title": "Program önizleme",
+      "description": "Haftalık programınızın önümüzdeki {days} gün için ürettiği oturumlar. Aşağıdan belirli tarihleri kapatabilir veya açabilirsiniz.",
+      "closedHoliday": "Kapalı — resmi tatil",
+      "closedByYou": "Sizin tarafınızdan kapatıldı",
+      "noSessions": "Bu gün oturum yok",
+      "noBoats": "Tekne yok",
+      "close": "Bu tarihi kapat",
+      "forceOpen": "Açık yap",
+      "reset": "Varsayılana dön"
     }
   }
 }

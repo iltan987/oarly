@@ -1,6 +1,6 @@
 import {
-boolean, date, index,
-integer,   pgTable, time, timestamp, uuid, } from 'drizzle-orm/pg-core';
+  boolean, date, index, integer, pgTable, time, timestamp, uniqueIndex, uuid,
+} from 'drizzle-orm/pg-core';
 
 import { boatTypes } from './boats';
 import { clubs } from './clubs';
@@ -34,7 +34,7 @@ export const slots = pgTable(
     status: slotStatusEnum('status').notNull().default('scheduled'),
   },
   (t) => [
-    index('slots_club_start_idx').on(t.clubId, t.startAt),
+    uniqueIndex('slots_club_start_uq').on(t.clubId, t.startAt),
     index('slots_status_idx').on(t.status),
   ],
 );

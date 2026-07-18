@@ -98,3 +98,8 @@ export const schedulingSettingsSchema = z
     message: 'lead mode requires lead days',
     path: ['bookingOpenLeadDays'],
   });
+
+export const dateOverrideSchema = z.object({
+  dateISO: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
+  isOpen: z.boolean(),
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { boatSchema, clubProfileSchema, createClubSchema, schedulingSettingsSchema, signUpSchema, skillLevelNameSchema, socialSchema, windowBoatSchema, windowSchema } from './schemas';
+import { boatSchema, clubProfileSchema, createClubSchema, dateOverrideSchema, schedulingSettingsSchema, signUpSchema, skillLevelNameSchema, socialSchema, windowBoatSchema, windowSchema } from './schemas';
 
 describe('schemas', () => {
   it('signUpSchema requires consent === true and an 8+ char password', () => {
@@ -101,5 +101,17 @@ describe('schedulingSettingsSchema', () => {
   });
   it('rejects lead mode with null lead days', () => {
     expect(schedulingSettingsSchema.safeParse({ ...base, bookingOpenMode: 'lead', bookingOpenLeadDays: null }).success).toBe(false);
+  });
+});
+
+describe('dateOverrideSchema', () => {
+  it('accepts a valid ISO date and boolean', () => {
+    expect(dateOverrideSchema.safeParse({ dateISO: '2026-07-20', isOpen: true }).success).toBe(true);
+  });
+  it('rejects a malformed date', () => {
+    expect(dateOverrideSchema.safeParse({ dateISO: '2026/07/20', isOpen: true }).success).toBe(false);
+  });
+  it('rejects a non-boolean isOpen', () => {
+    expect(dateOverrideSchema.safeParse({ dateISO: '2026-07-20', isOpen: 'yes' }).success).toBe(false);
   });
 });
