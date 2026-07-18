@@ -30,6 +30,21 @@
   --primary-foreground: oklch(0.985 0 0);
   --brand-tint: color-mix(in oklab, var(--club-accent) 14%, white);
   --brand-ink: color-mix(in oklab, var(--club-accent) 85%, black);
+
+  /* Design-system semantic tones — fixed per theme, independent of the club accent. */
+  --ok: #15803d;
+  --ok-bg: #e5f6eb;
+  --warn: #b45309;
+  --warn-bg: #fbeedc;
+  --bad: #b91c1c;
+  --bad-bg: #fbebeb;
+  --info: #1d4ed8;
+  --info-bg: #e6eefd;
+  --surface-2: #f3f7f9;
+
+  --r-card: 18px;
+  --r-pill: 999px;
+  --r-field: 13px;
 }
 
 .dark {
@@ -55,6 +70,16 @@
   --club-accent: oklch(0.78 0.13 180);
   --brand-tint: color-mix(in oklab, var(--club-accent) 22%, black);
   --brand-ink: color-mix(in oklab, var(--club-accent) 85%, white);
+
+  --ok: #4ade80;
+  --ok-bg: #12291c;
+  --warn: #fbbf24;
+  --warn-bg: #2e2410;
+  --bad: #f87171;
+  --bad-bg: #2e1616;
+  --info: #60a5fa;
+  --info-bg: #122238;
+  --surface-2: #0f1b25;
 }
 
 /* @theme inline keeps var() references live so --club-accent can be overridden at runtime. */
@@ -82,6 +107,20 @@
   --color-brand: var(--club-accent);
   --color-brand-tint: var(--brand-tint);
   --color-brand-ink: var(--brand-ink);
+
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-surface-2: var(--surface-2);
+
+  --radius-card: var(--r-card);
+  --radius-pill: var(--r-pill);
+  --radius-field: var(--r-field);
 
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-heading-face), ui-sans-serif, system-ui, sans-serif;
