@@ -289,7 +289,6 @@
     "waitlisted": "Bekleme listesi #{position}",
     "opensOn": "Açılış: {date}",
     "paymentLabel": "Ödeme",
-    "confirm": "Onayla",
     "cancel": "Vazgeç",
     "myBookings": "Rezervasyonlarım",
     "reasons": {

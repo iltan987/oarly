@@ -289,7 +289,6 @@
     "waitlisted": "Waitlisted #{position}",
     "opensOn": "Opens {date}",
     "paymentLabel": "Payment",
-    "confirm": "Confirm",
     "cancel": "Cancel",
     "myBookings": "My bookings",
     "reasons": {

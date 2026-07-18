@@ -2,8 +2,9 @@ import { addMinutes } from 'date-fns';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import type { DB } from '@/db';
-import { boatTypes, bookings, clubs, memberships, scheduleWindows, sessions, skillLevels, slots, windowBoats } from '@/db/schema';
+import { boatTypes, bookings, clubHolidayOverrides, clubs, holidays, memberships, scheduleWindows, sessions, skillLevels, slots, windowBoats } from '@/db/schema';
 
+import { isBookingOpen, resolveDateOpen } from './calendar-rules';
 import { toMinutes, utcToClubDate, zonedWallClockToUtc } from './date-tz';
 import { checkEligibility, type EligibilityReason } from './eligibility';
 import { findOrCreateSlotTx, type MaterializeBoat } from './materialize';
@@ -38,7 +39,10 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
   const now = input.now ?? new Date();
   return db.transaction(async (tx) => {
     // 1. Club + window, scoped to clubId.
-    const [club] = await tx.select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode }).from(clubs).where(eq(clubs.id, input.clubId));
+    const [club] = await tx
+      .select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode, openOnHolidays: clubs.openOnHolidays, bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays })
+      .from(clubs)
+      .where(eq(clubs.id, input.clubId));
     if (!club) return { ok: false, error: 'no_session' };
     const [win] = await tx.select().from(scheduleWindows).where(and(eq(scheduleWindows.id, input.windowId), eq(scheduleWindows.clubId, input.clubId)));
     if (!win) return { ok: false, error: 'no_session' };
@@ -66,6 +70,13 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
     }
     if (!matched) return { ok: false, error: 'no_session' };
     const endAt = addMinutes(input.startAt, win.defaultSessionMinutes);
+
+    // 3b. Server-side authoritative closed-day / booking-open checks (defense-in-depth behind the UI).
+    const holidayRows = await tx.select({ date: holidays.date }).from(holidays).where(and(eq(holidays.status, 'approved'), eq(holidays.date, dateISO)));
+    const overrideRows = await tx.select({ date: clubHolidayOverrides.date, isOpen: clubHolidayOverrides.isOpen }).from(clubHolidayOverrides).where(and(eq(clubHolidayOverrides.clubId, input.clubId), eq(clubHolidayOverrides.date, dateISO)));
+    const { open } = resolveDateOpen({ dateISO, openOnHolidays: club.openOnHolidays, approvedHolidayDates: new Set(holidayRows.map((h) => h.date)), overrides: new Map(overrideRows.map((o) => [o.date, o.isOpen])) });
+    if (!open) return { ok: false, error: 'no_session' };
+    if (!isBookingOpen({ now, startAt: input.startAt, bookingOpenMode: club.bookingOpenMode, bookingOpenLeadDays: club.bookingOpenLeadDays })) return { ok: false, error: 'no_session' };
 
     // 4. Find-or-create the slot + sessions under the per-slot advisory lock.
     const foc = await findOrCreateSlotTx(tx, { clubId: input.clubId, dateISO, startAt: input.startAt, endAt, windowId: input.windowId, boats: boatsSpec });
@@ -142,6 +153,7 @@ export async function cancelBooking(db: DB, input: CancelInput): Promise<CancelR
     if (row.cancelCutoffHours != null && now.getTime() >= row.slotStartAt.getTime() - row.cancelCutoffHours * HOUR_MS) {
       return { ok: false, error: 'cutoff_passed' };
     }
+    if (now.getTime() >= row.slotStartAt.getTime()) return { ok: false, error: 'cutoff_passed' };
 
     // Serialize with the session's bookings under the same per-slot lock bookSeat uses.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${row.slotStartAt.toISOString()}))`);

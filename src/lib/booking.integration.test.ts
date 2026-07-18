@@ -22,9 +22,9 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   afterAll(async () => { await pool.end(); });
 
   let seq = 0;
-  async function scenario(opts: { seats: number; quantity?: number; mode?: 'equal' | 'priority'; allowedPayment?: 'regular_only' | 'multisport_only' | 'both'; minSkillRank?: number; selfCancel?: boolean; cutoffHours?: number | null }) {
+  async function scenario(opts: { seats: number; quantity?: number; mode?: 'equal' | 'priority'; allowedPayment?: 'regular_only' | 'multisport_only' | 'both'; minSkillRank?: number; selfCancel?: boolean; cutoffHours?: number | null; bookingOpenMode?: 'always' | 'lead'; bookingOpenLeadDays?: number | null }) {
     const tag = `bk-${Date.now()}-${seq++}`;
-    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, multisportMode: opts.mode ?? 'equal', selfCancelEnabled: opts.selfCancel ?? true, cancelCutoffHours: opts.cutoffHours ?? null }).returning();
+    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, multisportMode: opts.mode ?? 'equal', selfCancelEnabled: opts.selfCancel ?? true, cancelCutoffHours: opts.cutoffHours ?? null, bookingOpenMode: opts.bookingOpenMode ?? 'always', bookingOpenLeadDays: opts.bookingOpenLeadDays ?? null }).returning();
     let lvl: typeof schema.skillLevels.$inferSelect | undefined;
     if (opts.minSkillRank != null) [lvl] = await db.insert(schema.skillLevels).values({ clubId: club.id, name: `L${opts.minSkillRank}`, rank: opts.minSkillRank }).returning();
     const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: opts.seats, allowedPayment: opts.allowedPayment ?? 'both', minSkillLevelId: lvl?.id ?? null }).returning();
@@ -128,5 +128,42 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const late = new Date(START.getTime() - 2 * 60 * 60 * 1000);
     const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u, bookingId: (r as { bookingId: string }).bookingId, now: late });
     expect(cancel).toEqual({ ok: false, error: 'cutoff_passed' });
+  });
+
+  it('rejects booking on a club-force-closed day with no booking written', async () => {
+    const s = await scenario({ seats: 2 });
+    await db.insert(schema.clubHolidayOverrides).values({ clubId: s.club.id, date: MON, isOpen: false });
+    const u = await newMember(s.club.id, 'closed');
+    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
+    expect(r).toEqual({ ok: false, error: 'no_session' });
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('rejects booking before the booking-open lead window; allows it once the window opens', async () => {
+    const s = await scenario({ seats: 2, bookingOpenMode: 'lead', bookingOpenLeadDays: 3 });
+    const uTooEarly = await newMember(s.club.id, 'early');
+    const tooEarly = new Date(START.getTime() - 4 * 24 * 60 * 60 * 1000); // 4 days before START
+    const early = await bookSeat(db, { clubId: s.club.id, userId: uTooEarly, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: tooEarly });
+    expect(early).toEqual({ ok: false, error: 'no_session' });
+    const earlyRows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, uTooEarly));
+    expect(earlyRows).toHaveLength(0);
+
+    const uInWindow = await newMember(s.club.id, 'inwindow');
+    const inWindow = new Date(START.getTime() - 2 * 24 * 60 * 60 * 1000); // 2 days before START (< 3-day lead)
+    const opened = await bookSeat(db, { clubId: s.club.id, userId: uInWindow, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: inWindow });
+    expect(opened).toMatchObject({ ok: true, outcome: 'seated' });
+  });
+
+  it('rejects cancelling once the session has already started, even with no cutoff configured', async () => {
+    const s = await scenario({ seats: 2, cutoffHours: null });
+    const u = await newMember(s.club.id, 'started');
+    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
+    expect(r.ok).toBe(true);
+    const afterStart = new Date(START.getTime() + 60 * 60 * 1000); // 1h after START
+    const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u, bookingId: (r as { bookingId: string }).bookingId, now: afterStart });
+    expect(cancel).toEqual({ ok: false, error: 'cutoff_passed' });
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u));
+    expect(rows[0].status).toBe('booked');
   });
 });
