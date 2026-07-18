@@ -321,6 +321,11 @@
       "cancel_disabled": "Bu kulüpte kendi rezervasyonunu iptal kapalı.",
       "cutoff_passed": "Bu rezervasyonu iptal etmek için çok geç.",
       "generic": "İptal edilemedi. Lütfen tekrar deneyin."
-    }
+    },
+    "cancelled": "İptal edildi",
+    "noShow": "Gelmedi",
+    "attended": "Katıldı",
+    "cancelClosed": "İptal kapalı",
+    "cancelledToast": "Rezervasyon iptal edildi"
   }
 }

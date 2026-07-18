@@ -321,6 +321,11 @@
       "cancel_disabled": "Self-cancellation is turned off for this club.",
       "cutoff_passed": "Too late to cancel this booking.",
       "generic": "Could not cancel. Please try again."
-    }
+    },
+    "cancelled": "Cancelled",
+    "noShow": "No-show",
+    "attended": "Attended",
+    "cancelClosed": "Cancellation closed",
+    "cancelledToast": "Booking cancelled"
   }
 }

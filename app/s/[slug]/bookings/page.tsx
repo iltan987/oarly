@@ -1,8 +1,8 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
+import { MemberHeader } from '@/components/member-header';
 import { db } from '@/db';
 import { boatTypes, bookings, sessions, slots } from '@/db/schema';
 import { requireMember } from '@/lib/membership';
@@ -39,11 +39,9 @@ export default async function MyBookingsPage({ params }: { params: Promise<{ slu
   const past = rows.filter((r) => !(r.startAt.getTime() > now.getTime() && activeStatuses.has(r.status))).map(toRow);
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="font-heading text-lg font-semibold">{t('myTitle')}</h1>
-        <Link href={`/s/${slug}/book`} className="text-sm underline">{t('back')}</Link>
-      </div>
+    <div className="mx-auto max-w-2xl p-4">
+      <MemberHeader active="bookings" club={{ name: club.name, logoUrl: club.logoUrl }} />
+      <h1 className="mb-4 font-heading text-xl font-semibold">{t('myTitle')}</h1>
       <BookingsList slug={slug} upcoming={upcoming} past={past} timeZone={club.timezone} />
     </div>
   );

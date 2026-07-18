@@ -1,9 +1,12 @@
 'use client';
 
 import { useFormatter, useTranslations } from 'next-intl';
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
+import { toast } from 'sonner';
 
+import { StatusPill, toneByStatus } from '@/components/booking-status-badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 import { cancelBookingAction, type CancelFormState } from './actions';
 
@@ -22,10 +25,15 @@ const initial: CancelFormState = { status: 'idle', error: null };
 function CancelButton({ slug, bookingId }: { slug: string; bookingId: string }) {
   const t = useTranslations('booking');
   const [state, formAction, pending] = useActionState(cancelBookingAction.bind(null, slug), initial);
+
+  useEffect(() => {
+    if (state.status === 'ok') toast.success(t('cancelledToast'));
+  }, [state, t]);
+
   return (
     <form action={formAction} className="flex items-center gap-2">
       <input type="hidden" name="bookingId" value={bookingId} />
-      <Button type="submit" size="xs" variant="ghost" disabled={pending}>{t('cancel')}</Button>
+      <Button type="submit" size="xs" variant="outline" disabled={pending}>{t('cancel')}</Button>
       {state.status === 'error' && <span className="text-xs text-destructive">{t(`cancelErrors.${state.error ?? 'generic'}`)}</span>}
     </form>
   );
@@ -34,7 +42,9 @@ function CancelButton({ slug, bookingId }: { slug: string; bookingId: string }) 
 function statusLabel(t: ReturnType<typeof useTranslations>, row: BookingRow): string {
   if (row.status === 'waitlisted') return t('waitlisted', { position: row.queuePosition ?? 0 });
   if (row.status === 'booked') return t('seated');
-  return row.status;
+  if (row.status === 'cancelled') return t('cancelled');
+  if (row.status === 'no_show') return t('noShow');
+  return t('attended');
 }
 
 function Section({ slug, title, rows, timeZone, cancellable }: { slug: string; title: string; rows: BookingRow[]; timeZone: string; cancellable: boolean }) {
@@ -42,18 +52,27 @@ function Section({ slug, title, rows, timeZone, cancellable }: { slug: string; t
   const f = useFormatter();
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="font-heading text-base font-semibold">{title}</h2>
+      <h2 className="font-heading text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</h2>
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('none')}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((row) => (
-            <li key={row.id} className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
-              <span>
-                {f.dateTime(new Date(row.startAt), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone })}
-                {' · '}{row.boatName}{' · '}{statusLabel(t, row)}
-              </span>
-              {cancellable && row.canCancel && <CancelButton slug={slug} bookingId={row.id} />}
+            <li key={row.id}>
+              <Card size="sm">
+                <CardContent className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-heading text-sm font-semibold">
+                      {f.dateTime(new Date(row.startAt), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone })}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{row.boatName}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusPill tone={toneByStatus[row.status]}>{statusLabel(t, row)}</StatusPill>
+                    {cancellable && (row.canCancel ? <CancelButton slug={slug} bookingId={row.id} /> : <span className="text-xs text-muted-foreground">{t('cancelClosed')}</span>)}
+                  </div>
+                </CardContent>
+              </Card>
             </li>
           ))}
         </ul>
