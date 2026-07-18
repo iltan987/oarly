@@ -168,6 +168,10 @@
     "noSkillLevels": "Henüz seviye tanımlanmadı.",
     "none": "—",
     "empty": "Henüz üye yok.",
+    "memberApproved": "Üye onaylandı",
+    "memberRejected": "Üye reddedildi",
+    "skillSaved": "Seviye kaydedildi",
+    "actionError": "Bir şeyler ters gitti. Lütfen tekrar dene.",
     "skillLevels": {
       "navLabel": "Seviyeler",
       "title": "Seviyeler",

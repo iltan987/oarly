@@ -168,6 +168,10 @@
     "noSkillLevels": "No skill levels defined yet.",
     "none": "—",
     "empty": "No members yet.",
+    "memberApproved": "Member approved.",
+    "memberRejected": "Member rejected.",
+    "skillSaved": "Skill level saved.",
+    "actionError": "Something went wrong. Try again.",
     "skillLevels": {
       "navLabel": "Skill levels",
       "title": "Skill levels",

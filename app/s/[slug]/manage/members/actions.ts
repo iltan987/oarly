@@ -5,21 +5,26 @@ import { db } from '@/db';
 import { assignSkillLevel, setMembershipStatus } from '@/lib/members-admin';
 import { requireOwner } from '@/lib/membership';
 
-export async function approveMemberAction(slug: string, formData: FormData) {
+export type ManageActionResult = { ok: true } | { ok: false };
+
+export async function approveMemberAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club } = await requireOwner(slug);
-  await setMembershipStatus(db, { membershipId: String(formData.get('membershipId')), clubId: club.id, status: 'approved' });
+  const ok = await setMembershipStatus(db, { membershipId: String(formData.get('membershipId')), clubId: club.id, status: 'approved' });
   revalidatePath(`/s/${slug}/manage/members`);
+  return { ok };
 }
 
-export async function rejectMemberAction(slug: string, formData: FormData) {
+export async function rejectMemberAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club } = await requireOwner(slug);
-  await setMembershipStatus(db, { membershipId: String(formData.get('membershipId')), clubId: club.id, status: 'rejected' });
+  const ok = await setMembershipStatus(db, { membershipId: String(formData.get('membershipId')), clubId: club.id, status: 'rejected' });
   revalidatePath(`/s/${slug}/manage/members`);
+  return { ok };
 }
 
-export async function assignSkillAction(slug: string, formData: FormData) {
+export async function assignSkillAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club } = await requireOwner(slug);
   const raw = String(formData.get('skillLevelId') ?? '');
-  await assignSkillLevel(db, { membershipId: String(formData.get('membershipId')), clubId: club.id, skillLevelId: raw || null });
+  const ok = await assignSkillLevel(db, { membershipId: String(formData.get('membershipId')), clubId: club.id, skillLevelId: raw || null });
   revalidatePath(`/s/${slug}/manage/members`);
+  return { ok };
 }
