@@ -10,11 +10,31 @@
     "regular": "Cash",
     "multisport": "MultiSport"
   },
+  "home": {
+    "heroTitle": "Book the boat, skip the group chat",
+    "heroSubtitle": "Session booking for rowing clubs — seats, waitlists and payment, sorted.",
+    "createAccount": "Create an account",
+    "signedInAs": "Signed in as {email}",
+    "myClubs": "Your clubs",
+    "noClubs": "You're not a member of any club yet.",
+    "statusPending": "Pending",
+    "statusSuspended": "Suspended",
+    "statusRejected": "Not approved"
+  },
   "club": {
     "joinCta": "Join this club",
     "joinTitle": "Join {name}",
     "joinBody": "Once the club owner approves your request you can start booking sessions.",
-    "metaDescription": "{name} — online booking for rowing sessions."
+    "metaDescription": "{name} — online booking for rowing sessions.",
+    "ctaManage": "Manage club",
+    "ctaGoBooking": "Go to booking",
+    "ctaRequestJoin": "Request to join",
+    "noteMember": "You're a member",
+    "notePending": "Your request is awaiting approval",
+    "noteBanned": "Access to this club is suspended",
+    "noteRejected": "Your request wasn't approved",
+    "statusPending": "Request pending",
+    "statusBanned": "Access suspended"
   },
   "join": {
     "signInToJoin": "Sign in to join",
@@ -74,7 +94,10 @@
     "errorRequired": "This field is required.",
     "errorCredentials": "Wrong email or password.",
     "errorConsent": "You must accept the KVKK text to continue.",
-    "errorGeneric": "Something went wrong. Please try again."
+    "errorGeneric": "Something went wrong. Please try again.",
+    "signedOutToast": "Signed out",
+    "googleError": "Couldn't sign in with Google. Please try again.",
+    "errorAccountNotLinked": "This email already uses password sign-in. Enter your password above."
   },
   "privacy": {
     "title": "Privacy & KVKK",
@@ -105,7 +128,8 @@
     "errorSlugTaken": "That slug is already taken.",
     "errorOwnerNotFound": "No user with that email. The account must be created first.",
     "errorNameInvalid": "Club name must be at least 2 characters.",
-    "errorOwnerEmailInvalid": "Enter a valid email."
+    "errorOwnerEmailInvalid": "Enter a valid email.",
+    "actionError": "Couldn't update the club. Try again."
   },
   "requestClub": {
     "title": "Club request",
@@ -145,6 +169,10 @@
     "noSkillLevels": "No skill levels defined yet.",
     "none": "—",
     "empty": "No members yet.",
+    "memberApproved": "Member approved.",
+    "memberRejected": "Member rejected.",
+    "skillSaved": "Skill level saved.",
+    "actionError": "Something went wrong. Try again.",
     "skillLevels": {
       "navLabel": "Skill levels",
       "title": "Skill levels",
@@ -282,6 +310,8 @@
     "closedByClub": "Closed",
     "noSessions": "No sessions this day",
     "seatsLeft": "{count} of {capacity} seats left",
+    "seatsCount": "{count, plural, one {# seat} other {# seats}}",
+    "selectDay": "Select {date}",
     "full": "Full",
     "book": "Book",
     "joinWaitlist": "Join waitlist",
@@ -291,6 +321,14 @@
     "paymentLabel": "Payment",
     "paymentRegular": "Cash",
     "paymentMultisport": "MultiSport",
+    "paymentQuestion": "How are you paying?",
+    "confirmTitle": "Confirm your seat",
+    "confirmWaitlistTitle": "Join the waitlist",
+    "confirmCta": "Confirm booking",
+    "confirmWaitlistCta": "Join waitlist",
+    "fieldBoat": "Boat",
+    "fieldDay": "Day",
+    "fieldTime": "Time",
     "bookedToast": "Seat booked",
     "waitlistedToast": "Added to the waitlist",
     "soon": "Soon",

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 export type BadgeTone = 'ok' | 'warn' | 'bad' | 'info' | 'neutral' | 'accent';
@@ -32,8 +33,15 @@ export function StatusPill({
   children: ReactNode;
 }) {
   return (
-    <span className={cn('inline-flex items-center rounded-pill px-2.5 py-1 font-heading text-xs font-bold whitespace-nowrap', toneClass[tone], className)}>
+    <Badge
+      variant="secondary"
+      className={cn(
+        'h-auto w-auto rounded-pill px-2.5 py-1 font-heading text-xs font-bold whitespace-nowrap',
+        toneClass[tone],
+        className,
+      )}
+    >
       {children}
-    </span>
+    </Badge>
   );
 }

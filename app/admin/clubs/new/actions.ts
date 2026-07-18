@@ -41,5 +41,5 @@ export async function createClubAction(_prev: CreateClubState, formData: FormDat
   }
 
   revalidatePath('/admin');
-  redirect('/admin');
+  redirect('/admin?created=1');
 }

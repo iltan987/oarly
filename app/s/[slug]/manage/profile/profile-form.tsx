@@ -1,9 +1,11 @@
 'use client';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { addSocialAction, removeSocialAction, saveProfileAction } from './actions';
 import { LogoUpload } from './logo-upload';
@@ -13,6 +15,7 @@ type Club = { name: string; tagline: string | null; description: string | null; 
 
 export function ProfileForm({ slug, club, socials }: { slug: string; club: Club; socials: Social[] }) {
   const t = useTranslations('manage.profile');
+  const [headingFont, setHeadingFont] = useState(club.headingFont);
   // The Base UI inputs below are uncontrolled — they seed their state from
   // `defaultValue` at mount. After Save, the server action refreshes this
   // route and re-feeds the just-saved values as new `defaultValue`s on the
@@ -23,6 +26,7 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
   return (
     <div className="flex flex-col gap-6">
       <form key={club.updatedAt.getTime()} action={saveProfileAction.bind(null, slug)} className="flex flex-col gap-4">
+        <input type="hidden" name="headingFont" value={headingFont} />
         <LogoUpload slug={slug} initialUrl={club.logoUrl} labels={{ logo: t('logo'), logoUpload: t('logoUpload'), logoUploading: t('logoUploading'), logoError: t('logoError'), logoRemove: t('logoRemove') }} />
         <Field>
           <FieldLabel htmlFor="name">{t('name')}</FieldLabel>
@@ -48,11 +52,15 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
           </Field>
           <Field>
             <FieldLabel htmlFor="headingFont">{t('headingFont')}</FieldLabel>
-            <select id="headingFont" name="headingFont" defaultValue={club.headingFont}
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs">
-              <option value="default">{t('fontDefault')}</option>
-              <option value="premium">{t('fontPremium')}</option>
-            </select>
+            <Select value={headingFont} onValueChange={(v) => setHeadingFont(v as Club['headingFont'])}>
+              <SelectTrigger id="headingFont">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">{t('fontDefault')}</SelectItem>
+                <SelectItem value="premium">{t('fontPremium')}</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
         </div>
         <Button type="submit" className="self-start">{t('save')}</Button>

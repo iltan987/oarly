@@ -10,11 +10,31 @@
     "regular": "Nakit",
     "multisport": "MultiSport"
   },
+  "home": {
+    "heroTitle": "Tekneyi ayırt, grup sohbetini boşver",
+    "heroSubtitle": "Kürek kulüpleri için seans rezervasyonu — koltuklar, yedek liste ve ödeme tek yerde.",
+    "createAccount": "Hesap oluştur",
+    "signedInAs": "{email} olarak giriş yaptın",
+    "myClubs": "Kulüplerin",
+    "noClubs": "Henüz bir kulübe üye değilsin.",
+    "statusPending": "Beklemede",
+    "statusSuspended": "Askıda",
+    "statusRejected": "Onaylanmadı"
+  },
   "club": {
     "joinCta": "Kulübe katıl",
     "joinTitle": "{name} kulübüne katıl",
     "joinBody": "Katılma isteğiniz kulüp yöneticisi tarafından onaylandığında seans rezervasyonu yapabilirsiniz.",
-    "metaDescription": "{name} — kürek seansları için çevrimiçi rezervasyon."
+    "metaDescription": "{name} — kürek seansları için çevrimiçi rezervasyon.",
+    "ctaManage": "Kulübü yönet",
+    "ctaGoBooking": "Rezervasyona git",
+    "ctaRequestJoin": "Katılma isteği gönder",
+    "noteMember": "Üyesin",
+    "notePending": "İsteğin onay bekliyor",
+    "noteBanned": "Bu kulübe erişimin askıya alındı",
+    "noteRejected": "İsteğin onaylanmadı",
+    "statusPending": "İstek beklemede",
+    "statusBanned": "Erişim askıda"
   },
   "join": {
     "signInToJoin": "Katılmak için giriş yap",
@@ -74,7 +94,10 @@
     "errorRequired": "Bu alan zorunlu.",
     "errorCredentials": "E-posta veya şifre hatalı.",
     "errorConsent": "Devam etmek için KVKK metnini kabul etmelisin.",
-    "errorGeneric": "Bir şeyler ters gitti. Lütfen tekrar dene."
+    "errorGeneric": "Bir şeyler ters gitti. Lütfen tekrar dene.",
+    "signedOutToast": "Çıkış yapıldı",
+    "googleError": "Google ile giriş yapılamadı. Lütfen tekrar dene.",
+    "errorAccountNotLinked": "Bu e-posta parola ile giriş kullanıyor. Yukarıdan parolanla giriş yap."
   },
   "privacy": {
     "title": "Gizlilik ve KVKK",
@@ -105,7 +128,8 @@
     "errorSlugTaken": "Bu slug zaten kullanımda.",
     "errorOwnerNotFound": "Bu e-postayla bir kullanıcı bulunamadı. Önce hesabı oluşturulmalı.",
     "errorNameInvalid": "Kulüp adı en az 2 karakter olmalı.",
-    "errorOwnerEmailInvalid": "Geçerli bir e-posta gir."
+    "errorOwnerEmailInvalid": "Geçerli bir e-posta gir.",
+    "actionError": "Kulüp güncellenemedi. Tekrar dene."
   },
   "requestClub": {
     "title": "Kulüp başvurusu",
@@ -145,6 +169,10 @@
     "noSkillLevels": "Henüz seviye tanımlanmadı.",
     "none": "—",
     "empty": "Henüz üye yok.",
+    "memberApproved": "Üye onaylandı",
+    "memberRejected": "Üye reddedildi",
+    "skillSaved": "Seviye kaydedildi",
+    "actionError": "Bir şeyler ters gitti. Lütfen tekrar dene.",
     "skillLevels": {
       "navLabel": "Seviyeler",
       "title": "Seviyeler",
@@ -282,6 +310,8 @@
     "closedByClub": "Kapalı",
     "noSessions": "Bu gün seans yok",
     "seatsLeft": "{capacity} koltuktan {count} tanesi boş",
+    "seatsCount": "{count, plural, one {# koltuk} other {# koltuk}}",
+    "selectDay": "{date} seç",
     "full": "Dolu",
     "book": "Ayırt",
     "joinWaitlist": "Bekleme listesine gir",
@@ -291,6 +321,14 @@
     "paymentLabel": "Ödeme",
     "paymentRegular": "Nakit",
     "paymentMultisport": "MultiSport",
+    "paymentQuestion": "Nasıl ödeyeceksin?",
+    "confirmTitle": "Koltuğunu onayla",
+    "confirmWaitlistTitle": "Yedek listesine katıl",
+    "confirmCta": "Rezervasyonu onayla",
+    "confirmWaitlistCta": "Yedek listesine katıl",
+    "fieldBoat": "Tekne",
+    "fieldDay": "Gün",
+    "fieldTime": "Saat",
     "bookedToast": "Yerin ayrıldı",
     "waitlistedToast": "Bekleme listesine eklendin",
     "soon": "Yakında",

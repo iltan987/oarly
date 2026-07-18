@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
 import { buttonVariants } from '@/components/ui/button';
@@ -34,6 +35,7 @@ export default async function JoinPage({ params }: { params: Promise<{ slug: str
   }
 
   const membership = await getMembership(db, session.user.id, club.id);
+  if (membership?.status === 'approved') redirect('/book');
   const statusMsg = membership
     ? { pending: tj('pending'), approved: tj('approved'), rejected: tj('rejected'), banned: tj('banned') }[membership.status]
     : null;
