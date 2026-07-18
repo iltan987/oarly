@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { db } from '@/db';
@@ -19,9 +20,17 @@ export default async function SchedulePage({ params }: { params: Promise<{ slug:
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="font-heading text-lg font-semibold">{t('title')}</h2>
-        <p className="text-sm text-muted-foreground">{t('intro')}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="font-heading text-lg font-semibold">{t('title')}</h2>
+          <p className="text-sm text-muted-foreground">{t('intro')}</p>
+        </div>
+        {/* Public-facing link: the tenant subdomain rewrites `/manage/...` to `/s/{slug}/manage/...`
+            internally, but client-side `<Link>` navigation must use the public `/manage/...` form
+            (slug is in the hostname, not the path). See app/s/[slug]/manage/page.tsx. */}
+        <Link href="/manage/schedule/preview" className="shrink-0 text-sm text-primary hover:underline">
+          {t('previewLink')}
+        </Link>
       </div>
       <ScheduleEditor
         slug={slug}

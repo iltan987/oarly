@@ -210,7 +210,8 @@
         "invalid_boats": "Pick at least one active boat; no duplicates, quantity at least 1.",
         "not_found": "That window no longer exists.",
         "generic": "Could not save. Check the values and try again."
-      }
+      },
+      "previewLink": "Preview & closed dates"
     },
     "profile": {
       "navLabel": "Profile",
@@ -261,6 +262,17 @@
       "multisportHint": "In Priority mode a MultiSport booking only holds a seat if regular bookings don't fill the boat.",
       "openOnHolidays": "Run sessions on national holidays",
       "errorInvalidLead": "Enter a lead of at least 1 day, or choose \"Always open\"."
+    },
+    "schedulePreview": {
+      "title": "Schedule preview",
+      "description": "What your weekly schedule produces for the next {days} days. Close or force-open specific dates below.",
+      "closedHoliday": "Closed — public holiday",
+      "closedByYou": "Closed by you",
+      "noSessions": "No sessions this day",
+      "noBoats": "No boats",
+      "close": "Close this date",
+      "forceOpen": "Force open",
+      "reset": "Reset to default"
     }
   }
 }
