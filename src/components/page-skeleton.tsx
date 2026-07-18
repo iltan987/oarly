@@ -1,3 +1,5 @@
+import { Skeleton } from '@/components/ui/skeleton';
+
 export function PageSkeleton() {
   // Mirrors the member layout (MemberHeader identity row + nav underline, then a
   // title, then content cards) so the swap to real content shifts as little as
@@ -9,23 +11,23 @@ export function PageSkeleton() {
       <div className="mb-6 flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <div className="size-8 animate-pulse rounded-field bg-muted" />
-            <div className="h-5 w-32 animate-pulse rounded bg-muted" />
+            <Skeleton className="size-8 rounded-field" />
+            <Skeleton className="h-5 w-32 rounded" />
           </div>
           <div className="flex gap-1">
-            <div className="size-8 animate-pulse rounded-md bg-muted" />
-            <div className="h-8 w-16 animate-pulse rounded-md bg-muted" />
+            <Skeleton className="size-8 rounded-md" />
+            <Skeleton className="h-8 w-16 rounded-md" />
           </div>
         </div>
         <div className="flex gap-4 border-b pb-2">
-          <div className="h-5 w-12 animate-pulse rounded bg-muted" />
-          <div className="h-5 w-24 animate-pulse rounded bg-muted" />
+          <Skeleton className="h-5 w-12 rounded" />
+          <Skeleton className="h-5 w-24 rounded" />
         </div>
       </div>
-      <div className="mb-4 h-7 w-44 animate-pulse rounded bg-muted" />
+      <Skeleton className="mb-4 h-7 w-44 rounded" />
       <div className="flex flex-col gap-3">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-24 animate-pulse rounded-card bg-muted" />
+          <Skeleton key={i} className="h-24 rounded-card" />
         ))}
       </div>
     </div>

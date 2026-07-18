@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { SignOutButton } from '@/components/sign-out-button';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 // Public tenant paths (slug is in the hostname — see proxy.ts). Never /s/{slug}/...
 const tabs = [
@@ -31,14 +32,12 @@ export async function MemberHeader({
     <header className="mb-6 flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <Link href="/" className="flex min-w-0 items-center gap-2">
-          {club.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={club.logoUrl} alt="" className="size-8 shrink-0 rounded-field object-cover" />
-          ) : (
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-field bg-brand font-heading text-xs font-bold text-primary-foreground">
+          <Avatar className="size-8 shrink-0 rounded-field after:rounded-field">
+            {club.logoUrl ? <AvatarImage src={club.logoUrl} alt="" className="rounded-field" /> : null}
+            <AvatarFallback className="rounded-field bg-brand font-heading text-xs font-bold text-primary-foreground">
               {initials(club.name)}
-            </span>
-          )}
+            </AvatarFallback>
+          </Avatar>
           <span className="truncate font-heading text-lg font-semibold text-brand">{club.name}</span>
         </Link>
         <div className="flex shrink-0 items-center gap-1">
