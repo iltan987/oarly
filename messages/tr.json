@@ -14,7 +14,16 @@
     "joinCta": "Kulübe katıl",
     "joinTitle": "{name} kulübüne katıl",
     "joinBody": "Katılma isteğiniz kulüp yöneticisi tarafından onaylandığında seans rezervasyonu yapabilirsiniz.",
-    "metaDescription": "{name} — kürek seansları için çevrimiçi rezervasyon."
+    "metaDescription": "{name} — kürek seansları için çevrimiçi rezervasyon.",
+    "ctaManage": "Kulübü yönet",
+    "ctaGoBooking": "Rezervasyona git",
+    "ctaRequestJoin": "Katılma isteği gönder",
+    "noteMember": "Üyesin",
+    "notePending": "İsteğin onay bekliyor",
+    "noteBanned": "Bu kulübe erişimin askıya alındı",
+    "noteRejected": "İsteğin onaylanmadı",
+    "statusPending": "İstek beklemede",
+    "statusBanned": "Erişim askıda"
   },
   "join": {
     "signInToJoin": "Katılmak için giriş yap",
