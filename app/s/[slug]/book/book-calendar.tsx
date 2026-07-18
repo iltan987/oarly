@@ -99,13 +99,17 @@ function SessionRow({ slug, windowId, startAtISO, session, timeZone }: { slug: s
   const t = useTranslations('booking');
   const f = useFormatter();
   const ui = uiStateOf(session);
+  // A "notopen" session with no future open date has already started/closed
+  // (always-open mode past its start) — show a neutral "Closed", not "Soon".
+  const notOpenClosed = ui === 'notopen' && !session.bookingOpensAt;
+  const pillTone: BadgeTone = notOpenClosed ? 'neutral' : toneOf[ui];
 
   const pillText =
     ui === 'open' ? t('seatsLeft', { count: session.seatsLeft, capacity: session.capacity })
     : ui === 'full' ? t('full')
     : ui === 'booked' ? t('booked')
     : ui === 'waitlisted' ? t('waitlisted', { position: session.myQueuePosition ?? 0 })
-    : ui === 'notopen' ? t('soon')
+    : ui === 'notopen' ? (notOpenClosed ? t('closedByClub') : t('soon'))
     : t('locked');
 
   const subText =
@@ -131,7 +135,7 @@ function SessionRow({ slug, windowId, startAtISO, session, timeZone }: { slug: s
             )}
           </div>
         </div>
-        <StatusPill tone={toneOf[ui]}>{pillText}</StatusPill>
+        <StatusPill tone={pillTone}>{pillText}</StatusPill>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-2">
