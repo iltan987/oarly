@@ -178,7 +178,9 @@ function ConfirmBooking({
       {session.paymentChoices.length > 1 ? (
         <div className="flex flex-col gap-2">
           <span className="text-xs text-muted-foreground">{t('paymentQuestion')}</span>
-          <RadioGroup name="paymentType" value={payment} onValueChange={(v) => setPayment(v as typeof payment)} className="grid grid-cols-2 gap-2">
+          {/* Explicit hidden field is the source of truth for FormData; RadioGroup is controlled UI only. */}
+          <input type="hidden" name="paymentType" value={payment} />
+          <RadioGroup value={payment} onValueChange={(v) => setPayment(v as typeof payment)} className="grid grid-cols-2 gap-2">
             {session.paymentChoices.map((p) => {
               const label = p === 'multisport' ? t('paymentMultisport') : t('paymentRegular');
               const checked = payment === p;
