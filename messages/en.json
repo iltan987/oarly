@@ -274,5 +274,35 @@
       "forceOpen": "Force open",
       "reset": "Reset to default"
     }
+  },
+  "booking": {
+    "title": "Book a session",
+    "description": "Reserve a seat for the next {days} days.",
+    "closedHoliday": "Closed — public holiday",
+    "closedByClub": "Closed",
+    "noSessions": "No sessions this day",
+    "seatsLeft": "{count} of {capacity} seats left",
+    "full": "Full",
+    "book": "Book",
+    "joinWaitlist": "Join waitlist",
+    "booked": "You're booked",
+    "waitlisted": "Waitlisted #{position}",
+    "opensOn": "Opens {date}",
+    "paymentLabel": "Payment",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "myBookings": "My bookings",
+    "reasons": {
+      "not_approved": "Membership not approved",
+      "banned": "Temporarily suspended",
+      "skill_too_low": "Requires a higher skill level",
+      "payment_not_allowed": "Payment type not allowed on this boat"
+    },
+    "errors": {
+      "ineligible": "You can't book this session.",
+      "already_booked_this_slot": "You already have a booking at this time.",
+      "no_session": "That session is no longer available.",
+      "generic": "Something went wrong. Please try again."
+    }
   }
 }
