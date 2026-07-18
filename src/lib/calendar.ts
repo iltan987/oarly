@@ -2,16 +2,21 @@ import { addMinutes } from 'date-fns';
 import { and, eq, gte, inArray, lt } from 'drizzle-orm';
 
 import type { DB } from '@/db';
-import { boatTypes, clubHolidayOverrides, clubs, holidays, scheduleWindows, sessions, slots, windowBoats } from '@/db/schema';
+import { boatTypes, clubHolidayOverrides, clubs, holidays, scheduleWindows, sessions, skillLevels, slots, windowBoats } from '@/db/schema';
 
 import { resolveDateOpen } from './calendar-rules';
 import { addDaysISO, eachDateISO, minutesToHHMM, toMinutes, utcToClubDate, weekdayOfDateISO, zonedWallClockToUtc } from './date-tz';
 
+export type AllowedPayment = 'regular_only' | 'multisport_only' | 'both';
+
 export type VirtualSession = {
+  sessionId: string | null;       // real id when persisted; null for a virtual (unmaterialized) session
   boatTypeId: string;
   boatName: string;
   capacity: number;
   minAttendance: number | null;
+  minSkillRank: number | null;    // boat's current minimum skill rank (null = no requirement)
+  allowedPayment: AllowedPayment;
   occurrence: number;             // 0..quantity-1 (display/debug)
   status: 'open' | 'closed' | 'cancelled';
   persisted: boolean;
@@ -32,7 +37,7 @@ export type CalendarDay = {
   slots: VirtualSlot[];
 };
 
-type WindowBoat = { boatTypeId: string; boatName: string; seats: number; minAttendance: number | null; quantity: number };
+type WindowBoat = { boatTypeId: string; boatName: string; seats: number; minAttendance: number | null; minSkillRank: number | null; allowedPayment: AllowedPayment; quantity: number };
 type GroupedWindow = { windowId: string; weekday: number; startTime: string; endTime: string; minutes: number; boats: WindowBoat[] };
 
 export async function computeCalendar(
@@ -52,10 +57,12 @@ export async function computeCalendar(
     .select({
       windowId: scheduleWindows.id, weekday: scheduleWindows.weekday, startTime: scheduleWindows.startTime, endTime: scheduleWindows.endTime, minutes: scheduleWindows.defaultSessionMinutes,
       boatTypeId: windowBoats.boatTypeId, quantity: windowBoats.quantity, boatName: boatTypes.name, seats: boatTypes.seats, boatMinAttendance: boatTypes.minAttendance,
+      allowedPayment: boatTypes.allowedPayment, minSkillRank: skillLevels.rank,
     })
     .from(scheduleWindows)
     .innerJoin(windowBoats, eq(windowBoats.windowId, scheduleWindows.id))
     .innerJoin(boatTypes, eq(boatTypes.id, windowBoats.boatTypeId))
+    .leftJoin(skillLevels, eq(skillLevels.id, boatTypes.minSkillLevelId))
     .where(and(eq(scheduleWindows.clubId, clubId), eq(boatTypes.active, true)));
 
   const grouped = new Map<string, GroupedWindow>();
@@ -65,7 +72,7 @@ export async function computeCalendar(
       g = { windowId: r.windowId, weekday: r.weekday, startTime: r.startTime, endTime: r.endTime, minutes: r.minutes, boats: [] };
       grouped.set(r.windowId, g);
     }
-    g.boats.push({ boatTypeId: r.boatTypeId, boatName: r.boatName, seats: r.seats, minAttendance: r.boatMinAttendance, quantity: r.quantity });
+    g.boats.push({ boatTypeId: r.boatTypeId, boatName: r.boatName, seats: r.seats, minAttendance: r.boatMinAttendance, minSkillRank: r.minSkillRank, allowedPayment: r.allowedPayment, quantity: r.quantity });
   }
   const windowsByWeekday = new Map<number, GroupedWindow[]>();
   for (const g of grouped.values()) {
@@ -85,13 +92,13 @@ export async function computeCalendar(
   const endBound = zonedWallClockToUtc(endISO, '00:00', club.timezone);
   const persistedSlots = await db.select({ id: slots.id, startAt: slots.startAt, endAt: slots.endAt, fromWindowId: slots.fromWindowId }).from(slots).where(and(eq(slots.clubId, clubId), gte(slots.startAt, startBound), lt(slots.startAt, endBound)));
   const persistedSessionRows = persistedSlots.length
-    ? await db.select({ slotId: sessions.slotId, boatTypeId: sessions.boatTypeId, capacity: sessions.capacity, minAttendance: sessions.minAttendance, status: sessions.status, boatName: boatTypes.name })
-        .from(sessions).innerJoin(boatTypes, eq(boatTypes.id, sessions.boatTypeId)).where(inArray(sessions.slotId, persistedSlots.map((s) => s.id)))
+    ? await db.select({ id: sessions.id, slotId: sessions.slotId, boatTypeId: sessions.boatTypeId, capacity: sessions.capacity, minAttendance: sessions.minAttendance, status: sessions.status, boatName: boatTypes.name, allowedPayment: boatTypes.allowedPayment, minSkillRank: skillLevels.rank })
+        .from(sessions).innerJoin(boatTypes, eq(boatTypes.id, sessions.boatTypeId)).leftJoin(skillLevels, eq(skillLevels.id, boatTypes.minSkillLevelId)).where(inArray(sessions.slotId, persistedSlots.map((s) => s.id)))
     : [];
   const sessionsBySlot = new Map<string, VirtualSession[]>();
   for (const s of persistedSessionRows) {
     const list = sessionsBySlot.get(s.slotId) ?? [];
-    list.push({ boatTypeId: s.boatTypeId, boatName: s.boatName, capacity: s.capacity, minAttendance: s.minAttendance, occurrence: list.length, status: s.status, persisted: true });
+    list.push({ sessionId: s.id, boatTypeId: s.boatTypeId, boatName: s.boatName, capacity: s.capacity, minAttendance: s.minAttendance, minSkillRank: s.minSkillRank, allowedPayment: s.allowedPayment, occurrence: list.length, status: s.status, persisted: true });
     sessionsBySlot.set(s.slotId, list);
   }
   // Index persisted slots by their UTC start ISO; entries are consumed as matched.
@@ -103,6 +110,8 @@ export async function computeCalendar(
     const weekday = weekdayOfDateISO(dateISO);
     const { open, reason } = resolveDateOpen({ dateISO, openOnHolidays: club.openOnHolidays, approvedHolidayDates, overrides });
     if (!open) {
+      // Closed: emit no fresh slots, but persisted (booked) slots for this date are
+      // surfaced read-only by the orphan sweep below so existing bookings never vanish.
       result.push({ dateISO, weekday, closed: true, closedReason: reason, slots: [] });
       continue;
     }
@@ -121,7 +130,7 @@ export async function computeCalendar(
         } else {
           const vsessions = w.boats.flatMap((b) =>
             Array.from({ length: b.quantity }, (_unused, i): VirtualSession => ({
-              boatTypeId: b.boatTypeId, boatName: b.boatName, capacity: b.seats, minAttendance: b.minAttendance, occurrence: i, status: 'open', persisted: false,
+              sessionId: null, boatTypeId: b.boatTypeId, boatName: b.boatName, capacity: b.seats, minAttendance: b.minAttendance, minSkillRank: b.minSkillRank, allowedPayment: b.allowedPayment, occurrence: i, status: 'open', persisted: false,
             })),
           );
           vslots.push({ dateISO, startAt, endAt, windowId: w.windowId, persisted: false, sessions: vsessions });
@@ -131,12 +140,13 @@ export async function computeCalendar(
     result.push({ dateISO, weekday, closed: false, closedReason: null, slots: vslots });
   }
 
-  // Surface any persisted slots not matched to a current window (e.g. its window was deleted),
-  // bucketed onto the open day that contains them, so existing bookings never disappear.
+  // Surface any persisted slots not matched to a current window block — a since-deleted
+  // window, OR a slot on a now-closed day — bucketed onto the day that contains them, so
+  // existing bookings never disappear.
   for (const [, s] of persistedByStart) {
     const { dateISO } = utcToClubDate(s.startAt, club.timezone);
     const day = result.find((d) => d.dateISO === dateISO);
-    if (!day || day.closed) continue;
+    if (!day) continue;
     day.slots.push({ dateISO, startAt: s.startAt, endAt: s.endAt, windowId: s.fromWindowId, persisted: true, sessions: sessionsBySlot.get(s.id) ?? [] });
   }
 

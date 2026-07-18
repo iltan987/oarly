@@ -118,4 +118,37 @@ describe.skipIf(!url)('computeCalendar', () => {
     expect(persisted).toHaveLength(1);
     expect(persisted[0].startAt.toISOString()).toBe('2026-07-20T05:00:00.000Z');
   });
+
+  it('exposes minSkillRank and allowedPayment on virtual sessions', async () => {
+    const c = await newClub('cal-elig');
+    const [lvl] = await db.insert(schema.skillLevels).values({ clubId: c.id, name: 'Intermediate', rank: 2 }).returning();
+    await db.insert(schema.boatTypes).values({ clubId: c.id, name: 'Quad', seats: 4, minSkillLevelId: lvl.id, allowedPayment: 'multisport_only' }).returning();
+    // window on Monday 2026-07-20, 08:00–09:00 local
+    const [w] = await db.insert(schema.scheduleWindows).values({ clubId: c.id, weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60 }).returning();
+    const [boat] = await db.select().from(schema.boatTypes).where(eq(schema.boatTypes.clubId, c.id));
+    await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: boat.id, quantity: 1 });
+
+    const days = await computeCalendar(db, c.id, { fromDateISO: '2026-07-20', days: 1 });
+    const session = days[0].slots[0].sessions[0];
+    expect(session.minSkillRank).toBe(2);
+    expect(session.allowedPayment).toBe('multisport_only');
+    expect(session.sessionId).toBeNull();
+  });
+
+  it('surfaces persisted (booked) slots on a force-closed day instead of dropping them', async () => {
+    const c = await newClub('cal-closed');
+    const boat = await newBoat(c.id, 'Single', 1);
+    const w = await mondayWindow(c.id, [{ boatTypeId: boat.id, quantity: 1 }]); // Monday 08:00-10:00 60m from the file helper
+    const startAt = new Date('2026-07-20T05:00:00.000Z'); // 08:00 Europe/Istanbul
+    await materializeSlot(db, { clubId: c.id, dateISO: '2026-07-20', startAt, endAt: new Date('2026-07-20T06:00:00.000Z'), windowId: w.id, boats: [{ boatTypeId: boat.id, capacity: 1, minAttendance: null, quantity: 1 }] });
+    // force-close that date
+    await db.insert(schema.clubHolidayOverrides).values({ clubId: c.id, date: '2026-07-20', isOpen: false });
+
+    const days = await computeCalendar(db, c.id, { fromDateISO: '2026-07-20', days: 1 });
+    expect(days[0].closed).toBe(true);
+    expect(days[0].closedReason).toBe('override');
+    expect(days[0].slots).toHaveLength(1);
+    expect(days[0].slots[0].persisted).toBe(true);
+    expect(days[0].slots[0].sessions[0].sessionId).not.toBeNull();
+  });
 });
