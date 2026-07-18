@@ -14,8 +14,11 @@ export const env = createEnv({
     GOOGLE_CLIENT_SECRET: z.string().optional(),
     RESEND_API_KEY: z.string().optional(),
     EMAIL_FROM: z.string().optional(),
-    UPSTASH_REDIS_REST_URL: z.string().optional(),
-    UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+    // Provisioned by the Vercel Upstash/KV integration (managed secrets). The
+    // read-only token and the rediss:// KV_URL/REDIS_URL are unused — the REST
+    // client needs the write token.
+    KV_REST_API_URL: z.string().optional(),
+    KV_REST_API_TOKEN: z.string().optional(),
     BLOB_READ_WRITE_TOKEN: z.string().optional(),
   },
   client: {

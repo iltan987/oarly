@@ -24,8 +24,8 @@ async function getUpstash() {
   if (upstash) return upstash;
   const { Redis } = await import('@upstash/redis');
   const redis = new Redis({
-    url: env.UPSTASH_REDIS_REST_URL!,
-    token: env.UPSTASH_REDIS_REST_TOKEN!,
+    url: env.KV_REST_API_URL!,
+    token: env.KV_REST_API_TOKEN!,
   });
   upstash = async (key, rule) => {
     const count = await redis.incr(key);
@@ -36,7 +36,7 @@ async function getUpstash() {
 }
 
 export async function rateLimit(key: string, rule: RateRule, now = Date.now()): Promise<Result> {
-  if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) {
+  if (env.KV_REST_API_URL && env.KV_REST_API_TOKEN) {
     const fn = await getUpstash();
     return fn(key, rule);
   }
