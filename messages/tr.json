@@ -133,6 +133,7 @@
     "setupSkill": "Seviye ekle",
     "setupBoats": "En az bir tekne ekle",
     "setupProfile": "Herkese açık profili tamamla",
+    "setupSchedule": "Haftalık programı ayarla",
     "setupDone": "Tamam",
     "setupTodo": "Yapılacak",
     "members": "Üyeler",
@@ -183,6 +184,34 @@
       "empty": "Henüz tekne yok.",
       "needSkillLevels": "İpucu: asgari seviye şartı koymak istiyorsanız önce seviye ekleyin."
     },
+    "schedule": {
+      "navLabel": "Program",
+      "title": "Haftalık program",
+      "intro": "Her gün için tekrarlayan zaman aralıklarını ve her aralıkta hangi teknelerin çıkacağını ayarlayın.",
+      "addWindow": "+ Aralık",
+      "noWindows": "Aralık yok",
+      "edit": "Düzenle",
+      "delete": "Sil",
+      "save": "Kaydet",
+      "cancel": "İptal",
+      "startTime": "Başlangıç",
+      "endTime": "Bitiş",
+      "sessionMinutes": "Seans (dk)",
+      "minutesShort": "dk",
+      "boats": "Tekneler",
+      "addBoat": "+ Tekne",
+      "removeBoat": "Kaldır",
+      "needBoats": "Önce Tekneler sayfasından en az bir aktif tekne tipi ekleyin.",
+      "weekdays": { "0": "Pazar", "1": "Pazartesi", "2": "Salı", "3": "Çarşamba", "4": "Perşembe", "5": "Cuma", "6": "Cumartesi" },
+      "errors": {
+        "end_before_start": "Bitiş saati başlangıçtan sonra olmalı.",
+        "uneven_tiling": "Seans süresi aralığı tam bölmeli (artan dakika kalmamalı).",
+        "overlap": "Bu aralık aynı gündeki başka bir aralıkla çakışıyor.",
+        "invalid_boats": "En az bir aktif tekne seçin; tekrar olmasın, adet en az 1 olsun.",
+        "not_found": "Bu aralık artık mevcut değil.",
+        "generic": "Kaydedilemedi. Değerleri kontrol edip tekrar deneyin."
+      }
+    },
     "profile": {
       "navLabel": "Profil",
       "title": "Herkese açık profil",
@@ -207,6 +236,31 @@
       "socialRemove": "Kaldır",
       "save": "Profili kaydet",
       "saved": "Profil kaydedildi."
+    },
+    "policies": {
+      "navLabel": "Kurallar",
+      "title": "Rezervasyon kuralları",
+      "intro": "Rezervasyonun ne zaman açılacağını, iptal kurallarını, gelmeme cezalarını, MultiSport önceliğini ve tatilleri yönetin.",
+      "save": "Kaydet",
+      "bookingOpen": "Rezervasyon açılışı",
+      "bookingOpenAlways": "Her zaman açık",
+      "bookingOpenLead": "Seanstan belirli gün önce",
+      "leadDays": "Kaç gün önce (belirli gün seçildiğinde)",
+      "selfCancel": "Üyeler kendi rezervasyonunu iptal edebilsin",
+      "cancelCutoff": "İptal son süresi (başlamadan kaç saat önce; boş = sınır yok)",
+      "noshow": "Gelmeme cezası",
+      "noshowOff": "Kapalı",
+      "noshow2d": "2 gün yasak",
+      "noshow1w": "1 hafta yasak",
+      "noshow2w": "2 hafta yasak",
+      "noshow1m": "1 ay yasak",
+      "noshowNever": "Kalıcı yasak",
+      "multisport": "MultiSport modu",
+      "multisportEqual": "Eşit — ilk gelen alır",
+      "multisportPriority": "Öncelik — normal rezervasyonlar önce",
+      "multisportHint": "Öncelik modunda MultiSport rezervasyonu, normal rezervasyonlar tekneyi doldurmazsa yer tutar.",
+      "openOnHolidays": "Resmi tatillerde seans yapılsın",
+      "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin."
     }
   }
 }

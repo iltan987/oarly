@@ -67,3 +67,34 @@ export const boatSchema = z
     message: 'min_attendance must be <= seats',
     path: ['minAttendance'],
   });
+
+// --- scheduling config (5A): server actions re-parse these; pure-core adds the
+//     cross-row checks (window overlap, even tiling, same-club/active boats,
+//     lead-days rule) that zod cannot express. ---
+export const windowBoatSchema = z.object({
+  boatTypeId: z.uuid(),
+  quantity: z.coerce.number().int().min(1).max(99),
+});
+
+export const windowSchema = z.object({
+  weekday: z.coerce.number().int().min(0).max(6),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, 'HH:MM'),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'HH:MM'),
+  defaultSessionMinutes: z.coerce.number().int().min(5).max(1440),
+  boats: z.array(windowBoatSchema).min(1),
+});
+
+export const schedulingSettingsSchema = z
+  .object({
+    bookingOpenMode: z.enum(['always', 'lead']),
+    bookingOpenLeadDays: z.coerce.number().int().min(1).max(365).nullable(),
+    selfCancelEnabled: z.boolean(),
+    cancelCutoffHours: z.coerce.number().int().min(0).max(720).nullable(),
+    noshowPenalty: z.enum(['off', '2d', '1w', '2w', '1m', 'never']),
+    multisportMode: z.enum(['equal', 'priority']),
+    openOnHolidays: z.boolean(),
+  })
+  .refine((v) => v.bookingOpenMode !== 'lead' || v.bookingOpenLeadDays !== null, {
+    message: 'lead mode requires lead days',
+    path: ['bookingOpenLeadDays'],
+  });

@@ -5,6 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { db } from '@/db';
 import { listBoats } from '@/lib/boats';
 import { requireOwner } from '@/lib/membership';
+import { listWindowsWithBoats } from '@/lib/schedule';
 import { listSkillLevels } from '@/lib/skill-levels';
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -13,7 +14,11 @@ export default async function ManageOverviewPage({ params }: { params: Promise<{
   const { slug } = await params;
   const { club } = await requireOwner(slug);
   const t = await getTranslations('manage');
-  const [levels, boats] = await Promise.all([listSkillLevels(db, club.id), listBoats(db, club.id)]);
+  const [levels, boats, windows] = await Promise.all([
+    listSkillLevels(db, club.id),
+    listBoats(db, club.id),
+    listWindowsWithBoats(db, club.id),
+  ]);
 
   // Public-facing links: the tenant subdomain rewrites `/manage/...` to `/s/{slug}/manage/...`
   // internally (see proxy.ts / tenant-routing.ts), but the browser URL — and any client-side
@@ -23,6 +28,7 @@ export default async function ManageOverviewPage({ params }: { params: Promise<{
   const checklist = [
     { done: levels.length > 0, label: t('setupSkill'), href: '/manage/skill-levels' },
     { done: boats.some((b) => b.active), label: t('setupBoats'), href: '/manage/boats' },
+    { done: windows.length > 0, label: t('setupSchedule'), href: '/manage/schedule' },
     { done: Boolean(club.tagline || club.description), label: t('setupProfile'), href: '/manage/profile' },
   ];
 
