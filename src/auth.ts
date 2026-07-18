@@ -56,6 +56,14 @@ export const auth = betterAuth({
       }
     : {}),
 
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['google'],
+      requireLocalEmailVerified: true,
+    },
+  },
+
   user: {
     additionalFields: {
       firstName: { type: 'string', required: false },

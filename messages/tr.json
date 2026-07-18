@@ -74,7 +74,10 @@
     "errorRequired": "Bu alan zorunlu.",
     "errorCredentials": "E-posta veya şifre hatalı.",
     "errorConsent": "Devam etmek için KVKK metnini kabul etmelisin.",
-    "errorGeneric": "Bir şeyler ters gitti. Lütfen tekrar dene."
+    "errorGeneric": "Bir şeyler ters gitti. Lütfen tekrar dene.",
+    "signedOutToast": "Çıkış yapıldı",
+    "googleError": "Google ile giriş yapılamadı. Lütfen tekrar deneyin.",
+    "errorAccountNotLinked": "Bu e-posta parola ile giriş kullanıyor. Yukarıdan parolanızla giriş yapın."
   },
   "privacy": {
     "title": "Gizlilik ve KVKK",

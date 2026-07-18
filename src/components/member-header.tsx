@@ -4,6 +4,8 @@ import { getTranslations } from 'next-intl/server';
 import { SignOutButton } from '@/components/sign-out-button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { env } from '@/env';
+import { apexUrl, parseAppOrigin } from '@/lib/urls';
 
 // Public tenant paths (slug is in the hostname — see proxy.ts). Never /s/{slug}/...
 const tabs = [
@@ -28,6 +30,7 @@ export async function MemberHeader({
   club: { name: string; logoUrl: string | null };
 }) {
   const t = await getTranslations('booking');
+  const signOutUrl = apexUrl('/sign-in?signedout=1', parseAppOrigin(env.APP_URL));
   return (
     <header className="mb-6 flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
@@ -42,7 +45,7 @@ export async function MemberHeader({
         </Link>
         <div className="flex shrink-0 items-center gap-1">
           <ThemeToggle />
-          <SignOutButton />
+          <SignOutButton redirectTo={signOutUrl} />
         </div>
       </div>
       <nav className="flex flex-wrap gap-1 border-b">

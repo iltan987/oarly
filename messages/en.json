@@ -74,7 +74,10 @@
     "errorRequired": "This field is required.",
     "errorCredentials": "Wrong email or password.",
     "errorConsent": "You must accept the KVKK text to continue.",
-    "errorGeneric": "Something went wrong. Please try again."
+    "errorGeneric": "Something went wrong. Please try again.",
+    "signedOutToast": "Signed out",
+    "googleError": "Couldn't sign in with Google. Please try again.",
+    "errorAccountNotLinked": "This email already uses password sign-in. Enter your password above."
   },
   "privacy": {
     "title": "Privacy & KVKK",

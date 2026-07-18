@@ -3,11 +3,14 @@ import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 
 import { SignOutButton } from '@/components/sign-out-button';
+import { env } from '@/env';
 import { requireAdmin } from '@/lib/session';
+import { apexUrl, parseAppOrigin } from '@/lib/urls';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   await requireAdmin();
   const t = await getTranslations('admin');
+  const signOutUrl = apexUrl('/sign-in?signedout=1', parseAppOrigin(env.APP_URL));
   return (
     <div className="mx-auto max-w-4xl p-6">
       <header className="mb-6 flex items-center justify-between">
@@ -17,7 +20,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           <Link href="/admin/requests" className="text-muted-foreground hover:underline">{t('requests')}</Link>
           <Link href="/admin/clubs/new" className="text-muted-foreground hover:underline">{t('newClub')}</Link>
         </nav>
-        <SignOutButton />
+        <SignOutButton redirectTo={signOutUrl} />
       </header>
       {children}
     </div>
