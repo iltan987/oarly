@@ -128,7 +128,8 @@
     "errorSlugTaken": "That slug is already taken.",
     "errorOwnerNotFound": "No user with that email. The account must be created first.",
     "errorNameInvalid": "Club name must be at least 2 characters.",
-    "errorOwnerEmailInvalid": "Enter a valid email."
+    "errorOwnerEmailInvalid": "Enter a valid email.",
+    "actionError": "Couldn't update the club. Try again."
   },
   "requestClub": {
     "title": "Club request",

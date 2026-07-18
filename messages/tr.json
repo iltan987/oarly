@@ -128,7 +128,8 @@
     "errorSlugTaken": "Bu slug zaten kullanımda.",
     "errorOwnerNotFound": "Bu e-postayla bir kullanıcı bulunamadı. Önce hesabı oluşturulmalı.",
     "errorNameInvalid": "Kulüp adı en az 2 karakter olmalı.",
-    "errorOwnerEmailInvalid": "Geçerli bir e-posta gir."
+    "errorOwnerEmailInvalid": "Geçerli bir e-posta gir.",
+    "actionError": "Kulüp güncellenemedi. Tekrar dene."
   },
   "requestClub": {
     "title": "Kulüp başvurusu",
