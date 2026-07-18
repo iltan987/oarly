@@ -326,6 +326,8 @@
     "noShow": "No-show",
     "attended": "Attended",
     "cancelClosed": "Cancellation closed",
-    "cancelledToast": "Booking cancelled"
+    "cancelledToast": "Booking cancelled",
+    "loadError": "Couldn't load this page.",
+    "retry": "Try again"
   }
 }

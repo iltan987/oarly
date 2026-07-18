@@ -326,6 +326,8 @@
     "noShow": "Gelmedi",
     "attended": "Katıldı",
     "cancelClosed": "İptal kapalı",
-    "cancelledToast": "Rezervasyon iptal edildi"
+    "cancelledToast": "Rezervasyon iptal edildi",
+    "loadError": "Bu sayfa yüklenemedi.",
+    "retry": "Tekrar dene"
   }
 }
