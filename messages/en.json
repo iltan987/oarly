@@ -10,6 +10,17 @@
     "regular": "Cash",
     "multisport": "MultiSport"
   },
+  "home": {
+    "heroTitle": "Book the boat, skip the group chat",
+    "heroSubtitle": "Session booking for rowing clubs — seats, waitlists and payment, sorted.",
+    "createAccount": "Create an account",
+    "signedInAs": "Signed in as {email}",
+    "myClubs": "Your clubs",
+    "noClubs": "You're not a member of any club yet.",
+    "statusPending": "Pending",
+    "statusSuspended": "Suspended",
+    "statusRejected": "Not approved"
+  },
   "club": {
     "joinCta": "Join this club",
     "joinTitle": "Join {name}",

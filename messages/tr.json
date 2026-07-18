@@ -10,6 +10,17 @@
     "regular": "Nakit",
     "multisport": "MultiSport"
   },
+  "home": {
+    "heroTitle": "Tekneyi ayırt, grup sohbetini boşver",
+    "heroSubtitle": "Kürek kulüpleri için seans rezervasyonu — koltuklar, yedek liste ve ödeme tek yerde.",
+    "createAccount": "Hesap oluştur",
+    "signedInAs": "{email} olarak giriş yaptın",
+    "myClubs": "Kulüplerin",
+    "noClubs": "Henüz bir kulübe üye değilsin.",
+    "statusPending": "Beklemede",
+    "statusSuspended": "Askıda",
+    "statusRejected": "Onaylanmadı"
+  },
   "club": {
     "joinCta": "Kulübe katıl",
     "joinTitle": "{name} kulübüne katıl",
