@@ -1,17 +1,11 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
 
+import { MemberTabs } from '@/components/member-tabs';
 import { SignOutButton } from '@/components/sign-out-button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { env } from '@/env';
 import { apexUrl, parseAppOrigin } from '@/lib/urls';
-
-// Public tenant paths (slug is in the hostname — see proxy.ts). Never /s/{slug}/...
-const tabs = [
-  { key: 'book', href: '/book', labelKey: 'book' },
-  { key: 'bookings', href: '/bookings', labelKey: 'myBookings' },
-] as const;
 
 function initials(name: string): string {
   return name
@@ -23,13 +17,10 @@ function initials(name: string): string {
 }
 
 export async function MemberHeader({
-  active,
   club,
 }: {
-  active: 'book' | 'bookings';
   club: { name: string; logoUrl: string | null };
 }) {
-  const t = await getTranslations('booking');
   const signOutUrl = apexUrl('/sign-in?signedout=1', parseAppOrigin(env.APP_URL));
   return (
     <header className="mb-6 flex flex-col gap-4">
@@ -48,25 +39,7 @@ export async function MemberHeader({
           <SignOutButton redirectTo={signOutUrl} />
         </div>
       </div>
-      <nav className="flex flex-wrap gap-1 border-b">
-        {tabs.map((tab) => {
-          const isActive = tab.key === active;
-          return (
-            <Link
-              key={tab.key}
-              href={tab.href}
-              aria-current={isActive ? 'page' : undefined}
-              className={`border-b-2 px-3 py-2 text-sm ${
-                isActive
-                  ? 'border-brand font-medium text-brand'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {t(tab.labelKey)}
-            </Link>
-          );
-        })}
-      </nav>
+      <MemberTabs />
     </header>
   );
 }
