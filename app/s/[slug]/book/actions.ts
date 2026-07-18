@@ -6,7 +6,7 @@ import { db } from '@/db';
 import { bookSeat } from '@/lib/booking';
 import { requireMember } from '@/lib/membership';
 
-export type BookFormState = { status: 'idle' | 'ok' | 'error'; error: string | null };
+export type BookFormState = { status: 'idle' | 'ok' | 'error'; error: string | null; outcome?: 'seated' | 'waitlisted' | null };
 
 const bookInputSchema = z.object({
   windowId: z.uuid(),
@@ -39,5 +39,5 @@ export async function bookSeatAction(slug: string, _prev: BookFormState, formDat
   if (!result.ok) return { status: 'error', error: result.error };
   revalidatePath(`/s/${slug}/book`);
   revalidatePath(`/s/${slug}/bookings`);
-  return { status: 'ok', error: null };
+  return { status: 'ok', error: null, outcome: result.outcome };
 }

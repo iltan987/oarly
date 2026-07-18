@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
+import { MemberHeader } from '@/components/member-header';
 import { db } from '@/db';
 import { skillLevels } from '@/db/schema';
 import { todayInClub } from '@/lib/date-tz';
@@ -40,13 +40,11 @@ export default async function BookPage({ params }: { params: Promise<{ slug: str
   }, { fromDateISO, days: BOOK_DAYS });
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="font-heading text-lg font-semibold">{t('title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('description', { days: BOOK_DAYS })}</p>
-        </div>
-        <Link href={`/s/${slug}/bookings`} className="text-sm underline">{t('myBookings')}</Link>
+    <div className="mx-auto max-w-2xl p-4">
+      <MemberHeader active="book" club={{ name: club.name, logoUrl: club.logoUrl }} />
+      <div className="mb-4">
+        <h1 className="font-heading text-xl font-semibold">{t('title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('description', { days: BOOK_DAYS })}</p>
       </div>
       <BookCalendar slug={slug} days={days} timeZone={club.timezone} />
     </div>

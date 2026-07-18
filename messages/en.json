@@ -289,6 +289,12 @@
     "waitlisted": "Waitlisted #{position}",
     "opensOn": "Opens {date}",
     "paymentLabel": "Payment",
+    "paymentRegular": "Cash",
+    "paymentMultisport": "MultiSport",
+    "bookedToast": "Seat booked",
+    "waitlistedToast": "Added to the waitlist",
+    "soon": "Soon",
+    "locked": "Locked",
     "cancel": "Cancel",
     "myBookings": "My bookings",
     "reasons": {

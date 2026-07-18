@@ -289,6 +289,12 @@
     "waitlisted": "Bekleme listesi #{position}",
     "opensOn": "Açılış: {date}",
     "paymentLabel": "Ödeme",
+    "paymentRegular": "Nakit",
+    "paymentMultisport": "MultiSport",
+    "bookedToast": "Yerin ayrıldı",
+    "waitlistedToast": "Bekleme listesine eklendin",
+    "soon": "Yakında",
+    "locked": "Kilitli",
     "cancel": "Vazgeç",
     "myBookings": "Rezervasyonlarım",
     "reasons": {
