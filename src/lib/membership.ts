@@ -43,3 +43,22 @@ export async function requireOwner(
   if (!membership || membership.role !== 'owner' || membership.status !== 'approved') notFound();
   return { club, user, membership };
 }
+
+/** Require the signed-in user to be an approved, non-banned member of `slug` (any role). */
+export async function requireMember(
+  slug: string,
+  returnPath = '/book',
+): Promise<{ club: Club; user: CurrentUser; membership: Membership }> {
+  const origin = parseAppOrigin(env.APP_URL);
+  const club = await getClubBySlug(slug);
+  if (!club) notFound();
+  const user = await getCurrentUser();
+  if (!user) {
+    const back = `${clubUrl(slug, origin)}${returnPath}`;
+    redirect(`${apexUrl('/sign-in', origin)}?redirect=${encodeURIComponent(back)}`);
+  }
+  const membership = await self.getMembership(appDb, user.id, club.id);
+  const bannedActive = membership?.bannedUntil != null && membership.bannedUntil.getTime() > Date.now();
+  if (!membership || membership.status !== 'approved' || bannedActive) notFound();
+  return { club, user, membership };
+}

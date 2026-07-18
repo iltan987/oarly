@@ -274,5 +274,47 @@
       "forceOpen": "Açık yap",
       "reset": "Varsayılana dön"
     }
+  },
+  "booking": {
+    "title": "Antrenman ayırt",
+    "description": "Önümüzdeki {days} gün için yer ayırtın.",
+    "closedHoliday": "Kapalı — resmi tatil",
+    "closedByClub": "Kapalı",
+    "noSessions": "Bu gün seans yok",
+    "seatsLeft": "{capacity} koltuktan {count} tanesi boş",
+    "full": "Dolu",
+    "book": "Ayırt",
+    "joinWaitlist": "Bekleme listesine gir",
+    "booked": "Yerin ayrıldı",
+    "waitlisted": "Bekleme listesi #{position}",
+    "opensOn": "Açılış: {date}",
+    "paymentLabel": "Ödeme",
+    "cancel": "Vazgeç",
+    "myBookings": "Rezervasyonlarım",
+    "reasons": {
+      "not_approved": "Üyelik onaylanmadı",
+      "banned": "Geçici olarak askıya alındı",
+      "skill_too_low": "Daha yüksek bir seviye gerekiyor",
+      "payment_not_allowed": "Bu teknede bu ödeme türü kullanılamaz"
+    },
+    "errors": {
+      "ineligible": "Bu seansı ayırtamazsınız.",
+      "already_booked_this_slot": "Bu saatte zaten bir rezervasyonunuz var.",
+      "no_session": "Bu seans artık mevcut değil.",
+      "generic": "Bir şeyler ters gitti. Lütfen tekrar deneyin."
+    },
+    "myTitle": "Rezervasyonlarım",
+    "upcoming": "Yaklaşan",
+    "past": "Geçmiş",
+    "none": "Henüz bir şey yok.",
+    "seated": "Ayrıldı",
+    "back": "Antrenman ayırt",
+    "cancelErrors": {
+      "not_found": "Rezervasyon bulunamadı.",
+      "not_active": "Bu rezervasyon artık aktif değil.",
+      "cancel_disabled": "Bu kulüpte kendi rezervasyonunu iptal kapalı.",
+      "cutoff_passed": "Bu rezervasyonu iptal etmek için çok geç.",
+      "generic": "İptal edilemedi. Lütfen tekrar deneyin."
+    }
   }
 }

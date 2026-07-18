@@ -70,4 +70,14 @@ describe.skipIf(!url)('materializeSlot', () => {
     const [slot] = await db.select().from(schema.slots).where(eq(schema.slots.id, r.slotId));
     expect(slot.clubId).toBe(c.id);
   });
+
+  it('creates the slot with no sessions when given no boats (guarded empty insert)', async () => {
+    const c = await newClub('mat-empty');
+    const w = await newWindow(c.id);
+    const startAt = new Date('2026-07-22T05:00:00.000Z');
+    const r = await materializeSlot(db, { clubId: c.id, dateISO: '2026-07-22', startAt, endAt: new Date('2026-07-22T06:00:00.000Z'), windowId: w.id, boats: [] });
+    expect(r.sessions).toHaveLength(0);
+    const [slot] = await db.select().from(schema.slots).where(eq(schema.slots.id, r.slotId));
+    expect(slot.clubId).toBe(c.id);
+  });
 });
