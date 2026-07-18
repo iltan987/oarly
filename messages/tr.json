@@ -76,8 +76,8 @@
     "errorConsent": "Devam etmek için KVKK metnini kabul etmelisin.",
     "errorGeneric": "Bir şeyler ters gitti. Lütfen tekrar dene.",
     "signedOutToast": "Çıkış yapıldı",
-    "googleError": "Google ile giriş yapılamadı. Lütfen tekrar deneyin.",
-    "errorAccountNotLinked": "Bu e-posta parola ile giriş kullanıyor. Yukarıdan parolanızla giriş yapın."
+    "googleError": "Google ile giriş yapılamadı. Lütfen tekrar dene.",
+    "errorAccountNotLinked": "Bu e-posta parola ile giriş kullanıyor. Yukarıdan parolanla giriş yap."
   },
   "privacy": {
     "title": "Gizlilik ve KVKK",
