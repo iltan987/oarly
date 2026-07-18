@@ -4,7 +4,7 @@ import type { DB } from '@/db';
 import { bookings, clubs } from '@/db/schema';
 
 import { type AllowedPayment, type CalendarDay, computeCalendar, type VirtualSession, type VirtualSlot } from './calendar';
-import { isBookingOpen } from './calendar-rules';
+import { bookingOpensAt, isBookingOpen } from './calendar-rules';
 import { checkEligibility, type EligibilityResult } from './eligibility';
 
 export type PaymentType = 'regular' | 'multisport';
@@ -23,6 +23,7 @@ export type MemberVirtualSession = VirtualSession & {
   paymentChoices: PaymentType[];
   myStatus: 'none' | 'booked' | 'waitlisted';
   myQueuePosition: number | null;
+  bookingOpensAt: Date | null;
 };
 export type MemberVirtualSlot = Omit<VirtualSlot, 'sessions'> & { sessions: MemberVirtualSession[] };
 export type MemberCalendarDay = Omit<CalendarDay, 'slots'> & { slots: MemberVirtualSlot[] };
@@ -80,6 +81,7 @@ export async function computeMemberCalendar(
           ...s,
           seatsLeft: Math.max(0, s.capacity - seatedCount),
           bookingOpen: isBookingOpen({ now, startAt: slot.startAt, bookingOpenMode: club.bookingOpenMode, bookingOpenLeadDays: club.bookingOpenLeadDays }),
+          bookingOpensAt: bookingOpensAt({ startAt: slot.startAt, bookingOpenMode: club.bookingOpenMode, bookingOpenLeadDays: club.bookingOpenLeadDays }),
           eligibility: checkEligibility({ membershipStatus: member.membershipStatus, bannedUntil: member.bannedUntil, memberSkillRank: member.skillRank, boatMinSkillRank: s.minSkillRank, boatAllowedPayment: s.allowedPayment, paymentType: defaultPayment, now }),
           defaultPayment,
           paymentChoices: paymentChoicesFor(s.allowedPayment),

@@ -36,3 +36,19 @@ export function isBookingOpen(input: {
   const opensAt = startAt.getTime() - bookingOpenLeadDays * DAY_MS;
   return now.getTime() >= opensAt;
 }
+
+/**
+ * The instant a session's booking window opens, or null when it is not lead-gated
+ * (always-open clubs, or lead mode without a configured lead — mirrors isBookingOpen's
+ * guards). Used to tell the member "Opens {date}" instead of a bare dash.
+ */
+export function bookingOpensAt(input: {
+  startAt: Date;
+  bookingOpenMode: 'always' | 'lead';
+  bookingOpenLeadDays: number | null;
+}): Date | null {
+  const { startAt, bookingOpenMode, bookingOpenLeadDays } = input;
+  if (bookingOpenMode === 'always') return null;
+  if (bookingOpenLeadDays == null) return null;
+  return new Date(startAt.getTime() - bookingOpenLeadDays * DAY_MS);
+}

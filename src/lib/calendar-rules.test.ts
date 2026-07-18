@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isBookingOpen, resolveDateOpen } from './calendar-rules';
+import { bookingOpensAt, isBookingOpen, resolveDateOpen } from './calendar-rules';
 
 const D = '2026-07-20';
 
@@ -47,5 +47,19 @@ describe('isBookingOpen', () => {
 
   it('lead mode with null lead days is treated as not open (defensive)', () => {
     expect(isBookingOpen({ now: new Date('2026-07-01T00:00:00Z'), startAt, bookingOpenMode: 'lead', bookingOpenLeadDays: null })).toBe(false);
+  });
+});
+
+describe('bookingOpensAt', () => {
+  it('returns null when the club is always open', () => {
+    expect(bookingOpensAt({ startAt: new Date('2026-08-01T06:00:00Z'), bookingOpenMode: 'always', bookingOpenLeadDays: null })).toBeNull();
+  });
+
+  it('returns null in lead mode when lead days is missing', () => {
+    expect(bookingOpensAt({ startAt: new Date('2026-08-01T06:00:00Z'), bookingOpenMode: 'lead', bookingOpenLeadDays: null })).toBeNull();
+  });
+
+  it('returns startAt minus the lead days in lead mode', () => {
+    expect(bookingOpensAt({ startAt: new Date('2026-08-01T06:00:00Z'), bookingOpenMode: 'lead', bookingOpenLeadDays: 2 })).toEqual(new Date('2026-07-30T06:00:00Z'));
   });
 });
