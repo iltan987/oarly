@@ -1,9 +1,10 @@
 'use client';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { type PoliciesState, savePoliciesAction } from './actions';
 
@@ -24,19 +25,29 @@ type Labels = {
 };
 
 const initial: PoliciesState = { status: 'idle' };
-const selectClass = 'h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs';
 
 export function PoliciesForm({ slug, settings, labels }: { slug: string; settings: Settings; labels: Labels }) {
   const [state, formAction] = useActionState(savePoliciesAction.bind(null, slug), initial);
+  const [bookingOpenMode, setBookingOpenMode] = useState(settings.bookingOpenMode);
+  const [noshowPenalty, setNoshowPenalty] = useState(settings.noshowPenalty);
+  const [multisportMode, setMultisportMode] = useState(settings.multisportMode);
 
   return (
     <form action={formAction} className="flex max-w-md flex-col gap-4">
+      <input type="hidden" name="bookingOpenMode" value={bookingOpenMode} />
+      <input type="hidden" name="noshowPenalty" value={noshowPenalty} />
+      <input type="hidden" name="multisportMode" value={multisportMode} />
       <Field>
         <FieldLabel htmlFor="bookingOpenMode">{labels.bookingOpen}</FieldLabel>
-        <select id="bookingOpenMode" name="bookingOpenMode" defaultValue={settings.bookingOpenMode} className={selectClass}>
-          <option value="always">{labels.bookingOpenAlways}</option>
-          <option value="lead">{labels.bookingOpenLead}</option>
-        </select>
+        <Select value={bookingOpenMode} onValueChange={(v) => setBookingOpenMode(v as Settings['bookingOpenMode'])}>
+          <SelectTrigger id="bookingOpenMode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="always">{labels.bookingOpenAlways}</SelectItem>
+            <SelectItem value="lead">{labels.bookingOpenLead}</SelectItem>
+          </SelectContent>
+        </Select>
       </Field>
       <Field>
         <FieldLabel htmlFor="bookingOpenLeadDays">{labels.leadDays}</FieldLabel>
@@ -52,21 +63,31 @@ export function PoliciesForm({ slug, settings, labels }: { slug: string; setting
       </Field>
       <Field>
         <FieldLabel htmlFor="noshowPenalty">{labels.noshow}</FieldLabel>
-        <select id="noshowPenalty" name="noshowPenalty" defaultValue={settings.noshowPenalty} className={selectClass}>
-          <option value="off">{labels.noshowOff}</option>
-          <option value="2d">{labels.noshow2d}</option>
-          <option value="1w">{labels.noshow1w}</option>
-          <option value="2w">{labels.noshow2w}</option>
-          <option value="1m">{labels.noshow1m}</option>
-          <option value="never">{labels.noshowNever}</option>
-        </select>
+        <Select value={noshowPenalty} onValueChange={(v) => setNoshowPenalty(v as Settings['noshowPenalty'])}>
+          <SelectTrigger id="noshowPenalty">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="off">{labels.noshowOff}</SelectItem>
+            <SelectItem value="2d">{labels.noshow2d}</SelectItem>
+            <SelectItem value="1w">{labels.noshow1w}</SelectItem>
+            <SelectItem value="2w">{labels.noshow2w}</SelectItem>
+            <SelectItem value="1m">{labels.noshow1m}</SelectItem>
+            <SelectItem value="never">{labels.noshowNever}</SelectItem>
+          </SelectContent>
+        </Select>
       </Field>
       <Field>
         <FieldLabel htmlFor="multisportMode">{labels.multisport}</FieldLabel>
-        <select id="multisportMode" name="multisportMode" defaultValue={settings.multisportMode} className={selectClass}>
-          <option value="equal">{labels.multisportEqual}</option>
-          <option value="priority">{labels.multisportPriority}</option>
-        </select>
+        <Select value={multisportMode} onValueChange={(v) => setMultisportMode(v as Settings['multisportMode'])}>
+          <SelectTrigger id="multisportMode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="equal">{labels.multisportEqual}</SelectItem>
+            <SelectItem value="priority">{labels.multisportPriority}</SelectItem>
+          </SelectContent>
+        </Select>
         <p className="text-xs text-muted-foreground">{labels.multisportHint}</p>
       </Field>
       <label className="flex items-center gap-2 text-sm">

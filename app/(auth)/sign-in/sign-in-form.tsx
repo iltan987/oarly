@@ -43,6 +43,9 @@ export function SignInForm({
     } else if (errorCode) {
       toast.error(t('googleError'));
     }
+    if (window.history?.replaceState && window.location.search) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

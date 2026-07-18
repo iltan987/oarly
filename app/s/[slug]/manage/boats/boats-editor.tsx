@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { createBoatAction, setBoatActiveAction, updateBoatAction } from './actions';
 
@@ -16,11 +17,23 @@ type Labels = {
   inactive: string; empty: string; needSkillLevels: string;
 };
 
-const selectClass = 'h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs';
+const NONE_VALUE = 'none';
 
 function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Level[]; labels: Labels; formId: string }) {
+  const [minSkillLevelId, setMinSkillLevelId] = useState(boat?.minSkillLevelId ?? NONE_VALUE);
+  const [allowedPayment, setAllowedPayment] = useState(boat?.allowedPayment ?? 'both');
+
   return (
     <div className="grid grid-cols-2 gap-3">
+      {/*
+        shadcn/Base UI Select is controlled UI and does not serialize to
+        FormData on its own — these hidden inputs are the source of truth for
+        the submitted values. Base UI Select can't use an empty-string item
+        value, so "no minimum" is represented as the "none" sentinel here and
+        mapped back to '' for the server action.
+      */}
+      <input type="hidden" name="minSkillLevelId" value={minSkillLevelId === NONE_VALUE ? '' : minSkillLevelId} />
+      <input type="hidden" name="allowedPayment" value={allowedPayment} />
       <Field>
         <FieldLabel htmlFor={`name-${formId}`}>{labels.name}</FieldLabel>
         <Input id={`name-${formId}`} name="name" defaultValue={boat?.name} required />
@@ -31,18 +44,28 @@ function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Lev
       </Field>
       <Field>
         <FieldLabel htmlFor={`minSkillLevelId-${formId}`}>{labels.minSkill}</FieldLabel>
-        <select id={`minSkillLevelId-${formId}`} name="minSkillLevelId" defaultValue={boat?.minSkillLevelId ?? ''} className={selectClass}>
-          <option value="">{labels.noMinSkill}</option>
-          {levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
+        <Select value={minSkillLevelId} onValueChange={(v) => setMinSkillLevelId(v as string)}>
+          <SelectTrigger id={`minSkillLevelId-${formId}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NONE_VALUE}>{labels.noMinSkill}</SelectItem>
+            {levels.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </Field>
       <Field>
         <FieldLabel htmlFor={`allowedPayment-${formId}`}>{labels.payment}</FieldLabel>
-        <select id={`allowedPayment-${formId}`} name="allowedPayment" defaultValue={boat?.allowedPayment ?? 'both'} className={selectClass}>
-          <option value="both">{labels.paymentBoth}</option>
-          <option value="regular_only">{labels.paymentRegular}</option>
-          <option value="multisport_only">{labels.paymentMultisport}</option>
-        </select>
+        <Select value={allowedPayment} onValueChange={(v) => setAllowedPayment(v as Boat['allowedPayment'])}>
+          <SelectTrigger id={`allowedPayment-${formId}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="both">{labels.paymentBoth}</SelectItem>
+            <SelectItem value="regular_only">{labels.paymentRegular}</SelectItem>
+            <SelectItem value="multisport_only">{labels.paymentMultisport}</SelectItem>
+          </SelectContent>
+        </Select>
       </Field>
       <Field className="col-span-2">
         <FieldLabel htmlFor={`minAttendance-${formId}`}>{labels.minAttendance}</FieldLabel>

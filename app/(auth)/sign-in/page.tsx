@@ -15,7 +15,10 @@ export default async function SignInPage({
   const { redirect, signedout, error } = await searchParams;
   const t = await getTranslations('auth');
   const dest = safeRedirect(redirect, parseAppOrigin(env.APP_URL), '/');
-  if (await getCurrentUser()) redirectTo(dest);
+  if (await getCurrentUser()) {
+    const guardDest = /^\/sign-(in|up)/.test(dest) ? '/' : dest;
+    redirectTo(guardDest);
+  }
   return (
     <SignInForm
       title={t('signInTitle')}

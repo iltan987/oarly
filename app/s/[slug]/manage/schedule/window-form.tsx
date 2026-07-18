@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { saveWindowAction, type WindowFormState } from './actions';
 
@@ -16,7 +17,6 @@ type Labels = {
 };
 
 const initial: WindowFormState = { status: 'idle', error: null };
-const selectClass = 'h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs';
 
 export function WindowForm({ slug, weekday, window, boats, labels, onClose }: {
   slug: string; weekday: number; window?: WindowData; boats: Boat[]; labels: Labels; onClose: () => void;
@@ -49,14 +49,23 @@ export function WindowForm({ slug, weekday, window, boats, labels, onClose }: {
         <span className="text-sm font-medium">{labels.boats}</span>
         {rows.map((row, i) => (
           <div key={i} className="flex items-end gap-2">
-            <select
-              name="boatTypeId"
+            {/*
+              shadcn/Base UI Select is controlled UI and does not serialize to
+              FormData on its own — this hidden input is the source of truth
+              for the submitted value, read positionally alongside `quantity`.
+            */}
+            <input type="hidden" name="boatTypeId" value={row.boatTypeId} />
+            <Select
               value={row.boatTypeId}
-              onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, boatTypeId: e.target.value } : r)))}
-              className={selectClass}
+              onValueChange={(v) => setRows(rows.map((r, j) => (j === i ? { ...r, boatTypeId: v as string } : r)))}
             >
-              {boats.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {boats.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <Input
               type="number"
               name="quantity"
