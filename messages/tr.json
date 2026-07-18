@@ -303,6 +303,19 @@
       "already_booked_this_slot": "Bu saatte zaten bir rezervasyonunuz var.",
       "no_session": "Bu seans artık mevcut değil.",
       "generic": "Bir şeyler ters gitti. Lütfen tekrar deneyin."
+    },
+    "myTitle": "Rezervasyonlarım",
+    "upcoming": "Yaklaşan",
+    "past": "Geçmiş",
+    "none": "Henüz bir şey yok.",
+    "seated": "Ayrıldı",
+    "back": "Antrenman ayırt",
+    "cancelErrors": {
+      "not_found": "Rezervasyon bulunamadı.",
+      "not_active": "Bu rezervasyon artık aktif değil.",
+      "cancel_disabled": "Bu kulüpte kendi rezervasyonunu iptal kapalı.",
+      "cutoff_passed": "Bu rezervasyonu iptal etmek için çok geç.",
+      "generic": "İptal edilemedi. Lütfen tekrar deneyin."
     }
   }
 }

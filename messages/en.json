@@ -303,6 +303,19 @@
       "already_booked_this_slot": "You already have a booking at this time.",
       "no_session": "That session is no longer available.",
       "generic": "Something went wrong. Please try again."
+    },
+    "myTitle": "My bookings",
+    "upcoming": "Upcoming",
+    "past": "Past",
+    "none": "Nothing here yet.",
+    "seated": "Booked",
+    "back": "Book a session",
+    "cancelErrors": {
+      "not_found": "Booking not found.",
+      "not_active": "This booking is no longer active.",
+      "cancel_disabled": "Self-cancellation is turned off for this club.",
+      "cutoff_passed": "Too late to cancel this booking.",
+      "generic": "Could not cancel. Please try again."
     }
   }
 }
