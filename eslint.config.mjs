@@ -59,6 +59,17 @@ const eslintConfig = defineConfig([
     },
   },
 
+  // shadcn CLI-generated primitives: we never hand-author these (see the ui/
+  // hands-off rule), so don't enforce our import-sort ordering on them —
+  // `shadcn add` output would otherwise need an eslint --fix pass every time.
+  {
+    files: ["src/components/ui/**"],
+    rules: {
+      "simple-import-sort/imports": "off",
+      "simple-import-sort/exports": "off",
+    },
+  },
+
   // Vitest rules for test files.
   {
     files: ["**/*.test.{ts,tsx}", "**/*.integration.test.ts"],
