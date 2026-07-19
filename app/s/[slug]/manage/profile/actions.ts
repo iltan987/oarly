@@ -6,13 +6,15 @@ import { addSocial, removeSocial, updateClubProfile } from '@/lib/club-profile';
 import { requireOwner } from '@/lib/membership';
 import { clubProfileSchema, socialSchema } from '@/lib/schemas';
 
+export type ManageActionResult = { ok: true } | { ok: false };
+
 function refresh(slug: string) {
   revalidatePath(`/s/${slug}/manage/profile`);
   revalidatePath(`/s/${slug}/manage`);
   revalidatePath(`/s/${slug}`); // public club page + metadata
 }
 
-export async function saveProfileAction(slug: string, formData: FormData) {
+export async function saveProfileAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club } = await requireOwner(slug, '/manage/profile');
   const parsed = clubProfileSchema.safeParse({
     name: String(formData.get('name') ?? '').trim(),
@@ -23,9 +25,9 @@ export async function saveProfileAction(slug: string, formData: FormData) {
     headingFont: formData.get('headingFont') ?? 'default',
     logoUrl: String(formData.get('logoUrl') ?? '').trim() || undefined,
   });
-  if (!parsed.success) return;
+  if (!parsed.success) return { ok: false };
   const d = parsed.data;
-  await updateClubProfile(db, club.id, {
+  const ok = await updateClubProfile(db, club.id, {
     name: d.name,
     tagline: d.tagline ?? null,
     description: d.description ?? null,
@@ -34,22 +36,26 @@ export async function saveProfileAction(slug: string, formData: FormData) {
     headingFont: d.headingFont,
     logoUrl: d.logoUrl ? d.logoUrl : null,
   });
+  if (!ok) return { ok: false };
   refresh(slug);
+  return { ok: true };
 }
 
-export async function addSocialAction(slug: string, formData: FormData) {
+export async function addSocialAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club } = await requireOwner(slug, '/manage/profile');
   const parsed = socialSchema.safeParse({
     platform: String(formData.get('platform') ?? '').trim(),
     handle: String(formData.get('handle') ?? '').trim(),
   });
-  if (!parsed.success) return;
+  if (!parsed.success) return { ok: false };
   await addSocial(db, { clubId: club.id, ...parsed.data });
   refresh(slug);
+  return { ok: true };
 }
 
-export async function removeSocialAction(slug: string, formData: FormData) {
+export async function removeSocialAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club } = await requireOwner(slug, '/manage/profile');
-  await removeSocial(db, { clubId: club.id, socialId: String(formData.get('socialId')) });
-  refresh(slug);
+  const ok = await removeSocial(db, { clubId: club.id, socialId: String(formData.get('socialId')) });
+  if (ok) refresh(slug);
+  return { ok };
 }

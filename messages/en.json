@@ -187,7 +187,9 @@
       "delete": "Delete",
       "deleteConfirm": "Delete this level? {members} member(s) and {boats} boat(s) reference it and will be reset to no level.",
       "deleteConfirmYes": "Delete",
-      "empty": "No skill levels yet."
+      "empty": "No skill levels yet.",
+      "saved": "Skill level saved.",
+      "deleted": "Skill level deleted."
     },
     "boats": {
       "navLabel": "Boats",
@@ -210,7 +212,8 @@
       "activate": "Activate",
       "inactive": "Inactive",
       "empty": "No boats yet.",
-      "needSkillLevels": "Tip: add skill levels first if you want to require a minimum level."
+      "needSkillLevels": "Tip: add skill levels first if you want to require a minimum level.",
+      "saved": "Boat saved."
     },
     "schedule": {
       "navLabel": "Schedule",
@@ -264,7 +267,9 @@
       "socialAdd": "Add link",
       "socialRemove": "Remove",
       "save": "Save profile",
-      "saved": "Profile saved."
+      "saved": "Profile saved.",
+      "socialAdded": "Social link added.",
+      "socialRemoved": "Social link removed."
     },
     "policies": {
       "navLabel": "Policies",
