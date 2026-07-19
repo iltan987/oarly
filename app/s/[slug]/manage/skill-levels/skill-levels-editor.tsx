@@ -60,7 +60,7 @@ export function SkillLevelsEditor({ slug, levels, labels, confirms }: {
                 </div>
               ) : (
                 <>
-                  <span className="min-w-0 flex-1 truncate font-medium">{lvl.name}</span>
+                  <span className="min-w-0 flex-1 break-words font-medium">{lvl.name}</span>
                   <div className="flex shrink-0 items-center gap-1">
                     <ArrowForm slug={slug} id={lvl.id} direction="up" disabled={i === 0} label={labels.moveUp}>↑</ArrowForm>
                     <ArrowForm slug={slug} id={lvl.id} direction="down" disabled={i === levels.length - 1} label={labels.moveDown}>↓</ArrowForm>
