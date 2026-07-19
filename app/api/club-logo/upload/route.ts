@@ -32,7 +32,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
     return NextResponse.json(json);
   } catch (error) {
-    const message = (error as Error).message;
-    return NextResponse.json({ error: message }, { status: message === 'Not authorized' ? 401 : 400 });
+    // Auth failures get a 401; everything else is a generic 400 — the raw Blob
+    // error message is logged, not echoed to the client (avoids info-leak).
+    if ((error as Error).message === 'Not authorized') {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 401 });
+    }
+    console.error('club-logo upload failed:', error);
+    return NextResponse.json({ error: 'Upload failed' }, { status: 400 });
   }
 }
