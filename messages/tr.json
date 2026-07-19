@@ -187,7 +187,9 @@
       "delete": "Sil",
       "deleteConfirm": "Bu seviye silinsin mi? {members} üye ve {boats} tekne bu seviyeye bağlı ve seviyesiz olarak sıfırlanacak.",
       "deleteConfirmYes": "Sil",
-      "empty": "Henüz seviye yok."
+      "empty": "Henüz seviye yok.",
+      "saved": "Seviye kaydedildi.",
+      "deleted": "Seviye silindi."
     },
     "boats": {
       "navLabel": "Tekneler",
@@ -210,7 +212,8 @@
       "activate": "Aktifleştir",
       "inactive": "Pasif",
       "empty": "Henüz tekne yok.",
-      "needSkillLevels": "İpucu: asgari seviye şartı koymak istiyorsanız önce seviye ekleyin."
+      "needSkillLevels": "İpucu: asgari seviye şartı koymak istiyorsanız önce seviye ekleyin.",
+      "saved": "Tekne kaydedildi."
     },
     "schedule": {
       "navLabel": "Program",
@@ -264,7 +267,9 @@
       "socialAdd": "Bağlantı ekle",
       "socialRemove": "Kaldır",
       "save": "Profili kaydet",
-      "saved": "Profil kaydedildi."
+      "saved": "Profil kaydedildi.",
+      "socialAdded": "Bağlantı eklendi.",
+      "socialRemoved": "Bağlantı kaldırıldı."
     },
     "policies": {
       "navLabel": "Kurallar",

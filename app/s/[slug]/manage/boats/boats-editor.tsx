@@ -1,13 +1,16 @@
 'use client';
-import { useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { createBoatAction, setBoatActiveAction, updateBoatAction } from './actions';
+import { createBoatAction, type ManageActionResult, setBoatActiveAction, updateBoatAction } from './actions';
 
+type BoatAction = (slug: string, prev: ManageActionResult | null, formData: FormData) => Promise<ManageActionResult>;
 type Level = { id: string; name: string };
 type Boat = { id: string; name: string; seats: number; minSkillLevelId: string | null; allowedPayment: 'regular_only' | 'multisport_only' | 'both'; minAttendance: number | null; active: boolean };
 type Labels = {
@@ -75,6 +78,62 @@ function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Lev
   );
 }
 
+// One boat add/edit form. Closes (via onSuccess) only after the server action
+// reports ok, and toasts success/failure — so a rejected save (validation,
+// skill-not-in-club, missing row) no longer looks like it worked.
+function BoatForm({ slug, boat, levels, labels, action, className, onSuccess, onCancel }: {
+  slug: string; boat?: Boat; levels: Level[]; labels: Labels; action: BoatAction;
+  className: string; onSuccess: () => void; onCancel: () => void;
+}) {
+  const t = useTranslations('manage');
+  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(action.bind(null, slug), null);
+  // Gate on the state object's identity (useActionState returns a fresh object
+  // per submission) so the toast/close fires once per result and not again when
+  // an unrelated re-render changes the `onSuccess`/`t` identities.
+  const handledRef = useRef<ManageActionResult | null>(null);
+
+  useEffect(() => {
+    if (state === null || state === handledRef.current) return;
+    handledRef.current = state;
+    if (state.ok) {
+      toast.success(t('boats.saved'));
+      onSuccess();
+    } else {
+      toast.error(t('actionError'));
+    }
+  }, [state, t, onSuccess]);
+
+  return (
+    <form action={formAction} className={className}>
+      {boat && <input type="hidden" name="boatId" value={boat.id} />}
+      <BoatFields boat={boat} levels={levels} labels={labels} formId={boat?.id ?? 'new'} />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={pending}>{labels.save}</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>{labels.cancel}</Button>
+      </div>
+    </form>
+  );
+}
+
+function BoatActiveButton({ slug, boatId, active, label }: { slug: string; boatId: string; active: boolean; label: string }) {
+  const t = useTranslations('manage');
+  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(setBoatActiveAction.bind(null, slug), null);
+
+  useEffect(() => {
+    if (state === null) return;
+    if (state.ok) toast.success(t('boats.saved'));
+    else toast.error(t('actionError'));
+  }, [state, t]);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="boatId" value={boatId} />
+      <input type="hidden" name="active" value={active ? 'false' : 'true'} />
+      <Button type="submit" size="sm" variant="ghost" disabled={pending}>{label}</Button>
+    </form>
+  );
+}
+
 export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boats: Boat[]; levels: Level[]; labels: Labels }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -87,14 +146,11 @@ export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boa
           {boats.map((b) => (
             <li key={b.id} className="rounded-lg border p-3">
               {editing === b.id ? (
-                <form action={updateBoatAction.bind(null, slug)} className="flex flex-col gap-3" onSubmit={() => setEditing(null)}>
-                  <input type="hidden" name="boatId" value={b.id} />
-                  <BoatFields boat={b} levels={levels} labels={labels} formId={b.id} />
-                  <div className="flex gap-2">
-                    <Button type="submit" size="sm">{labels.save}</Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>{labels.cancel}</Button>
-                  </div>
-                </form>
+                <BoatForm
+                  slug={slug} boat={b} levels={levels} labels={labels}
+                  action={updateBoatAction} className="flex flex-col gap-3"
+                  onSuccess={() => setEditing(null)} onCancel={() => setEditing(null)}
+                />
               ) : (
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -103,11 +159,7 @@ export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boa
                   </div>
                   <div className="flex items-center gap-2">
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(b.id)}>{labels.edit}</Button>
-                    <form action={setBoatActiveAction.bind(null, slug)}>
-                      <input type="hidden" name="boatId" value={b.id} />
-                      <input type="hidden" name="active" value={b.active ? 'false' : 'true'} />
-                      <Button type="submit" size="sm" variant="ghost">{b.active ? labels.deactivate : labels.activate}</Button>
-                    </form>
+                    <BoatActiveButton slug={slug} boatId={b.id} active={b.active} label={b.active ? labels.deactivate : labels.activate} />
                   </div>
                 </div>
               )}
@@ -116,13 +168,11 @@ export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boa
         </ul>
       )}
       {adding ? (
-        <form action={createBoatAction.bind(null, slug)} className="flex flex-col gap-3 rounded-lg border p-3" onSubmit={() => setAdding(false)}>
-          <BoatFields levels={levels} labels={labels} formId="new" />
-          <div className="flex gap-2">
-            <Button type="submit" size="sm">{labels.save}</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>{labels.cancel}</Button>
-          </div>
-        </form>
+        <BoatForm
+          slug={slug} levels={levels} labels={labels}
+          action={createBoatAction} className="flex flex-col gap-3 rounded-lg border p-3"
+          onSuccess={() => setAdding(false)} onCancel={() => setAdding(false)}
+        />
       ) : (
         <Button type="button" variant="outline" onClick={() => setAdding(true)}>{labels.add}</Button>
       )}
