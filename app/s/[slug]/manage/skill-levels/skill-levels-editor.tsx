@@ -18,8 +18,26 @@ type Labels = {
 export function SkillLevelsEditor({ slug, levels, labels, confirms }: {
   slug: string; levels: Level[]; labels: Labels; confirms: Record<string, string>;
 }) {
+  const t = useTranslations('manage.skillLevels');
+  const tm = useTranslations('manage');
   const [editing, setEditing] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+
+  // Delete state lives here in the stable editor, not in the per-row form: a
+  // successful delete revalidates the route and removes that row, which would
+  // unmount a row-local effect before its toast fires. This parent survives the
+  // removal, so the toast is reliable.
+  const [delState, delAction, delPending] = useActionState<ManageActionResult | null, FormData>(deleteSkillLevelAction.bind(null, slug), null);
+  const delHandled = useRef<ManageActionResult | null>(null);
+  useEffect(() => {
+    if (delState === null || delState === delHandled.current) return;
+    delHandled.current = delState;
+    // On success the row is removed by revalidation, so the confirm UI unmounts
+    // with it — no need to reset `confirming`. On failure the row stays and the
+    // confirm stays open so the owner can retry.
+    if (delState.ok) toast.success(t('deleted'));
+    else toast.error(tm('actionError'));
+  }, [delState, t, tm]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -29,18 +47,25 @@ export function SkillLevelsEditor({ slug, levels, labels, confirms }: {
             <li key={lvl.id} className="flex items-center justify-between gap-2 p-3">
               {editing === lvl.id ? (
                 <RenameForm slug={slug} level={lvl} labels={labels} onDone={() => setEditing(null)} />
+              ) : confirming === lvl.id ? (
+                <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-xs text-muted-foreground">{confirms[lvl.id]}</span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <form action={delAction}>
+                      <input type="hidden" name="skillLevelId" value={lvl.id} />
+                      <Button type="submit" size="sm" variant="destructive" disabled={delPending}>{labels.deleteConfirmYes}</Button>
+                    </form>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(null)}>{labels.cancel}</Button>
+                  </div>
+                </div>
               ) : (
                 <>
-                  <span className="flex-1 font-medium">{lvl.name}</span>
-                  <div className="flex items-center gap-1">
+                  <span className="min-w-0 flex-1 truncate font-medium">{lvl.name}</span>
+                  <div className="flex shrink-0 items-center gap-1">
                     <ArrowForm slug={slug} id={lvl.id} direction="up" disabled={i === 0} label={labels.moveUp}>↑</ArrowForm>
                     <ArrowForm slug={slug} id={lvl.id} direction="down" disabled={i === levels.length - 1} label={labels.moveDown}>↓</ArrowForm>
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(lvl.id)}>{labels.rename}</Button>
-                    {confirming === lvl.id ? (
-                      <DeleteForm slug={slug} id={lvl.id} confirmText={confirms[lvl.id]} labels={labels} onDone={() => setConfirming(null)} />
-                    ) : (
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(lvl.id)}>{labels.delete}</Button>
-                    )}
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(lvl.id)}>{labels.delete}</Button>
                   </div>
                 </>
               )}
@@ -105,33 +130,6 @@ function RenameForm({ slug, level, labels, onDone }: { slug: string; level: Leve
         <Input id={`name-${level.id}`} name="name" defaultValue={level.name} autoFocus />
       </Field>
       <Button type="submit" size="sm" disabled={pending}>{labels.save}</Button>
-      <Button type="button" size="sm" variant="ghost" onClick={onDone}>{labels.cancel}</Button>
-    </form>
-  );
-}
-
-function DeleteForm({ slug, id, confirmText, labels, onDone }: { slug: string; id: string; confirmText: string; labels: Labels; onDone: () => void }) {
-  const t = useTranslations('manage.skillLevels');
-  const tm = useTranslations('manage');
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(deleteSkillLevelAction.bind(null, slug), null);
-  const handledRef = useRef<ManageActionResult | null>(null);
-
-  useEffect(() => {
-    if (state === null || state === handledRef.current) return;
-    handledRef.current = state;
-    if (state.ok) {
-      toast.success(t('deleted'));
-      onDone();
-    } else {
-      toast.error(tm('actionError'));
-    }
-  }, [state, t, tm, onDone]);
-
-  return (
-    <form action={formAction} className="flex items-center gap-1">
-      <input type="hidden" name="skillLevelId" value={id} />
-      <span className="max-w-xs text-xs text-muted-foreground">{confirmText}</span>
-      <Button type="submit" size="sm" variant="destructive" disabled={pending}>{labels.deleteConfirmYes}</Button>
       <Button type="button" size="sm" variant="ghost" onClick={onDone}>{labels.cancel}</Button>
     </form>
   );

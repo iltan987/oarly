@@ -31,6 +31,19 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
     else toast.error(tm('actionError'));
   }, [state, t, tm]);
 
+  // Remove-social state lives here in the stable parent, not per-row: a
+  // successful remove revalidates and deletes that <li>, which would unmount a
+  // row-local effect before its toast fires. This component survives the
+  // removal, so the toast is reliable.
+  const [rmState, rmAction, rmPending] = useActionState<ManageActionResult | null, FormData>(removeSocialAction.bind(null, slug), null);
+  const rmHandled = useRef<ManageActionResult | null>(null);
+  useEffect(() => {
+    if (rmState === null || rmState === rmHandled.current) return;
+    rmHandled.current = rmState;
+    if (rmState.ok) toast.success(t('socialRemoved'));
+    else toast.error(tm('actionError'));
+  }, [rmState, t, tm]);
+
   // The Base UI inputs below are uncontrolled — they seed their state from
   // `defaultValue` at mount. After a successful save, the server action refreshes
   // this route and re-feeds the just-saved values as new `defaultValue`s on the
@@ -86,9 +99,12 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
         {socials.length > 0 && (
           <ul className="divide-y rounded-lg border">
             {socials.map((s) => (
-              <li key={s.id} className="flex items-center justify-between p-3">
-                <span className="text-sm">{s.platform} · {s.handle}</span>
-                <RemoveSocialForm slug={slug} socialId={s.id} label={t('socialRemove')} />
+              <li key={s.id} className="flex items-center justify-between gap-2 p-3">
+                <span className="min-w-0 truncate text-sm">{s.platform} · {s.handle}</span>
+                <form action={rmAction} className="shrink-0">
+                  <input type="hidden" name="socialId" value={s.id} />
+                  <Button type="submit" size="sm" variant="ghost" disabled={rmPending}>{t('socialRemove')}</Button>
+                </form>
               </li>
             ))}
           </ul>
@@ -126,25 +142,6 @@ function AddSocialForm({ slug, labels }: { slug: string; labels: { platform: str
         <Input id="handle" name="handle" placeholder="bebekrowing" required maxLength={80} />
       </Field>
       <Button type="submit" disabled={pending}>{labels.add}</Button>
-    </form>
-  );
-}
-
-function RemoveSocialForm({ slug, socialId, label }: { slug: string; socialId: string; label: string }) {
-  const t = useTranslations('manage.profile');
-  const tm = useTranslations('manage');
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(removeSocialAction.bind(null, slug), null);
-
-  useEffect(() => {
-    if (state === null) return;
-    if (state.ok) toast.success(t('socialRemoved'));
-    else toast.error(tm('actionError'));
-  }, [state, t, tm]);
-
-  return (
-    <form action={formAction}>
-      <input type="hidden" name="socialId" value={socialId} />
-      <Button type="submit" size="sm" variant="ghost" disabled={pending}>{label}</Button>
     </form>
   );
 }
