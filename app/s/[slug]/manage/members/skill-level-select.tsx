@@ -7,7 +7,8 @@ import { toast } from 'sonner';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { assignSkillAction, type ManageActionResult } from './actions';
+import type { ManageActionResult } from '../action-result';
+import { assignSkillAction } from './actions';
 
 const NONE_VALUE = 'none';
 

@@ -6,7 +6,7 @@ import { requireOwner } from '@/lib/membership';
 import { skillLevelNameSchema } from '@/lib/schemas';
 import { createSkillLevel, deleteSkillLevel, renameSkillLevel, reorderSkillLevel } from '@/lib/skill-levels';
 
-export type ManageActionResult = { ok: true } | { ok: false };
+import type { ManageActionResult } from '../action-result';
 
 function refresh(slug: string) {
   revalidatePath(`/s/${slug}/manage/skill-levels`);

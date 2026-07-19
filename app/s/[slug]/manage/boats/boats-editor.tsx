@@ -8,7 +8,8 @@ import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { createBoatAction, type ManageActionResult, setBoatActiveAction, updateBoatAction } from './actions';
+import type { ManageActionResult } from '../action-result';
+import { createBoatAction, setBoatActiveAction, updateBoatAction } from './actions';
 
 type BoatAction = (slug: string, prev: ManageActionResult | null, formData: FormData) => Promise<ManageActionResult>;
 type Level = { id: string; name: string };

@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 
-import { addSkillLevelAction, deleteSkillLevelAction, type ManageActionResult, renameSkillLevelAction, reorderSkillLevelAction } from './actions';
+import type { ManageActionResult } from '../action-result';
+import { addSkillLevelAction, deleteSkillLevelAction, renameSkillLevelAction, reorderSkillLevelAction } from './actions';
 
 type Level = { id: string; name: string; refs: { members: number; boats: number } };
 type Labels = {

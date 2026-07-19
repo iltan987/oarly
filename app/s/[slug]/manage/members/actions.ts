@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { assignSkillLevel, setMembershipStatus } from '@/lib/members-admin';
 import { requireOwner } from '@/lib/membership';
 
-export type ManageActionResult = { ok: true } | { ok: false };
+import type { ManageActionResult } from '../action-result';
 
 export async function approveMemberAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club } = await requireOwner(slug);

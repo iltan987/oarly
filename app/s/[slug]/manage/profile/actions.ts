@@ -6,7 +6,7 @@ import { addSocial, removeSocial, updateClubProfile } from '@/lib/club-profile';
 import { requireOwner } from '@/lib/membership';
 import { clubProfileSchema, socialSchema } from '@/lib/schemas';
 
-export type ManageActionResult = { ok: true } | { ok: false };
+import type { ManageActionResult } from '../action-result';
 
 function refresh(slug: string) {
   revalidatePath(`/s/${slug}/manage/profile`);

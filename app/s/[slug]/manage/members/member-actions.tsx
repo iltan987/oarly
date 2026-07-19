@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 
-import { approveMemberAction, type ManageActionResult, rejectMemberAction } from './actions';
+import type { ManageActionResult } from '../action-result';
+import { approveMemberAction, rejectMemberAction } from './actions';
 
 const initial: ManageActionResult | null = null;
 

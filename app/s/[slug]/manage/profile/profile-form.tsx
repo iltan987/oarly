@@ -8,7 +8,8 @@ import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { addSocialAction, type ManageActionResult, removeSocialAction, saveProfileAction } from './actions';
+import type { ManageActionResult } from '../action-result';
+import { addSocialAction, removeSocialAction, saveProfileAction } from './actions';
 import { LogoUpload } from './logo-upload';
 
 type Social = { id: string; platform: string; handle: string };
