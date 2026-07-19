@@ -16,7 +16,7 @@ function initials(name: string): string {
     .join('');
 }
 
-export async function MemberHeader({
+export function MemberHeader({
   club,
 }: {
   club: { name: string; logoUrl: string | null };
