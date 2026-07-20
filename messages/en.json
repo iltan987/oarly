@@ -56,6 +56,31 @@
       "heading": "Reset your password",
       "body": "We received a request to reset your password. Click the link below to set a new one.",
       "button": "Reset my password"
+    },
+    "booking": {
+      "confirmation": {
+        "subject": "Oarly — Booking received",
+        "headingSeated": "Your seat is confirmed",
+        "headingWaitlisted": "You're on the waitlist",
+        "introSeated": "Your booking is confirmed. Details below.",
+        "introWaitlisted": "The session was full, so you've been added to the waitlist. We'll let you know if a seat opens up."
+      },
+      "promotion": {
+        "subject": "Oarly — A seat opened up!",
+        "heading": "You're in!",
+        "intro": "You've been promoted from the waitlist — your seat is confirmed."
+      },
+      "cancellation": {
+        "subject": "Oarly — Booking cancelled",
+        "heading": "Booking cancelled",
+        "intro": "Your booking has been cancelled. Details below."
+      },
+      "labels": {
+        "club": "Club",
+        "boat": "Boat",
+        "when": "When",
+        "queuePosition": "Queue position"
+      }
     }
   },
   "auth": {

@@ -56,6 +56,31 @@
       "heading": "Şifrenizi sıfırlayın",
       "body": "Şifrenizi sıfırlamak için bir istek aldık. Yeni bir şifre belirlemek için aşağıdaki bağlantıya tıklayın.",
       "button": "Şifremi sıfırla"
+    },
+    "booking": {
+      "confirmation": {
+        "subject": "Oarly — Rezervasyonunuz alındı",
+        "headingSeated": "Yeriniz onaylandı",
+        "headingWaitlisted": "Bekleme listesindesiniz",
+        "introSeated": "Rezervasyonunuz onaylandı. Ayrıntılar aşağıda.",
+        "introWaitlisted": "Seans dolu olduğu için bekleme listesine eklendiniz. Yer açılırsa sizi bilgilendireceğiz."
+      },
+      "promotion": {
+        "subject": "Oarly — Yeriniz açıldı!",
+        "heading": "İçeridesiniz!",
+        "intro": "Bekleme listesinden yükseldiniz — yeriniz onaylandı."
+      },
+      "cancellation": {
+        "subject": "Oarly — Rezervasyonunuz iptal edildi",
+        "heading": "Rezervasyon iptal edildi",
+        "intro": "Rezervasyonunuz iptal edildi. Ayrıntılar aşağıda."
+      },
+      "labels": {
+        "club": "Kulüp",
+        "boat": "Tekne",
+        "when": "Tarih",
+        "queuePosition": "Sıra"
+      }
     }
   },
   "auth": {
