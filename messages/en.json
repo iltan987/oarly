@@ -56,6 +56,36 @@
       "heading": "Reset your password",
       "body": "We received a request to reset your password. Click the link below to set a new one.",
       "button": "Reset my password"
+    },
+    "booking": {
+      "confirmation": {
+        "subject": "Oarly — Booking received",
+        "headingSeated": "Your seat is confirmed",
+        "headingWaitlisted": "You're on the waitlist",
+        "introSeated": "Your booking is confirmed. Details below.",
+        "introWaitlisted": "The session was full, so you've been added to the waitlist. We'll let you know if a seat opens up."
+      },
+      "promotion": {
+        "subject": "Oarly — A seat opened up!",
+        "heading": "You're in!",
+        "intro": "You've been promoted from the waitlist — your seat is confirmed."
+      },
+      "cancellation": {
+        "subject": "Oarly — Booking cancelled",
+        "heading": "Booking cancelled",
+        "intro": "Your booking has been cancelled. Details below."
+      },
+      "ownerRemoval": {
+        "subject": "Oarly — Your booking was removed",
+        "heading": "Your booking was removed",
+        "intro": "The club removed your booking for this session. Details below."
+      },
+      "labels": {
+        "club": "Club",
+        "boat": "Boat",
+        "when": "When",
+        "queuePosition": "Queue position"
+      }
     }
   },
   "auth": {
@@ -306,6 +336,21 @@
       "close": "Close this date",
       "forceOpen": "Force open",
       "reset": "Reset to default"
+    },
+    "bookings": {
+      "navLabel": "Bookings",
+      "empty": "No sessions this day.",
+      "closed": "The club is closed this day.",
+      "prevDay": "Previous day",
+      "nextDay": "Next day",
+      "remove": "Remove",
+      "add": "Add",
+      "selectMember": "Select member",
+      "paymentRegular": "Regular",
+      "paymentMultisport": "MultiSport",
+      "waitPosition": "#{n}",
+      "removed": "Booking removed.",
+      "added": "Member added."
     }
   },
   "booking": {

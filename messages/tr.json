@@ -56,6 +56,36 @@
       "heading": "Şifrenizi sıfırlayın",
       "body": "Şifrenizi sıfırlamak için bir istek aldık. Yeni bir şifre belirlemek için aşağıdaki bağlantıya tıklayın.",
       "button": "Şifremi sıfırla"
+    },
+    "booking": {
+      "confirmation": {
+        "subject": "Oarly — Rezervasyonunuz alındı",
+        "headingSeated": "Yeriniz onaylandı",
+        "headingWaitlisted": "Bekleme listesindesiniz",
+        "introSeated": "Rezervasyonunuz onaylandı. Ayrıntılar aşağıda.",
+        "introWaitlisted": "Seans dolu olduğu için bekleme listesine eklendiniz. Yer açılırsa sizi bilgilendireceğiz."
+      },
+      "promotion": {
+        "subject": "Oarly — Yeriniz açıldı!",
+        "heading": "İçeridesiniz!",
+        "intro": "Bekleme listesinden yükseldiniz — yeriniz onaylandı."
+      },
+      "cancellation": {
+        "subject": "Oarly — Rezervasyonunuz iptal edildi",
+        "heading": "Rezervasyon iptal edildi",
+        "intro": "Rezervasyonunuz iptal edildi. Ayrıntılar aşağıda."
+      },
+      "ownerRemoval": {
+        "subject": "Oarly — Rezervasyonunuz kaldırıldı",
+        "heading": "Rezervasyonunuz kaldırıldı",
+        "intro": "Kulüp bu seanstaki rezervasyonunuzu kaldırdı. Ayrıntılar aşağıda."
+      },
+      "labels": {
+        "club": "Kulüp",
+        "boat": "Tekne",
+        "when": "Tarih",
+        "queuePosition": "Sıra"
+      }
     }
   },
   "auth": {
@@ -306,6 +336,21 @@
       "close": "Bu tarihi kapat",
       "forceOpen": "Açık yap",
       "reset": "Varsayılana dön"
+    },
+    "bookings": {
+      "navLabel": "Rezervasyonlar",
+      "empty": "Bu gün için seans yok.",
+      "closed": "Kulüp bu gün kapalı.",
+      "prevDay": "Önceki gün",
+      "nextDay": "Sonraki gün",
+      "remove": "Çıkar",
+      "add": "Ekle",
+      "selectMember": "Üye seçin",
+      "paymentRegular": "Normal",
+      "paymentMultisport": "MultiSport",
+      "waitPosition": "#{n}",
+      "removed": "Rezervasyon kaldırıldı.",
+      "added": "Üye eklendi."
     }
   },
   "booking": {

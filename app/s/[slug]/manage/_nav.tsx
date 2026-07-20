@@ -11,6 +11,7 @@ const items = [
   { href: '/schedule', key: 'schedule' },
   { href: '/policies', key: 'policies' },
   { href: '/members', key: 'members' },
+  { href: '/bookings', key: 'bookings' },
 ] as const;
 
 export function ManageNav() {
