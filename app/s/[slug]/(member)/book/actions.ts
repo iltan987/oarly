@@ -5,6 +5,7 @@ import * as z from 'zod';
 import { db } from '@/db';
 import { bookSeat } from '@/lib/booking';
 import { requireMember } from '@/lib/membership';
+import { notifyBookingConfirmation } from '@/lib/notify';
 
 export type BookFormState = { status: 'idle' | 'ok' | 'error'; error: string | null; outcome?: 'seated' | 'waitlisted' | null };
 
@@ -39,5 +40,6 @@ export async function bookSeatAction(slug: string, _prev: BookFormState, formDat
   if (!result.ok) return { status: 'error', error: result.error };
   revalidatePath(`/s/${slug}/book`);
   revalidatePath(`/s/${slug}/bookings`);
+  await notifyBookingConfirmation(db, { bookingId: result.bookingId });
   return { status: 'ok', error: null, outcome: result.outcome };
 }

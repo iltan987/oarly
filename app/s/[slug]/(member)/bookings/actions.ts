@@ -5,6 +5,7 @@ import * as z from 'zod';
 import { db } from '@/db';
 import { cancelBooking } from '@/lib/booking';
 import { requireMember } from '@/lib/membership';
+import { notifyBookingCancellation, notifyWaitlistPromotion } from '@/lib/notify';
 
 export type CancelFormState = { status: 'idle' | 'ok' | 'error'; error: string | null };
 
@@ -18,5 +19,7 @@ export async function cancelBookingAction(slug: string, _prev: CancelFormState, 
   if (!result.ok) return { status: 'error', error: result.error };
   revalidatePath(`/s/${slug}/bookings`);
   revalidatePath(`/s/${slug}/book`);
+  await notifyBookingCancellation(db, { bookingId: parsed.data.bookingId });
+  if (result.promoted) await notifyWaitlistPromotion(db, result.promoted);
   return { status: 'ok', error: null };
 }
