@@ -336,6 +336,21 @@
       "close": "Bu tarihi kapat",
       "forceOpen": "Açık yap",
       "reset": "Varsayılana dön"
+    },
+    "bookings": {
+      "navLabel": "Rezervasyonlar",
+      "empty": "Bu gün için seans yok.",
+      "closed": "Kulüp bu gün kapalı.",
+      "prevDay": "Önceki gün",
+      "nextDay": "Sonraki gün",
+      "remove": "Çıkar",
+      "add": "Ekle",
+      "selectMember": "Üye seçin",
+      "paymentRegular": "Normal",
+      "paymentMultisport": "MultiSport",
+      "waitPosition": "#{n}",
+      "removed": "Rezervasyon kaldırıldı.",
+      "added": "Üye eklendi."
     }
   },
   "booking": {

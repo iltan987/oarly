@@ -336,6 +336,21 @@
       "close": "Close this date",
       "forceOpen": "Force open",
       "reset": "Reset to default"
+    },
+    "bookings": {
+      "navLabel": "Bookings",
+      "empty": "No sessions this day.",
+      "closed": "The club is closed this day.",
+      "prevDay": "Previous day",
+      "nextDay": "Next day",
+      "remove": "Remove",
+      "add": "Add",
+      "selectMember": "Select member",
+      "paymentRegular": "Regular",
+      "paymentMultisport": "MultiSport",
+      "waitPosition": "#{n}",
+      "removed": "Booking removed.",
+      "added": "Member added."
     }
   },
   "booking": {
