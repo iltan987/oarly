@@ -2,7 +2,7 @@ import { and, eq, type SQL } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { boatTypes, bookings, clubs, notifications, sessions, slots, user } from '@/db/schema';
-import { renderBookingCancellation, renderBookingConfirmation, renderWaitlistPromotion } from '@/emails';
+import { renderBookingCancellation, renderBookingConfirmation, renderOwnerRemoval, renderWaitlistPromotion } from '@/emails';
 import { sendEmail } from '@/lib/email';
 
 type Ctx = {
@@ -63,6 +63,18 @@ export async function notifyBookingCancellation(db: DB, { bookingId }: { booking
     await sendEmail({ to: ctx.toEmail, subject: email.subject, html: email.html, text: email.text });
   } catch (err) {
     console.error('notifyBookingCancellation failed', err);
+  }
+}
+
+/** Best-effort: emails the member that the club removed their booking. Never throws. */
+export async function notifyOwnerRemoval(db: DB, { bookingId }: { bookingId: string }): Promise<void> {
+  try {
+    const ctx = await loadCtx(db, eq(bookings.id, bookingId));
+    if (!ctx) return;
+    const email = await renderOwnerRemoval(ctx.locale, { clubName: ctx.clubName, boatName: ctx.boatName, startAt: ctx.startAt, endAt: ctx.endAt, timezone: ctx.timezone });
+    await sendEmail({ to: ctx.toEmail, subject: email.subject, html: email.html, text: email.text });
+  } catch (err) {
+    console.error('notifyOwnerRemoval failed', err);
   }
 }
 

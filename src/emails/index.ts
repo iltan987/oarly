@@ -112,3 +112,9 @@ export async function renderBookingCancellation(locale: string, data: BookingWhe
   const t = await loadEmailsTranslator(validLocale);
   return renderNotice(validLocale, t('booking.cancellation.subject'), t('booking.cancellation.heading'), t('booking.cancellation.intro'), baseRows(t, data, validLocale));
 }
+
+export async function renderOwnerRemoval(locale: string, data: BookingWhen): Promise<RenderedEmail> {
+  const validLocale = toLocale(locale);
+  const t = await loadEmailsTranslator(validLocale);
+  return renderNotice(validLocale, t('booking.ownerRemoval.subject'), t('booking.ownerRemoval.heading'), t('booking.ownerRemoval.intro'), baseRows(t, data, validLocale));
+}

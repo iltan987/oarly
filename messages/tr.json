@@ -75,6 +75,11 @@
         "heading": "Rezervasyon iptal edildi",
         "intro": "Rezervasyonunuz iptal edildi. Ayrıntılar aşağıda."
       },
+      "ownerRemoval": {
+        "subject": "Oarly — Rezervasyonunuz kaldırıldı",
+        "heading": "Rezervasyonunuz kaldırıldı",
+        "intro": "Kulüp bu seanstaki rezervasyonunuzu kaldırdı. Ayrıntılar aşağıda."
+      },
       "labels": {
         "club": "Kulüp",
         "boat": "Tekne",

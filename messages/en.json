@@ -75,6 +75,11 @@
         "heading": "Booking cancelled",
         "intro": "Your booking has been cancelled. Details below."
       },
+      "ownerRemoval": {
+        "subject": "Oarly — Your booking was removed",
+        "heading": "Your booking was removed",
+        "intro": "The club removed your booking for this session. Details below."
+      },
       "labels": {
         "club": "Club",
         "boat": "Boat",

@@ -8,7 +8,7 @@ import * as schema from '@/db/schema';
 import { sendEmail } from '@/lib/email';
 
 import { zonedWallClockToUtc } from './date-tz';
-import { notifyBookingCancellation, notifyBookingConfirmation, notifyWaitlistPromotion } from './notify';
+import { notifyBookingCancellation, notifyBookingConfirmation, notifyOwnerRemoval, notifyWaitlistPromotion } from './notify';
 
 vi.mock('@/lib/email', () => ({ sendEmail: vi.fn() }));
 const sendMock = vi.mocked(sendEmail);
@@ -53,6 +53,15 @@ describe.skipIf(!url)('notify', () => {
     const s = await seedBooking('cancelled');
     await notifyBookingCancellation(db, { bookingId: s.booking.id });
     expect(sendMock).toHaveBeenCalledTimes(1);
+    const logs = await db.select().from(schema.notifications).where(eq(schema.notifications.userId, s.uid));
+    expect(logs).toHaveLength(0);
+  });
+
+  it('owner-removal sends one email and writes NO notifications row', async () => {
+    const s = await seedBooking('cancelled');
+    await notifyOwnerRemoval(db, { bookingId: s.booking.id });
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(sendMock.mock.calls[0][0]).toMatchObject({ to: s.email });
     const logs = await db.select().from(schema.notifications).where(eq(schema.notifications.userId, s.uid));
     expect(logs).toHaveLength(0);
   });
