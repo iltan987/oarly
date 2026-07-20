@@ -2,6 +2,7 @@
 import { ChevronsUpDownIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
+import { useDebouncedCallback } from 'use-debounce';
 
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -26,30 +27,34 @@ export function MemberCombobox({ slug, selected, onSelect }: {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MemberHit[]>([]);
   const [loading, setLoading] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqId = useRef(0);
+
+  // Debounce the server search (use-debounce auto-cancels its timer on unmount).
+  // The reqId guard drops out-of-order responses so a slow earlier query can't
+  // overwrite a newer one.
+  const runSearch = useDebouncedCallback((q: string) => {
+    const id = ++reqId.current;
+    void (async () => {
+      try {
+        const hits = await searchClubMembersAction(slug, q);
+        if (id === reqId.current) setResults(hits);
+      } finally {
+        if (id === reqId.current) setLoading(false);
+      }
+    })();
+  }, 250);
 
   function onQueryChange(value: string) {
     setQuery(value);
-    if (timer.current) clearTimeout(timer.current);
     const q = value.trim();
     if (q.length < 2) {
+      runSearch.cancel();
       setResults([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const id = ++reqId.current;
-    timer.current = setTimeout(() => {
-      void (async () => {
-        try {
-          const hits = await searchClubMembersAction(slug, q);
-          if (id === reqId.current) setResults(hits);
-        } finally {
-          if (id === reqId.current) setLoading(false);
-        }
-      })();
-    }, 250);
+    runSearch(q);
   }
 
   const sub = (m: MemberHit) => [m.email, m.phone].filter(Boolean).join(' · ');
