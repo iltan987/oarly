@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -11,6 +12,7 @@ import { requireOwner } from '@/lib/membership';
 import { getDayRoster } from '@/lib/roster';
 
 import { BookingsRoster } from './bookings-roster';
+import { DateJump } from './date-jump';
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
@@ -42,10 +44,14 @@ export default async function ManageBookingsPage({ params, searchParams }: { par
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <Link className={buttonVariants({ size: 'sm', variant: 'ghost' })} href={`/manage/bookings?date=${addDaysISO(dateISO, -1)}`}>{t('prevDay')}</Link>
-        <span className="font-heading text-sm font-semibold">{dateISO}</span>
-        <Link className={buttonVariants({ size: 'sm', variant: 'ghost' })} href={`/manage/bookings?date=${addDaysISO(dateISO, 1)}`}>{t('nextDay')}</Link>
+      <div className="flex items-center justify-center gap-2">
+        <Link aria-label={t('prevDay')} className={buttonVariants({ size: 'icon-sm', variant: 'ghost' })} href={`/manage/bookings?date=${addDaysISO(dateISO, -1)}`}>
+          <ChevronLeftIcon />
+        </Link>
+        <DateJump dateISO={dateISO} />
+        <Link aria-label={t('nextDay')} className={buttonVariants({ size: 'icon-sm', variant: 'ghost' })} href={`/manage/bookings?date=${addDaysISO(dateISO, 1)}`}>
+          <ChevronRightIcon />
+        </Link>
       </div>
       {roster.closed ? (
         <p className="text-sm text-muted-foreground">{t('closed')}</p>
