@@ -9,11 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { RosterSession } from '@/lib/roster';
 
 import type { ManageActionResult } from '../action-result';
-import { ownerAddBookingAction, ownerRemoveBookingAction } from './actions';
+import { type MemberHit, ownerAddBookingAction, ownerRemoveBookingAction } from './actions';
+import { MemberCombobox } from './member-combobox';
 
-type Member = { userId: string; name: string };
-
-export function BookingsRoster({ slug, sessions, members, timezone }: { slug: string; sessions: RosterSession[]; members: Member[]; timezone: string }) {
+export function BookingsRoster({ slug, sessions, timezone }: { slug: string; sessions: RosterSession[]; timezone: string }) {
   const t = useTranslations('manage.bookings');
   const tm = useTranslations('manage');
 
@@ -80,7 +79,7 @@ export function BookingsRoster({ slug, sessions, members, timezone }: { slug: st
               )}
 
               {s.freeSeats > 0 && s.windowId && (
-                <AddMemberForm session={s} members={members} addAction={addAction} addPending={addPending} />
+                <AddMemberForm session={s} slug={slug} addAction={addAction} addPending={addPending} />
               )}
             </CardContent>
           </Card>
@@ -90,11 +89,11 @@ export function BookingsRoster({ slug, sessions, members, timezone }: { slug: st
   );
 }
 
-function AddMemberForm({ session, members, addAction, addPending }: {
-  session: RosterSession; members: Member[]; addAction: (fd: FormData) => void; addPending: boolean;
+function AddMemberForm({ session, slug, addAction, addPending }: {
+  session: RosterSession; slug: string; addAction: (fd: FormData) => void; addPending: boolean;
 }) {
   const t = useTranslations('manage.bookings');
-  const [userId, setUserId] = useState('');
+  const [selected, setSelected] = useState<MemberHit | null>(null);
   const [payment, setPayment] = useState<'regular' | 'multisport'>('regular');
 
   return (
@@ -102,22 +101,19 @@ function AddMemberForm({ session, members, addAction, addPending }: {
       <input type="hidden" name="windowId" value={session.windowId ?? ''} />
       <input type="hidden" name="boatTypeId" value={session.boatTypeId} />
       <input type="hidden" name="startAt" value={session.startAt.toISOString()} />
-      <input type="hidden" name="userId" value={userId} />
+      <input type="hidden" name="userId" value={selected?.userId ?? ''} />
       <input type="hidden" name="paymentType" value={payment} />
-      <Select value={userId || undefined} onValueChange={(v) => setUserId(v ?? '')}>
-        <SelectTrigger className="min-w-40 flex-1"><SelectValue placeholder={t('selectMember')} /></SelectTrigger>
-        <SelectContent>
-          {members.map((m) => <SelectItem key={m.userId} value={m.userId}>{m.name}</SelectItem>)}
-        </SelectContent>
-      </Select>
+      <MemberCombobox slug={slug} selected={selected} onSelect={setSelected} />
       <Select value={payment} onValueChange={(v) => setPayment(v as 'regular' | 'multisport')}>
-        <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="w-32">
+          <SelectValue>{(v) => (v === 'multisport' ? t('paymentMultisport') : t('paymentRegular'))}</SelectValue>
+        </SelectTrigger>
         <SelectContent>
           <SelectItem value="regular">{t('paymentRegular')}</SelectItem>
           <SelectItem value="multisport">{t('paymentMultisport')}</SelectItem>
         </SelectContent>
       </Select>
-      <Button type="submit" size="sm" disabled={addPending || !userId}>{t('add')}</Button>
+      <Button type="submit" size="sm" disabled={addPending || !selected}>{t('add')}</Button>
     </form>
   );
 }

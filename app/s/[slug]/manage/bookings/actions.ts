@@ -1,13 +1,46 @@
 'use server';
+import { and, eq, ilike, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import * as z from 'zod';
 
 import { db } from '@/db';
+import { memberships, user } from '@/db/schema';
 import { ownerAddBooking, ownerRemoveBooking } from '@/lib/booking';
 import { requireOwner } from '@/lib/membership';
 import { notifyBookingConfirmation, notifyOwnerRemoval, notifyWaitlistPromotion } from '@/lib/notify';
 
 import type { ManageActionResult } from '../action-result';
+
+export type MemberHit = { userId: string; name: string; email: string; phone: string | null };
+
+/**
+ * Owner-only typeahead over the club's approved, non-banned members. Matches
+ * name / email / phone (case-insensitive), capped — so a large club never ships
+ * or renders its whole member list. `userId` is the stable pick; email + phone
+ * disambiguate members who share a name.
+ */
+export async function searchClubMembersAction(slug: string, query: string): Promise<MemberHit[]> {
+  const { club } = await requireOwner(slug, '/manage/bookings');
+  const q = query.trim();
+  if (q.length < 2) return [];
+  // Escape LIKE wildcards in user input so `%`/`_` are matched literally.
+  const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+  const now = Date.now();
+  const rows = await db
+    .select({ userId: memberships.userId, name: user.name, email: user.email, phone: user.phone, bannedUntil: memberships.bannedUntil })
+    .from(memberships)
+    .innerJoin(user, eq(user.id, memberships.userId))
+    .where(and(
+      eq(memberships.clubId, club.id),
+      eq(memberships.status, 'approved'),
+      or(ilike(user.name, like), ilike(user.email, like), ilike(user.phone, like)),
+    ))
+    .orderBy(user.name)
+    .limit(20);
+  return rows
+    .filter((r) => r.bannedUntil == null || r.bannedUntil.getTime() <= now)
+    .map((r) => ({ userId: r.userId, name: r.name, email: r.email, phone: r.phone }));
+}
 
 const removeSchema = z.object({ bookingId: z.uuid() });
 const addSchema = z.object({
