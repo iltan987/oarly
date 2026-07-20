@@ -13,7 +13,8 @@ Close the flagged product gap where booking state changes happen **silently**: t
 - **Events: three.** `waitlist_promotion` (passive — the must-have), `booking_confirmation`, `booking_cancellation` (both active/confirmatory). No `displaced` email (eliminated by the seating fix), no `reminder` (needs cron).
 - **Seating fix in scope.** Seats become first-come and sticky; `priority` MultiSport mode only reorders the *waitlist*, never demotes a seated member.
 - **No `.ics` / Google Calendar** this cycle. Full Google Calendar API sync is a separate future cycle.
-- **No schema change.** The existing `notifications` table is used as-is (a send-idempotency log).
+- **No schema change.** The existing `notifications` table is used as-is (a send-idempotency log); the `bookingSource` enum (`member`/`owner`/`admin_prereservation`) and the pre-provisioned `bookings.source`/`hidden`/`guestName`/`slotIndex` columns already exist.
+- **Owner booking management is in scope** (added after initial approval), appended after the member-notification foundation. A club owner can manually remove any booking and seat an approved member into a free spot, from a new dedicated "Bookings" manage view. Owner-add is an override (skips skill/payment eligibility, empty-seat-only, banned excluded). Both actions email the affected member.
 
 ## Current state (verified against code)
 
@@ -124,6 +125,25 @@ Add keys under the `emails` namespace in `messages/tr.json` and `messages/en.jso
 - `notify` functions never throw into an action; every path is `try/catch` with `console.error`. A booking or cancellation succeeds even if its email fails.
 - Idempotency is enforced by the DB unique index via `ON CONFLICT DO NOTHING`.
 - Best-effort limitation (documented follow-up): a promotion email lost after its log row is written is not retried this cycle.
+
+## Workstream 3 — Owner booking management
+
+Lets a club owner remove any booking and seat a member into a free spot, from a new dedicated "Bookings" manage view. Reuses `resolveSeating`, the per-slot advisory lock, and the `notify` service.
+
+**Unit boundaries.** `src/lib/booking.ts` gains two owner-scoped functions; `src/lib/roster.ts` (new) owns the read model; the UI lives under `app/s/[slug]/manage/bookings/`.
+
+**Backend — `src/lib/booking.ts`:**
+- `ownerRemoveBooking(db, { clubId, bookingId })` — force-remove, **bypassing** self-ownership, self-cancel, and cutoff gates (owner override). Verifies the booking belongs to the club and is active, then cancels + re-resolves seating under the advisory lock. Reports any promotion. Works on seated or waitlisted bookings. `{ ok: true; promoted? } | { ok: false; error: 'not_found' | 'not_active' }`.
+- `ownerAddBooking(db, { clubId, windowId, boatTypeId, startAt, userId, paymentType })` — materializes the block (`findOrCreateSlotTx`), then seats the member **into a free seat only**. Skips skill/payment eligibility but requires an **approved, non-banned** member; keeps the one-booking-per-slot guard. Records `source: 'owner'`, `status: 'booked'`. Full session → `{ ok: false; error: 'session_full' }`. `{ ok: true; bookingId } | { ok: false; error: 'session_full' | 'already_booked_this_slot' | 'not_a_member' | 'no_session' }`.
+- Shared recompute+promotion logic is extracted into a private `applySeating` helper reused by `cancelBooking` and `ownerRemoveBooking`.
+
+**Read model — `src/lib/roster.ts`:** `getDayRoster(db, { clubId, dateISO })` enumerates the day's sessions via `computeCalendar` and joins `bookings`→`user` on the persisted sessions, returning per session: the block coords (`windowId`, `boatTypeId`, `startAt`), boat name, capacity, free-seat count, `status`, and `seated`/`waitlisted` member rows (`bookingId`, `name`, `paymentType`, `queuePosition`). Virtual (unbooked) sessions show an empty roster.
+
+**Notifications:** owner-remove → new `notifyOwnerRemoval(db, { bookingId })` ("your booking was removed by the club" — distinct copy, `emails.booking.ownerRemoval.*`, no idempotency log), plus `notifyWaitlistPromotion` for anyone bumped up. Owner-add → reuses `notifyBookingConfirmation`.
+
+**UI — `app/s/[slug]/manage/bookings/`:** an owner-guarded `page.tsx` (reads `?date=`, defaults to today in club tz, prev/next-day nav) rendering a client roster; each session card lists seated + waitlisted members each with a **Remove** button, and — when a seat is free — an **Add member** control (approved-member picker + regular/multisport choice). A `{ href: '/bookings', key: 'bookings' }` item is added to `manage/_nav.tsx`. Actions in `bookings/actions.ts` (`ownerRemoveBookingAction`, `ownerAddBookingAction`) authorize via `requireOwner`, drive the manage `ManageActionResult` + toast pattern, and dispatch the notifications after commit.
+
+**Owner-action defaults:** owner-remove ignores the cancel cutoff; owner-add is empty-seat-only (errors rather than waitlists); payment type is the owner's choice (default regular); the roster shows member names to the owner.
 
 ## Verification
 
