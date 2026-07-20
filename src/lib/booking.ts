@@ -246,7 +246,13 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
     if (!matched) return { ok: false, error: 'no_session' };
     const endAt = addMinutes(input.startAt, win.defaultSessionMinutes);
 
-    // Owner override: require an approved, non-banned member (skip skill/payment eligibility).
+    // Owner override: unlike bookSeat, this deliberately skips the member-facing
+    // gates — skill/payment eligibility AND the closed-day / holiday / booking-open
+    // (and session open/closed) checks. An owner managing the roster may seat a
+    // member on any real block of a scheduled window; the only hard limits kept are
+    // an approved, non-banned membership and a free seat (empty-seat-only, below).
+    // Not reachable on a closed day via the UI (the Bookings view hides the add form
+    // there); this guards a direct action call.
     const [member] = await tx.select({ status: memberships.status, bannedUntil: memberships.bannedUntil }).from(memberships).where(and(eq(memberships.userId, input.userId), eq(memberships.clubId, input.clubId)));
     if (!member || member.status !== 'approved' || (member.bannedUntil != null && member.bannedUntil.getTime() > now.getTime())) return { ok: false, error: 'not_a_member' };
 
