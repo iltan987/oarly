@@ -11,8 +11,8 @@ import { zonedWallClockToUtc } from './date-tz';
 
 const url = process.env.TEST_DATABASE_URL;
 const TZ = 'Europe/Istanbul';
-// 2026-07-20 is a Monday; window is Monday 08:00–09:00 local ⇒ block start 05:00Z.
-const MON = '2026-07-20';
+// 2026-07-27 is a Monday; window is Monday 08:00–09:00 local ⇒ block start 05:00Z.
+const MON = '2026-07-27';
 const START = zonedWallClockToUtc(MON, '08:00', TZ);
 
 describe.skipIf(!url)('bookSeat / cancelBooking', () => {
@@ -95,16 +95,16 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     expect(second).toEqual({ ok: false, error: 'already_booked_this_slot' });
   });
 
-  it('priority mode: a later regular displaces an earlier multisport to the waitlist', async () => {
+  it('priority mode: a later regular does not displace an earlier seated multisport (sticky)', async () => {
     const s = await scenario({ seats: 1, mode: 'priority' });
     const um = await newMember(s.club.id, 'ms');
     const ur = await newMember(s.club.id, 'reg');
     const rm = await bookSeat(db, { clubId: s.club.id, userId: um, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'multisport', idempotencyKey: key() });
     const rr = await bookSeat(db, { clubId: s.club.id, userId: ur, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
     expect(rm).toMatchObject({ ok: true, outcome: 'seated' });
-    expect(rr).toMatchObject({ ok: true, outcome: 'seated' });
+    expect(rr).toMatchObject({ ok: true, outcome: 'waitlisted' });
     const msBooking = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, um));
-    expect(msBooking[0].status).toBe('waitlisted');
+    expect(msBooking[0].status).toBe('booked');
   });
 
   it('cancellation auto-promotes the head of the waitlist', async () => {
@@ -115,7 +115,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     await bookSeat(db, { clubId: s.club.id, userId: u2, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
     expect(r1.ok).toBe(true);
     const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: (r1 as { bookingId: string }).bookingId, now: new Date('2026-07-01T00:00:00Z') });
-    expect(cancel).toEqual({ ok: true });
+    expect(cancel).toMatchObject({ ok: true });
     const promoted = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u2));
     expect(promoted[0].status).toBe('booked');
   });
@@ -165,5 +165,47 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     expect(cancel).toEqual({ ok: false, error: 'cutoff_passed' });
     const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u));
     expect(rows[0].status).toBe('booked');
+  });
+
+  it('a later booking never displaces a seated member (priority mode)', async () => {
+    const s = await scenario({ seats: 1, mode: 'priority', allowedPayment: 'both' });
+    const u1 = await newMember(s.club.id, 'u1');
+    const u2 = await newMember(s.club.id, 'u2');
+    const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START };
+    const r1 = await bookSeat(db, { ...common, userId: u1, paymentType: 'multisport', idempotencyKey: key() });
+    const r2 = await bookSeat(db, { ...common, userId: u2, paymentType: 'regular', idempotencyKey: key() });
+    expect(r1).toMatchObject({ ok: true, outcome: 'seated' });
+    expect(r2).toMatchObject({ ok: true, outcome: 'waitlisted' });
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, s.club.id));
+    expect(rows.find((r) => r.userId === u1)!.status).toBe('booked');
+    expect(rows.find((r) => r.userId === u2)!.status).toBe('waitlisted');
+  });
+
+  it('cancelling a seated booking promotes the head of the waitlist and reports it', async () => {
+    const s = await scenario({ seats: 1 });
+    const u1 = await newMember(s.club.id, 'u1');
+    const u2 = await newMember(s.club.id, 'u2');
+    const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular' as const };
+    const r1 = await bookSeat(db, { ...common, userId: u1, idempotencyKey: key() });
+    await bookSeat(db, { ...common, userId: u2, idempotencyKey: key() });
+    if (!r1.ok) throw new Error('setup');
+    const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: r1.bookingId });
+    expect(cancel).toMatchObject({ ok: true, promoted: { userId: u2, sessionId: expect.any(String) } });
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, s.club.id));
+    expect(rows.find((r) => r.userId === u2)!.status).toBe('booked');
+  });
+
+  it('cancelling a waitlisted booking promotes nobody', async () => {
+    const s = await scenario({ seats: 1 });
+    const u1 = await newMember(s.club.id, 'u1');
+    const u2 = await newMember(s.club.id, 'u2');
+    const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular' as const };
+    await bookSeat(db, { ...common, userId: u1, idempotencyKey: key() });
+    const r2 = await bookSeat(db, { ...common, userId: u2, idempotencyKey: key() });
+    if (!r2.ok) throw new Error('setup');
+    const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u2, bookingId: r2.bookingId });
+    expect(cancel).toEqual({ ok: true });
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, s.club.id));
+    expect(rows.find((r) => r.userId === u1)!.status).toBe('booked');
   });
 });

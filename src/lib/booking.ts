@@ -8,7 +8,7 @@ import { isBookingOpen, resolveDateOpen } from './calendar-rules';
 import { toMinutes, utcToClubDate, zonedWallClockToUtc } from './date-tz';
 import { checkEligibility, type EligibilityReason } from './eligibility';
 import { findOrCreateSlotTx, type MaterializeBoat } from './materialize';
-import { computeSeating } from './seating';
+import { resolveSeating } from './seating';
 
 const HOUR_MS = 60 * 60 * 1000;
 const ACTIVE = ['booked', 'waitlisted'] as const;
@@ -31,7 +31,7 @@ export type BookResult =
 
 export type CancelInput = { clubId: string; userId: string; bookingId: string; now?: Date };
 export type CancelResult =
-  | { ok: true }
+  | { ok: true; promoted?: { userId: string; sessionId: string } }
   | { ok: false; error: 'not_found' | 'not_active' | 'cancel_disabled' | 'cutoff_passed' };
 
 /** Book (or waitlist) a seat for one member in one boat at one time block. */
@@ -121,10 +121,12 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
       ? withFree[0]
       : [...boatSessions].sort((a, b) => (activeCount.get(a.id) ?? 0) - (activeCount.get(b.id) ?? 0) || (a.id < b.id ? -1 : 1))[0];
 
-    // 9. Insert the booking, then recompute seating for the target session.
-    const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'booked', effectiveAt: now, source: 'member', idempotencyKey: input.idempotencyKey }).returning({ id: bookings.id });
-    const active = await tx.select({ id: bookings.id, paymentType: bookings.paymentType, effectiveAt: bookings.effectiveAt }).from(bookings).where(and(eq(bookings.sessionId, target.id), inArray(bookings.status, [...ACTIVE])));
-    const assignments = computeSeating(active.map((a) => ({ id: a.id, paymentType: a.paymentType, effectiveAt: a.effectiveAt })), target.capacity, club.multisportMode);
+    // 9. Insert the booking as waitlisted, then resolve seating for the target session.
+    //    Sticky rule (resolveSeating): existing seated bookings are never demoted;
+    //    the new booking takes a free seat if one exists, else joins the waitlist.
+    const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'waitlisted', effectiveAt: now, source: 'member', idempotencyKey: input.idempotencyKey }).returning({ id: bookings.id });
+    const active = await tx.select({ id: bookings.id, status: bookings.status, paymentType: bookings.paymentType, effectiveAt: bookings.effectiveAt }).from(bookings).where(and(eq(bookings.sessionId, target.id), inArray(bookings.status, [...ACTIVE])));
+    const assignments = resolveSeating(active.map((a) => ({ id: a.id, status: a.status as 'booked' | 'waitlisted', paymentType: a.paymentType, effectiveAt: a.effectiveAt })), target.capacity, club.multisportMode);
     for (const a of assignments) await tx.update(bookings).set({ status: a.status, queuePosition: a.queuePosition }).where(eq(bookings.id, a.id));
     const mine = assignments.find((a) => a.id === inserted.id)!;
     return { ok: true, bookingId: inserted.id, outcome: mine.status === 'booked' ? 'seated' : 'waitlisted', queuePosition: mine.queuePosition };
@@ -160,11 +162,19 @@ export async function cancelBooking(db: DB, input: CancelInput): Promise<CancelR
 
     await tx.update(bookings).set({ status: 'cancelled', queuePosition: null }).where(eq(bookings.id, input.bookingId));
 
-    // Recompute seating for the session — waitlist auto-promotion falls out of this.
-    const active = await tx.select({ id: bookings.id, paymentType: bookings.paymentType, effectiveAt: bookings.effectiveAt }).from(bookings).where(and(eq(bookings.sessionId, row.sessionId), inArray(bookings.status, [...ACTIVE])));
-    const assignments = computeSeating(active.map((a) => ({ id: a.id, paymentType: a.paymentType, effectiveAt: a.effectiveAt })), row.capacity, row.multisportMode);
+    // Resolve seating for the session. Sticky rule: seated bookings are never
+    // demoted; if a seat just freed (a `booked` row was cancelled), the top of
+    // the waitlist is promoted into it.
+    const active = await tx.select({ id: bookings.id, userId: bookings.userId, status: bookings.status, paymentType: bookings.paymentType, effectiveAt: bookings.effectiveAt }).from(bookings).where(and(eq(bookings.sessionId, row.sessionId), inArray(bookings.status, [...ACTIVE])));
+    const prevStatus = new Map(active.map((a) => [a.id, a.status]));
+    const assignments = resolveSeating(active.map((a) => ({ id: a.id, status: a.status as 'booked' | 'waitlisted', paymentType: a.paymentType, effectiveAt: a.effectiveAt })), row.capacity, row.multisportMode);
     for (const a of assignments) await tx.update(bookings).set({ status: a.status, queuePosition: a.queuePosition }).where(eq(bookings.id, a.id));
 
-    return { ok: true };
+    // A booking that went waitlisted -> booked filled the freed seat.
+    const promotedAssignment = row.status === 'booked'
+      ? assignments.find((a) => a.status === 'booked' && prevStatus.get(a.id) === 'waitlisted')
+      : undefined;
+    const promotedUserId = promotedAssignment ? (active.find((a) => a.id === promotedAssignment.id)?.userId ?? null) : null;
+    return promotedUserId ? { ok: true, promoted: { userId: promotedUserId, sessionId: row.sessionId } } : { ok: true };
   });
 }
