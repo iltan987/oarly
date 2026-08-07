@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
-import { markNoShow } from './attendance';
+import { markNoShow, undoNoShow } from './attendance';
 import { zonedWallClockToUtc } from './date-tz';
 
 const url = process.env.TEST_DATABASE_URL;
@@ -220,5 +220,67 @@ describe.skipIf(!url)('markNoShow', () => {
 
     const [m] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, membership.id));
     expect(m.status).toBe('rejected');
+  });
+
+  describe.skipIf(!url)('undoNoShow', () => {
+    it('restores the booking, deletes the penalty and lifts the ban', async () => {
+      const ctx = await seed('1w');
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+
+      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      expect(result).toEqual({ ok: true, bannedUntil: null, permanent: false });
+
+      const [booking] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, ctx.booking.id));
+      expect(booking.status).toBe('booked');
+      const rows = await db.select().from(schema.penalties).where(eq(schema.penalties.bookingId, ctx.booking.id));
+      expect(rows).toEqual([]);
+      const [m] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, ctx.membership.id));
+      expect(m.bannedUntil).toBeNull();
+    });
+
+    it('keeps the ban alive when another absence still stands', async () => {
+      const ctx = await seed('1w');
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      const second = await seedFutureSeat(ctx, '2026-03-12');
+      const later = zonedWallClockToUtc('2026-03-13', '20:00', TZ);
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, now: later });
+
+      // Undo the FIRST absence; the second still bans until 12 Mar + 7d = 19 Mar.
+      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.bannedUntil).toEqual(zonedWallClockToUtc('2026-03-19', '07:00', TZ));
+    });
+
+    it('lifts a permanent ban back to approved', async () => {
+      const ctx = await seed('never');
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      expect(result).toMatchObject({ ok: true, permanent: false });
+      const [m] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, ctx.membership.id));
+      expect(m.status).toBe('approved');
+    });
+
+    it('does not restore the seats the cascade cancelled', async () => {
+      const ctx = await seed('1w');
+      const future = await seedFutureSeat(ctx, '2026-03-12');
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+
+      const [still] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, future.booking.id));
+      expect(still.status).toBe('cancelled');
+    });
+
+    it('rejects a booking that was never marked', async () => {
+      const ctx = await seed('1w');
+      expect(await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id })).toEqual({ ok: false, error: 'not_marked' });
+    });
+
+    it('rejects a booking belonging to another club', async () => {
+      const ctx = await seed('1w');
+      const other = await seed('1w');
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      expect(await undoNoShow(db, { clubId: other.club.id, bookingId: ctx.booking.id })).toEqual({ ok: false, error: 'not_found' });
+    });
   });
 });

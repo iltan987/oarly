@@ -165,3 +165,65 @@ async function markNoShowTx(db: DB, input: { clubId: string; bookingId: string }
     return { ok: true, bannedUntil: ban.bannedUntil, permanent: ban.permanent, alreadyLapsed, cancelled, promoted };
   });
 }
+
+export type UndoNoShowResult =
+  | { ok: true; bannedUntil: Date | null; permanent: boolean }
+  | { ok: false; error: 'not_found' | 'not_marked' | 'restore_conflict' };
+
+/**
+ * Reverse a mistaken absence.
+ *
+ * Restores the booking, deletes its penalty row and recomputes the ban from
+ * whatever remains — which may lift it, or may not, if another absence still
+ * stands. Because `resolveBan` is a plain max, that recomputation needs no
+ * replay of the order penalties were applied in.
+ *
+ * Seats the cascade cancelled are NOT restored: a promoted waitlister may now
+ * genuinely hold that seat, and evicting them to repair the owner's slip only
+ * moves the injustice. The owner re-seats by hand from the Bookings view.
+ */
+export async function undoNoShow(db: DB, input: { clubId: string; bookingId: string }): Promise<UndoNoShowResult> {
+  try {
+    return await undoNoShowTx(db, input);
+  } catch (err) {
+    // Restoring the booking can collide with another multisport booking the
+    // member acquired for that same day while this one sat marked absent.
+    if (isUniqueViolation(err, 'bookings_multisport_day_uq')) return { ok: false, error: 'restore_conflict' };
+    throw err;
+  }
+}
+
+async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string }): Promise<UndoNoShowResult> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ id: bookings.id, userId: bookings.userId, clubId: bookings.clubId, status: bookings.status, slotStartAt: slots.startAt })
+      .from(bookings)
+      .innerJoin(sessions, eq(sessions.id, bookings.sessionId))
+      .innerJoin(slots, eq(slots.id, sessions.slotId))
+      .where(eq(bookings.id, input.bookingId));
+    if (!row || row.clubId !== input.clubId || !row.userId) return { ok: false, error: 'not_found' };
+    if (row.status !== 'no_show') return { ok: false, error: 'not_marked' };
+
+    const [membership] = await tx
+      .select({ id: memberships.id, status: memberships.status })
+      .from(memberships)
+      .where(and(eq(memberships.userId, row.userId), eq(memberships.clubId, input.clubId)));
+    if (!membership) return { ok: false, error: 'not_found' };
+
+    // Same per-slot advisory lock every other seat mutation on this session
+    // takes (markNoShow, cancelBooking, ownerRemoveBooking): restoring this
+    // booking to 'booked' changes the session's active count, and a concurrent
+    // ownerRemoveBooking on another attendee of the same session calls
+    // applySeating, which reads that count. Without the lock the two could
+    // interleave — applySeating reading a stale count, or racing the write
+    // back to 'booked' — the exact hazard markNoShow's own comment calls out
+    // for its slot lock.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${row.slotStartAt.toISOString()}))`);
+
+    await tx.update(bookings).set({ status: 'booked' }).where(eq(bookings.id, row.id));
+    await tx.delete(penalties).where(and(eq(penalties.bookingId, row.id), eq(penalties.membershipId, membership.id)));
+
+    const ban = await recomputeBan(tx, membership.id, membership.status);
+    return { ok: true, bannedUntil: ban.bannedUntil, permanent: ban.permanent };
+  });
+}
