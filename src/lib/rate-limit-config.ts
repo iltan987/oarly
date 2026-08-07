@@ -10,4 +10,9 @@ export const RATE_LIMITS = {
   bookingPerAccount: { limit: 10, windowSec: 60 },
   bookingPerIp: { limit: 60, windowSec: 60 },
   apiBaselinePerIp: { limit: 100, windowSec: 60 },
+  // Not in §17 — added by the rate-limiting cycle for surfaces §17 did not enumerate.
+  clubRequestPerAccount: { limit: 5, windowSec: 60 * 60 },
+  joinRequestPerAccount: { limit: 20, windowSec: 60 * 60 },
+  logoUploadPerAccount: { limit: 20, windowSec: 60 * 60 },
+  localePerIp: { limit: 60, windowSec: 60 },
 } satisfies Record<string, RateRule>;
