@@ -92,8 +92,9 @@ revalidate → toast.
 ### `src/lib/penalty.ts` (new, pure)
 
 ```
-penaltyEndsAt({ sessionStartAt, timezone, policy }) -> Date | 'permanent' | null
-resolveBan(rows: { bannedUntil: Date | null }[])    -> { bannedUntil: Date | null; permanent: boolean }
+penaltyEndsAt({ sessionStartAt, timezone, policy })            -> Date | 'permanent' | null
+resolveBan(rows: { bannedUntil: Date | null; permanent: boolean }[])
+                                                               -> { bannedUntil: Date | null; permanent: boolean }
 ```
 
 `penaltyEndsAt` returns `null` for policy `off`, the string `permanent` for `never`, and otherwise the
@@ -186,6 +187,21 @@ commit.
 In-app, `/book` shows a banner with the ban end date and the session cards go disabled. The eligibility
 gate already returns `banned`, so most of this state exists and only needs presenting.
 
+**A guard change is required to make that banner reachable at all.** `requireMember`
+(`src/lib/membership.ts:71-72`) currently calls `notFound()` for a member with an active ban, and again
+for `status = 'banned'`. As it stands a penalised member does not see an explanation — they get a bare
+404 on `/book` and `/bookings`. So `membership.ts` gains **`requireMemberView`**, identical to
+`requireMember` except that it admits a banned member and returns the membership for the page to
+render.
+
+Which guard each call site uses follows one rule: **a ban gates acquisition, not viewing or release.**
+
+| Call site | Guard |
+|---|---|
+| `/book` page, `/bookings` page | `requireMemberView` — they must be able to see why |
+| `bookSeatAction` | `requireMember` (strict) — acquisition |
+| `cancelBookingAction` | `requireMemberView` — a seat outside the ban window survives the cascade, and its holder must still be able to give it up |
+
 ### Owner-facing
 
 `/manage/bookings` gains, per seated rower, a **Mark absent** action behind a confirm dialog, an
@@ -256,13 +272,20 @@ clubs.
 
 ## Migration 0006
 
-Four changes in one migration:
+Five changes in one migration:
 
-1. `bookings.booking_date date` (nullable).
-2. Backfill it from each booking's slot.
+1. `bookings.booking_date date`, added nullable.
+2. Backfill it from each booking's slot, then **`SET NOT NULL`**. Not-null is deliberate: a nullable
+   column would make the partial unique index silently inert for any insert path that forgot to
+   populate it, because NULL-distinct semantics exclude those rows. Not-null converts that silent
+   correctness hole into a loud insert failure. Only two test fixtures insert `bookings` directly, so
+   the cost is small.
 3. The partial unique index above.
 4. `penalties.booking_id` + a unique index on it — one penalty per booking, and the handle `undoNoShow`
    uses to find the row to delete.
+5. `penalties.permanent boolean not null default false`. Without it a `never` penalty (which has no
+   `banned_until` date) is indistinguishable from an `off`-policy row, and `resolveBan` could not
+   recompute a permanent ban after an undo removed a different row.
 
 **Risk, and how it is handled.** If live data already contains a same-day MultiSport pair for one user,
 step 3 fails — and since `build` now runs `drizzle-kit migrate` on production builds, that fails a prod
