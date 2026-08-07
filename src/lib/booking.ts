@@ -8,19 +8,20 @@ import { isBookingOpen, resolveDateOpen } from './calendar-rules';
 import { toMinutes, utcToClubDate, zonedWallClockToUtc } from './date-tz';
 import { checkEligibility, type EligibilityReason } from './eligibility';
 import { findOrCreateSlotTx, type MaterializeBoat } from './materialize';
+import { isUniqueViolation } from './pg-errors';
 import { resolveSeating } from './seating';
 
 const HOUR_MS = 60 * 60 * 1000;
 const ACTIVE = ['booked', 'waitlisted'] as const;
 
-type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
+export type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
 
 /**
  * Recompute a session's sticky seating after a mutation and return the user (if
  * any) promoted from waitlisted -> booked into a freed seat. Caller must hold the
  * per-slot advisory lock.
  */
-async function applySeating(tx: Tx, sessionId: string, capacity: number, mode: 'equal' | 'priority'): Promise<{ promotedUserId: string | null }> {
+export async function applySeating(tx: Tx, sessionId: string, capacity: number, mode: 'equal' | 'priority'): Promise<{ promotedUserId: string | null }> {
   const active = await tx.select({ id: bookings.id, userId: bookings.userId, status: bookings.status, paymentType: bookings.paymentType, effectiveAt: bookings.effectiveAt }).from(bookings).where(and(eq(bookings.sessionId, sessionId), inArray(bookings.status, [...ACTIVE])));
   const prevStatus = new Map(active.map((a) => [a.id, a.status]));
   const assignments = resolveSeating(active.map((a) => ({ id: a.id, status: a.status as 'booked' | 'waitlisted', paymentType: a.paymentType, effectiveAt: a.effectiveAt })), capacity, mode);
@@ -43,7 +44,27 @@ export type BookResult =
   | { ok: true; bookingId: string; outcome: 'seated' | 'waitlisted'; queuePosition: number | null }
   | { ok: false; error: 'ineligible'; reason: EligibilityReason }
   | { ok: false; error: 'already_booked_this_slot' }
+  | { ok: false; error: 'multisport_day_taken' }
   | { ok: false; error: 'no_session' };
+
+/**
+ * A MultiSport card allows one session per DAY, across every club — so this
+ * check is deliberately not club-scoped. It is the ordinary-case path only:
+ * `bookings_multisport_day_uq` is the actual guarantee, because the per-slot
+ * advisory lock cannot serialize two bookings in different slots or clubs.
+ */
+async function multisportDayTaken(tx: Tx, userId: string, dateISO: string): Promise<boolean> {
+  const [clash] = await tx
+    .select({ id: bookings.id })
+    .from(bookings)
+    .where(and(
+      eq(bookings.userId, userId),
+      eq(bookings.bookingDate, dateISO),
+      eq(bookings.paymentType, 'multisport'),
+      inArray(bookings.status, [...ACTIVE]),
+    ));
+  return Boolean(clash);
+}
 
 export type CancelInput = { clubId: string; userId: string; bookingId: string; now?: Date };
 export type CancelResult =
@@ -53,7 +74,8 @@ export type CancelResult =
 /** Book (or waitlist) a seat for one member in one boat at one time block. */
 export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
   const now = input.now ?? new Date();
-  return db.transaction(async (tx) => {
+  try {
+    return await db.transaction(async (tx) => {
     // 1. Club + window, scoped to clubId.
     const [club] = await tx
       .select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode, openOnHolidays: clubs.openOnHolidays, bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays })
@@ -125,6 +147,11 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
       if (existingActive) return { ok: false, error: 'already_booked_this_slot' };
     }
 
+    // 7b. MultiSport: one session per day, anywhere.
+    if (input.paymentType === 'multisport' && await multisportDayTaken(tx, input.userId, dateISO)) {
+      return { ok: false, error: 'multisport_day_taken' };
+    }
+
     // 8. Choose the target session of the chosen boat: pack a boat (first free seat by id),
     //    else the one with the fewest active bookings (shortest waitlist), tie-break by id.
     //    Only `open` sessions can take a new booking — a closed/cancelled one keeps the
@@ -148,7 +175,13 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
     for (const a of assignments) await tx.update(bookings).set({ status: a.status, queuePosition: a.queuePosition }).where(eq(bookings.id, a.id));
     const mine = assignments.find((a) => a.id === inserted.id)!;
     return { ok: true, bookingId: inserted.id, outcome: mine.status === 'booked' ? 'seated' : 'waitlisted', queuePosition: mine.queuePosition };
-  });
+    });
+  } catch (err) {
+    // The guard above handles the ordinary case; this is the genuine race two
+    // requests can hit between their checks and their inserts.
+    if (isUniqueViolation(err, 'bookings_multisport_day_uq')) return { ok: false, error: 'multisport_day_taken' };
+    throw err;
+  }
 }
 
 /** Cancel a member's own booking and auto-promote the waitlist for that session. */
@@ -212,7 +245,7 @@ export async function ownerRemoveBooking(db: DB, input: { clubId: string; bookin
 export type OwnerAddInput = { clubId: string; windowId: string; boatTypeId: string; startAt: Date; userId: string; paymentType: 'regular' | 'multisport'; now?: Date };
 export type OwnerAddResult =
   | { ok: true; bookingId: string }
-  | { ok: false; error: 'no_session' | 'not_a_member' | 'already_booked_this_slot' | 'session_full' };
+  | { ok: false; error: 'no_session' | 'not_a_member' | 'already_booked_this_slot' | 'session_full' | 'multisport_day_taken' };
 
 /**
  * Owner seats a member into a free seat of a block. Override: skips skill/payment
@@ -220,7 +253,8 @@ export type OwnerAddResult =
  */
 export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<OwnerAddResult> {
   const now = input.now ?? new Date();
-  return db.transaction(async (tx) => {
+  try {
+    return await db.transaction(async (tx) => {
     const [club] = await tx.select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode }).from(clubs).where(eq(clubs.id, input.clubId));
     if (!club) return { ok: false, error: 'no_session' };
     const [win] = await tx.select().from(scheduleWindows).where(and(eq(scheduleWindows.id, input.windowId), eq(scheduleWindows.clubId, input.clubId)));
@@ -267,6 +301,14 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
       if (existingActive) return { ok: false, error: 'already_booked_this_slot' };
     }
 
+    // The owner override covers the club's gates (closed day, booking-open,
+    // skill, payment eligibility). One-per-day is the CARD's rule, not the
+    // club's, so it is not the owner's to waive — and the unique index would
+    // enforce it regardless.
+    if (input.paymentType === 'multisport' && await multisportDayTaken(tx, input.userId, dateISO)) {
+      return { ok: false, error: 'multisport_day_taken' };
+    }
+
     // Target the chosen boat's session that has a free seat (empty-seat-only).
     // The owner override covers the member-facing gates, not a session the club has
     // explicitly closed or cancelled — those take no new bookings from anyone.
@@ -281,5 +323,11 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
     const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'booked', effectiveAt: now, source: 'owner', bookingDate: dateISO }).returning({ id: bookings.id });
     await applySeating(tx, target.id, target.capacity, club.multisportMode);
     return { ok: true, bookingId: inserted.id };
-  });
+    });
+  } catch (err) {
+    // The guard above handles the ordinary case; this is the genuine race two
+    // requests can hit between their checks and their inserts.
+    if (isUniqueViolation(err, 'bookings_multisport_day_uq')) return { ok: false, error: 'multisport_day_taken' };
+    throw err;
+  }
 }
