@@ -386,12 +386,13 @@
       "confirmAbsentTitle": "Mark {name} absent?",
       "confirmAbsentBan": "They will not be able to book until {date}. Any seats they hold before then will be cancelled and given to the waitlist.",
       "confirmAbsentPermanent": "Their booking access will be suspended, and every upcoming seat they hold will be cancelled and given to the waitlist.",
-      "confirmAbsentLapsed": "This session is old enough that the ban has already lapsed. The absence will be recorded but will not restrict booking.",
-      "confirmAbsentNoPenalty": "This club does not penalise no-shows, so the absence will be recorded without any ban.",
+      "confirmAbsentLapsed": "This session is old enough that this absence adds no new restriction. Any restriction already in force for this member still applies.",
+      "confirmAbsentNoPenalty": "This club does not penalise no-shows, so this absence adds no new restriction. Any restriction already in force for this member still applies.",
       "confirmAbsentCta": "Mark absent",
       "marked": "Absence recorded.",
       "markedWithCancellations": "Absence recorded. {count} upcoming bookings were cancelled.",
       "undone": "Absence removed. Any seats this penalty cancelled were not restored.",
+      "undoConflict": "This seat can no longer be restored — it has since been taken.",
       "bannedUntilBadge": "Banned until {date}",
       "bannedBadge": "Suspended"
     }

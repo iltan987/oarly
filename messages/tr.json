@@ -386,12 +386,13 @@
       "confirmAbsentTitle": "{name} katılmadı olarak işaretlensin mi?",
       "confirmAbsentBan": "{date} tarihine kadar rezervasyon yapamayacak. O tarihe kadar tuttuğu yerler iptal edilip bekleme listesine verilecek.",
       "confirmAbsentPermanent": "Rezervasyon erişimi askıya alınacak ve tuttuğu tüm ileri tarihli yerler iptal edilip bekleme listesine verilecek.",
-      "confirmAbsentLapsed": "Bu seans yeterince eski olduğu için ceza süresi çoktan doldu. Katılmama kaydedilecek ama rezervasyonu kısıtlamayacak.",
-      "confirmAbsentNoPenalty": "Bu kulüp katılmama durumunda ceza uygulamıyor; kayıt tutulacak ama ceza verilmeyecek.",
+      "confirmAbsentLapsed": "Bu seans yeterince eski olduğu için bu katılmama yeni bir kısıtlama getirmeyecek. Üyenin hâlihazırda bir kısıtlaması varsa geçerliliğini korur.",
+      "confirmAbsentNoPenalty": "Bu kulüp katılmama durumunda ceza uygulamıyor, bu yüzden bu katılmama yeni bir kısıtlama getirmeyecek. Üyenin hâlihazırda bir kısıtlaması varsa geçerliliğini korur.",
       "confirmAbsentCta": "Katılmadı olarak işaretle",
       "marked": "Katılmama kaydedildi.",
       "markedWithCancellations": "Katılmama kaydedildi. {count} ileri tarihli rezervasyon iptal edildi.",
       "undone": "Katılmama kaydı kaldırıldı. Bu ceza nedeniyle iptal edilen yerler geri alınmadı.",
+      "undoConflict": "Bu yer artık geri alınamıyor — başkası tarafından tutulmuş.",
       "bannedUntilBadge": "{date} tarihine kadar yasaklı",
       "bannedBadge": "Askıya alındı"
     }

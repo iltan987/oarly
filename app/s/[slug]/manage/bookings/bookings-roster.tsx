@@ -12,7 +12,7 @@ import type { RosterSession } from '@/lib/roster';
 
 import type { ManageActionResult } from '../action-result';
 import { type MemberHit, ownerAddBookingAction, ownerRemoveBookingAction } from './actions';
-import { type MarkActionResult, markNoShowAction, undoNoShowAction } from './attendance-actions';
+import { type MarkActionResult, markNoShowAction, type UndoActionResult, undoNoShowAction } from './attendance-actions';
 import { MemberCombobox } from './member-combobox';
 
 export type RosterSessionWithPenalty = RosterSession & {
@@ -60,12 +60,13 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
     else toast.success(t('marked'));
   }, [markState, t, tm]);
 
-  const [undoState, undoAction, undoPending] = useActionState<ManageActionResult | null, FormData>(undoNoShowAction.bind(null, slug), null);
-  const undoHandled = useRef<ManageActionResult | null>(null);
+  const [undoState, undoAction, undoPending] = useActionState<UndoActionResult | null, FormData>(undoNoShowAction.bind(null, slug), null);
+  const undoHandled = useRef<UndoActionResult | null>(null);
   useEffect(() => {
     if (undoState === null || undoState === undoHandled.current) return;
     undoHandled.current = undoState;
     if (undoState.ok) toast.success(t('undone'));
+    else if (undoState.error === 'restore_conflict') toast.error(t('undoConflict'));
     else toast.error(tm('actionError'));
   }, [undoState, t, tm]);
 

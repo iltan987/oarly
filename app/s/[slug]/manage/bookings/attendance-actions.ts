@@ -8,10 +8,11 @@ import { markNoShow, undoNoShow } from '@/lib/attendance';
 import { requireOwner } from '@/lib/membership';
 import { notifyNoShowPenalty, notifyWaitlistPromotion } from '@/lib/notify';
 
-import type { ManageActionResult } from '../action-result';
-
 /** Richer than ManageActionResult so the toast can report how many seats the cascade took. */
 export type MarkActionResult = { ok: true; cancelled: number } | { ok: false };
+
+/** Richer than ManageActionResult so the toast can distinguish a lost-race restore from a generic error. */
+export type UndoActionResult = { ok: true } | { ok: false; error?: 'restore_conflict' };
 
 const bookingSchema = z.object({ bookingId: z.uuid() });
 
@@ -39,13 +40,13 @@ export async function markNoShowAction(slug: string, _prev: MarkActionResult | n
   return { ok: true, cancelled: result.cancelled.length };
 }
 
-export async function undoNoShowAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
+export async function undoNoShowAction(slug: string, _prev: UndoActionResult | null, formData: FormData): Promise<UndoActionResult> {
   const { club } = await requireOwner(slug, '/manage/bookings');
   const parsed = bookingSchema.safeParse({ bookingId: formData.get('bookingId') });
   if (!parsed.success) return { ok: false };
 
   const result = await undoNoShow(db, { clubId: club.id, bookingId: parsed.data.bookingId });
-  if (!result.ok) return { ok: false };
+  if (!result.ok) return result.error === 'restore_conflict' ? { ok: false, error: 'restore_conflict' } : { ok: false };
 
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);
