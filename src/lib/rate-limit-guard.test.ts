@@ -1,11 +1,38 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { rateLimit, resetRateLimitState } from '@/lib/rate-limit';
-import { enforceRateLimit } from '@/lib/rate-limit-guard';
+import { enforceRateLimit, retryAfterSeconds } from '@/lib/rate-limit-guard';
 
 const ACCOUNT = { name: 'testAccount', limit: 2, windowSec: 60 };
 const IP = { name: 'testIp', limit: 10, windowSec: 60 };
 const T0 = 1_000_000;
+
+describe('retryAfterSeconds', () => {
+  // The in-memory backend only ever returns `success: false` while `now < resetAt`
+  // strictly, so `enforceRateLimit`'s own tests can never exercise the floor for real —
+  // `resetAt - now` is always >= 1ms there. The floor exists for the KV-backed path,
+  // where `resetAt` is epoch-anchored independent of the caller's `now`, so clock skew
+  // can make `resetAt <= now`. These cases pin that directly.
+  it('floors at 1 when resetAt equals now', () => {
+    expect(retryAfterSeconds(1_000, 1_000)).toBe(1);
+  });
+
+  it('floors at 1 when resetAt is in the past (clock skew)', () => {
+    expect(retryAfterSeconds(1_000 - 5_000, 1_000)).toBe(1);
+  });
+
+  it('floors at 1 for a 1ms-away reset', () => {
+    expect(retryAfterSeconds(1_000 + 1, 1_000)).toBe(1);
+  });
+
+  it('reports 45 for a 45s-away reset', () => {
+    expect(retryAfterSeconds(1_000 + 45_000, 1_000)).toBe(45);
+  });
+
+  it('rounds a sub-second remainder up to 60', () => {
+    expect(retryAfterSeconds(1_000 + 59_999, 1_000)).toBe(60);
+  });
+});
 
 describe('enforceRateLimit', () => {
   beforeEach(() => { resetRateLimitState(); });

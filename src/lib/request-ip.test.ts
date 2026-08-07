@@ -27,4 +27,13 @@ describe('parseClientIp', () => {
   it('returns "unknown" when neither header is present', () => {
     expect(parseClientIp({ xForwardedFor: null, xRealIp: null })).toBe('unknown');
   });
+
+  it('skips a blank leading entry to find the first real one', () => {
+    expect(parseClientIp({ xForwardedFor: ', 1.2.3.4', xRealIp: null })).toBe('1.2.3.4');
+  });
+
+  it('falls through to x-real-ip when every x-forwarded-for entry is blank', () => {
+    expect(parseClientIp({ xForwardedFor: ',,,', xRealIp: '198.51.100.4' })).toBe('198.51.100.4');
+    expect(parseClientIp({ xForwardedFor: ',,,', xRealIp: null })).toBe('unknown');
+  });
 });
