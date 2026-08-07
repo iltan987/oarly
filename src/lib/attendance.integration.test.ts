@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as schema from '@/db/schema';
 
 import { markNoShow, undoNoShow } from './attendance';
-import { zonedWallClockToUtc } from './date-tz';
+import { ownerAddBooking } from './booking';
+import { utcToClubDate, zonedWallClockToUtc } from './date-tz';
 
 const url = process.env.TEST_DATABASE_URL;
 const TZ = 'Europe/Istanbul';
@@ -44,6 +45,27 @@ describe.skipIf(!url)('markNoShow', () => {
     const [session] = await db.insert(schema.sessions).values({ slotId: slot.id, clubId: ctx.club.id, boatTypeId: ctx.boat.id, capacity: 2 }).returning();
     const [booking] = await db.insert(schema.bookings).values({ sessionId: session.id, clubId: ctx.club.id, userId: ctx.uid, paymentType: 'regular', status: 'booked', effectiveAt: NOW, bookingDate: dateISO }).returning();
     return { session, booking };
+  }
+
+  /**
+   * Give the club a scheduleWindow matching the missed session's own weekday and
+   * time block, so `ownerAddBooking`'s `findOrCreateSlotTx` targets the SAME slot
+   * (and hence the same session) `seed` already created, instead of materializing
+   * a fresh one.
+   */
+  async function seedWindow(ctx: Awaited<ReturnType<typeof seed>>) {
+    const { weekday } = utcToClubDate(MISSED_START, TZ);
+    const [w] = await db.insert(schema.scheduleWindows).values({ clubId: ctx.club.id, weekday, startTime: '07:00', endTime: '08:00', defaultSessionMinutes: 60 }).returning();
+    await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: ctx.boat.id, quantity: 1 });
+    return w.id;
+  }
+
+  /** A second approved member of the same club, for filling/re-seating a session. */
+  async function seedMember(ctx: Awaited<ReturnType<typeof seed>>, tag: string) {
+    const uid = `${tag}-${Date.now()}-${seq++}`;
+    await db.insert(schema.user).values({ id: uid, name: uid, email: `${uid}@t.co` });
+    await db.insert(schema.memberships).values({ userId: uid, clubId: ctx.club.id, status: 'approved' });
+    return uid;
   }
 
   it('marks the booking, writes a penalty and bans until session start + policy', async () => {
@@ -304,6 +326,58 @@ describe.skipIf(!url)('markNoShow', () => {
       // with the second, which now legitimately occupies that (user, day) key.
       const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
       expect(result).toEqual({ ok: false, error: 'restore_conflict' });
+    });
+
+    it('gates the restore when the owner has already seated someone else into the freed seat', async () => {
+      // Capacity 2, A + B booked.
+      const ctx = await seed('1w');
+      const windowId = await seedWindow(ctx);
+      const bUid = await seedMember(ctx, 'att-b');
+      await db.insert(schema.bookings).values({ sessionId: ctx.session.id, clubId: ctx.club.id, userId: bUid, paymentType: 'regular', status: 'booked', effectiveAt: MISSED_START, bookingDate: MISSED_DAY });
+      const cUid = await seedMember(ctx, 'att-c');
+
+      // Mark A absent — the seat is now open (freeSeats counts only 'booked').
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+
+      // Owner seats a walk-in (C) into the freed seat.
+      const added = await ownerAddBooking(db, { clubId: ctx.club.id, windowId, boatTypeId: ctx.boat.id, startAt: MISSED_START, userId: cUid, paymentType: 'regular', now: NOW });
+      expect(added.ok).toBe(true);
+
+      // Undoing A's absence must not push the session to 3 booked in a 2-seat boat.
+      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      expect(result).toEqual({ ok: false, error: 'restore_conflict' });
+
+      const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.sessionId, ctx.session.id));
+      expect(rows.filter((r) => r.status === 'booked')).toHaveLength(2);
+    });
+
+    it('gates the restore, instead of throwing, when the owner re-seats the same member', async () => {
+      // 'off' policy: no ban is imposed, so `ownerAddBooking`'s not-banned gate
+      // does not itself stop the re-add — reproducing Finding 1's symptom B,
+      // which is exactly the case a standing ban would otherwise mask.
+      const ctx = await seed('off');
+      const windowId = await seedWindow(ctx);
+
+      // Mark A absent, then the owner re-seats A into a NEW row ("sorry, wrong row").
+      // The one-booking-per-slot check in `ownerAddBooking` filters on active
+      // statuses, so the `no_show` row does not block the re-add.
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      const added = await ownerAddBooking(db, { clubId: ctx.club.id, windowId, boatTypeId: ctx.boat.id, startAt: MISSED_START, userId: ctx.uid, paymentType: 'regular', now: NOW });
+      expect(added.ok).toBe(true);
+
+      // Undoing the original absence would collide with the new row on
+      // `bookings_active_uq` — this must come back as a typed failure, not a throw.
+      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      expect(result).toEqual({ ok: false, error: 'restore_conflict' });
+    });
+
+    it('still restores the seat when it has remained free (guard against over-correcting)', async () => {
+      const ctx = await seed('1w');
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      expect(result).toEqual({ ok: true, bannedUntil: null, permanent: false });
+      const [booking] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, ctx.booking.id));
+      expect(booking.status).toBe('booked');
     });
   });
 });

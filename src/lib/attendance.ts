@@ -187,8 +187,13 @@ export async function undoNoShow(db: DB, input: { clubId: string; bookingId: str
     return await undoNoShowTx(db, input);
   } catch (err) {
     // Restoring the booking can collide with another multisport booking the
-    // member acquired for that same day while this one sat marked absent.
-    if (isUniqueViolation(err, 'bookings_multisport_day_uq')) return { ok: false, error: 'restore_conflict' };
+    // member acquired for that same day while this one sat marked absent, or
+    // (backstop for the in-transaction guard above, under true concurrency)
+    // with another active row this member or someone else now holds in the
+    // same session.
+    if (isUniqueViolation(err, 'bookings_multisport_day_uq') || isUniqueViolation(err, 'bookings_active_uq')) {
+      return { ok: false, error: 'restore_conflict' };
+    }
     throw err;
   }
 }
@@ -196,7 +201,7 @@ export async function undoNoShow(db: DB, input: { clubId: string; bookingId: str
 async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string }): Promise<UndoNoShowResult> {
   return db.transaction(async (tx) => {
     const [row] = await tx
-      .select({ id: bookings.id, userId: bookings.userId, clubId: bookings.clubId, status: bookings.status, slotStartAt: slots.startAt })
+      .select({ id: bookings.id, userId: bookings.userId, clubId: bookings.clubId, status: bookings.status, sessionId: bookings.sessionId, slotStartAt: slots.startAt, capacity: sessions.capacity })
       .from(bookings)
       .innerJoin(sessions, eq(sessions.id, bookings.sessionId))
       .innerJoin(slots, eq(slots.id, sessions.slotId))
@@ -219,6 +224,26 @@ async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string }
     // back to 'booked' — the exact hazard markNoShow's own comment calls out
     // for its slot lock.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${row.slotStartAt.toISOString()}))`);
+
+    // Re-validate before restoring: between the mark and this undo, an owner may
+    // have seated someone else into the freed seat (ownerAddBooking waives the
+    // booking-open gate and, like here, counts only active statuses) or the
+    // waitlist may have been promoted into it (a second absence + removal can
+    // empty a session and applySeating fills it). Either way the seat this
+    // booking used to hold may no longer be free, or the member may already
+    // hold a fresh active row here (the owner re-seating "the same person,
+    // wrong row"). resolveSeating's sticky rule never demotes a booked row to
+    // make room, so restoring unconditionally would either over-seat the
+    // session or collide with `bookings_active_uq` — the latter is also
+    // guarded as a backstop in the catch below.
+    const activeInSession = await tx
+      .select({ id: bookings.id, userId: bookings.userId })
+      .from(bookings)
+      .where(and(eq(bookings.sessionId, row.sessionId), inArray(bookings.status, [...ACTIVE])));
+    const memberHasOtherActiveRow = activeInSession.some((a) => a.userId === row.userId && a.id !== row.id);
+    if (memberHasOtherActiveRow || activeInSession.length >= row.capacity) {
+      return { ok: false, error: 'restore_conflict' };
+    }
 
     await tx.update(bookings).set({ status: 'booked' }).where(eq(bookings.id, row.id));
     await tx.delete(penalties).where(and(eq(penalties.bookingId, row.id), eq(penalties.membershipId, membership.id)));
