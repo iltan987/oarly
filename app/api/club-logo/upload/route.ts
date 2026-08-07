@@ -5,11 +5,18 @@ import { db } from '@/db';
 import { ownedClubId } from '@/lib/club-profile';
 import { getCurrentUser } from '@/lib/session';
 
-const ALLOWED_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+// No image/svg+xml: an SVG served from our Blob origin is an active document, and it
+// buys nothing a PNG/WebP logo doesn't.
+const ALLOWED_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const body = (await request.json()) as HandleUploadBody;
+  let body: HandleUploadBody;
+  try {
+    body = (await request.json()) as HandleUploadBody;
+  } catch {
+    return NextResponse.json({ error: 'Bad request' }, { status: 400 });
+  }
   try {
     const json = await handleUpload({
       body,

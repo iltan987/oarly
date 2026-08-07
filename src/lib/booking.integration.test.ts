@@ -256,4 +256,39 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: pend, paymentType: 'regular', now: NOW });
     expect(res).toEqual({ ok: false, error: 'not_a_member' });
   });
+
+  // Nothing sets sessions.status today (per-session cancel is a later cycle), so these
+  // materialize the slot first and then close the session by hand — the point is that the
+  // seating paths honour the column the moment something starts writing it.
+  describe.each(['closed', 'cancelled'] as const)('a %s session', (status) => {
+    async function closedSession() {
+      const s = await scenario({ seats: 2 });
+      const seeder = await newMember(s.club.id, 'seed');
+      // First booking materializes the slot + its sessions.
+      await bookSeat(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: seeder, paymentType: 'regular', idempotencyKey: key(), now: NOW });
+      await db.update(schema.sessions).set({ status }).where(eq(schema.sessions.clubId, s.club.id));
+      return s;
+    }
+
+    it('takes no new member booking', async () => {
+      const s = await closedSession();
+      const u = await newMember(s.club.id, 'late');
+      const res = await bookSeat(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u, paymentType: 'regular', idempotencyKey: key(), now: NOW });
+      expect(res).toEqual({ ok: false, error: 'no_session' });
+    });
+
+    it('takes no owner-added booking either', async () => {
+      const s = await closedSession();
+      const u = await newMember(s.club.id, 'late');
+      const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u, paymentType: 'regular', now: NOW });
+      expect(res).toEqual({ ok: false, error: 'no_session' });
+    });
+
+    it('keeps the booking that was already on it', async () => {
+      const s = await closedSession();
+      const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, s.club.id));
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe('booked');
+    });
+  });
 });

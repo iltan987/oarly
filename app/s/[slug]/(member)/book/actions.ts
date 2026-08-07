@@ -1,5 +1,6 @@
 'use server';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import * as z from 'zod';
 
 import { db } from '@/db';
@@ -40,6 +41,9 @@ export async function bookSeatAction(slug: string, _prev: BookFormState, formDat
   if (!result.ok) return { status: 'error', error: result.error };
   revalidatePath(`/s/${slug}/book`);
   revalidatePath(`/s/${slug}/bookings`);
-  await notifyBookingConfirmation(db, { bookingId: result.bookingId });
+  // The seat is already committed; the email is best-effort. Deferring it with after()
+  // keeps Resend's round-trip off the critical path so the confirmation dialog closes
+  // as soon as the booking lands.
+  after(() => notifyBookingConfirmation(db, { bookingId: result.bookingId }));
   return { status: 'ok', error: null, outcome: result.outcome };
 }

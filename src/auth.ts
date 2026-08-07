@@ -33,6 +33,12 @@ export const auth = betterAuth({
 
   emailVerification: {
     sendOnSignUp: true,
+    // A sign-in attempt by an unverified user is rejected with EMAIL_NOT_VERIFIED
+    // (better-auth/dist/api/routes/sign-in.mjs:312-325). Without this flag the
+    // attempt is a dead end: the original link may already have expired and nothing
+    // re-sends one. With it, the same request that fails also mails a fresh link,
+    // and the sign-in form routes the user to /verify-email to say so.
+    sendOnSignIn: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
       const locale = userLocale(user);
@@ -47,9 +53,14 @@ export const auth = betterAuth({
           google: {
             clientId: env.GOOGLE_CLIENT_ID!,
             clientSecret: env.GOOGLE_CLIENT_SECRET!,
-            mapProfileToUser: (profile: { given_name?: string; family_name?: string }) => ({
+            // Google's `locale` is a BCP-47 tag ("en", "en-GB", "tr"); we only speak
+            // tr/en, and 'tr' is the app default, so anything non-English maps to 'tr'.
+            // Without this the OAuth path leaves `locale` at its column default and
+            // every email to an English-speaking Google user arrives in Turkish.
+            mapProfileToUser: (profile: { given_name?: string; family_name?: string; locale?: string }) => ({
               firstName: profile.given_name,
               lastName: profile.family_name,
+              locale: profile.locale?.toLowerCase().startsWith('en') ? 'en' : 'tr',
             }),
           },
         },

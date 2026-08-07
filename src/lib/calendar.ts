@@ -116,6 +116,11 @@ export async function computeCalendar(
       continue;
     }
     const vslots: VirtualSlot[] = [];
+    // Blocks are tiled in club-local WALL CLOCK, so on a spring-forward day two
+    // distinct wall-clock times can collapse onto the same UTC instant. Slot identity
+    // is (clubId, startAt) — enforced by slots_club_start_uq — so emitting both would
+    // produce two calendar rows that materialize to one row. Keep the first.
+    const emittedStarts = new Set<string>();
     for (const w of windowsByWeekday.get(weekday) ?? []) {
       const startMin = toMinutes(w.startTime);
       const endMin = toMinutes(w.endTime);
@@ -123,6 +128,8 @@ export async function computeCalendar(
         const startAt = zonedWallClockToUtc(dateISO, minutesToHHMM(m), club.timezone);
         const endAt = addMinutes(startAt, w.minutes);
         const key = startAt.toISOString();
+        if (emittedStarts.has(key)) continue;
+        emittedStarts.add(key);
         const persisted = persistedByStart.get(key);
         if (persisted) {
           persistedByStart.delete(key);

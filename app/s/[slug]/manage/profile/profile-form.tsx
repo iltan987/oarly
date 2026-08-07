@@ -81,7 +81,8 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
           </Field>
           <Field>
             <FieldLabel htmlFor="headingFont">{t('headingFont')}</FieldLabel>
-            <Select value={headingFont} onValueChange={(v) => setHeadingFont(v as Club['headingFont'])}>
+            {/* `items` is what makes <SelectValue /> render the label, not the raw value. */}
+            <Select items={{ default: t('fontDefault'), premium: t('fontPremium') }} value={headingFont} onValueChange={(v) => setHeadingFont(v as Club['headingFont'])}>
               <SelectTrigger id="headingFont">
                 <SelectValue />
               </SelectTrigger>

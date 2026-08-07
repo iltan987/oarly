@@ -73,6 +73,8 @@ export function SkillLevelSelect({
         */}
         <Select
           key={currentSkillLevelId ?? NONE_VALUE}
+          // `items` is what makes <SelectValue /> render the level name, not its uuid.
+          items={{ [NONE_VALUE]: noneLabel, ...Object.fromEntries(skillLevels.map((l) => [l.id, l.name])) }}
           defaultValue={currentSkillLevelId ?? NONE_VALUE}
           onValueChange={(next) => setValue(next as string)}
         >

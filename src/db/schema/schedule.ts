@@ -15,12 +15,19 @@ export const scheduleWindows = pgTable('schedule_windows', {
   defaultSessionMinutes: integer('default_session_minutes').notNull(),
 });
 
-export const windowBoats = pgTable('window_boats', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  windowId: uuid('window_id').notNull().references(() => scheduleWindows.id, { onDelete: 'cascade' }),
-  boatTypeId: uuid('boat_type_id').notNull().references(() => boatTypes.id, { onDelete: 'cascade' }),
-  quantity: integer('quantity').notNull().default(1),
-});
+export const windowBoats = pgTable(
+  'window_boats',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    windowId: uuid('window_id').notNull().references(() => scheduleWindows.id, { onDelete: 'cascade' }),
+    boatTypeId: uuid('boat_type_id').notNull().references(() => boatTypes.id, { onDelete: 'cascade' }),
+    quantity: integer('quantity').notNull().default(1),
+  },
+  // A boat appears at most once per window; `quantity` is how you ask for several of
+  // them. A duplicate row would silently double that window's materialized sessions.
+  // `schedule.validate` already rejects duplicates on input — this is the DB backstop.
+  (t) => [uniqueIndex('window_boats_window_boat_uq').on(t.windowId, t.boatTypeId)],
+);
 
 export const slots = pgTable(
   'slots',

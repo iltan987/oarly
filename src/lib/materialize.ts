@@ -12,7 +12,7 @@ export type MaterializeInput = {
   windowId: string;
   boats: MaterializeBoat[];
 };
-export type FoundSession = { id: string; boatTypeId: string; capacity: number };
+export type FoundSession = { id: string; boatTypeId: string; capacity: number; status: 'open' | 'closed' | 'cancelled' };
 export type FindOrCreateResult = { slotId: string; sessions: FoundSession[]; created: boolean };
 export type MaterializedSlot = { slotId: string; sessions: { id: string; boatTypeId: string }[] };
 
@@ -47,7 +47,7 @@ export async function findOrCreateSlotTx(tx: DbTx, input: MaterializeInput): Pro
     // Guard: an empty VALUES clause throws on some drizzle versions. A boatless slot is valid
     // (just not bookable) — create it with no sessions.
     if (rows.length === 0) return { slotId, sessions: [], created: true };
-    const created = await tx.insert(sessions).values(rows).returning({ id: sessions.id, boatTypeId: sessions.boatTypeId, capacity: sessions.capacity });
+    const created = await tx.insert(sessions).values(rows).returning({ id: sessions.id, boatTypeId: sessions.boatTypeId, capacity: sessions.capacity, status: sessions.status });
     return { slotId, sessions: created, created: true };
   }
 
@@ -57,7 +57,7 @@ export async function findOrCreateSlotTx(tx: DbTx, input: MaterializeInput): Pro
     .from(slots)
     .where(and(eq(slots.clubId, input.clubId), eq(slots.startAt, input.startAt)));
   const existingSessions = await tx
-    .select({ id: sessions.id, boatTypeId: sessions.boatTypeId, capacity: sessions.capacity })
+    .select({ id: sessions.id, boatTypeId: sessions.boatTypeId, capacity: sessions.capacity, status: sessions.status })
     .from(sessions)
     .where(eq(sessions.slotId, existing.id));
   return { slotId: existing.id, sessions: existingSessions, created: false };

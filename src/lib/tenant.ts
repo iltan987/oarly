@@ -1,5 +1,4 @@
 import { eq } from 'drizzle-orm';
-import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
 
@@ -14,11 +13,10 @@ export const getClubBySlug = cache(async (slug: string): Promise<Club | null> =>
   return club ?? null;
 });
 
-/** The tenant slug stamped by the proxy, or null on the apex host. */
-export async function getTenantSlug(): Promise<string | null> {
-  const h = await headers();
-  return h.get('x-tenant-slug');
-}
+// NOTE: there is deliberately no `getTenantSlug()` header reader here. The proxy does
+// stamp `x-tenant-slug`, but every authz path derives the tenant from `params.slug`
+// (which Next fills from the rewritten `/s/[slug]/…` segment) so that authorization
+// never depends on a header. Reintroducing a header reader invites that coupling back.
 
 /** Resolve a club or render the 404 page. */
 export async function requireClub(slug: string): Promise<Club> {

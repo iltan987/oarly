@@ -2,7 +2,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Controller, type Resolver, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ type Values = { firstName: string; lastName: string; phone: string; email: strin
 
 export function SignUpForm({ title }: { title: string }) {
   const t = useTranslations('auth');
+  const locale = useLocale();
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const { register, handleSubmit, control, formState: { errors } } = useForm<Values>({
@@ -41,6 +42,10 @@ export function SignUpForm({ title }: { title: string }) {
       firstName: v.firstName,
       lastName: v.lastName,
       phone: v.phone,
+      // Without this the `locale` additionalField keeps its 'tr' default forever —
+      // nothing else in the app ever writes it — so every transactional email
+      // (verify, reset, booking notices) would go out in Turkish to English users.
+      locale,
     });
     setPending(false);
     if (error) { toast.error(t('errorGeneric')); return; }
