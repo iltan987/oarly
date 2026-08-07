@@ -262,4 +262,39 @@ describe('authRateLimitBefore / authRateLimitAfter', () => {
     }
     await expect(authRateLimitBefore(ctxFor('/request-password-reset', { email: 'a@b.com' }))).rejects.toThrow();
   });
+
+  it('bounds SUCCESSFUL verification-resend requests per target email too', async () => {
+    // The asymmetry this closes: `/send-verification-email` also takes an arbitrary email
+    // out of the request body and mails whoever owns it, but it had only the per-IP rule —
+    // so one address could mail a chosen unverified member 60 times an hour indefinitely,
+    // and rotating IPs lifts even that.
+    //
+    // Behavioural on purpose, exactly like the password-reset case above: it drives BOTH
+    // hooks with a SUCCESSFUL outcome rather than asserting on `accountKeyFor`'s return
+    // value, so it pins the consumer (`if (!match?.clearOnSuccess) return;`) and not just
+    // the routing table. Mutation-tested two ways: deleting the `/send-verification-email`
+    // branch from `accountKeyFor`, and flipping its `clearOnSuccess` to `true` — both make
+    // this fail.
+    for (let i = 0; i < RATE_LIMITS.passwordResetPerEmail.limit; i += 1) {
+      await authRateLimitBefore(ctxFor('/send-verification-email', { email: 'victim@b.com' }));
+      await authRateLimitAfter(ctxFor('/send-verification-email', { email: 'victim@b.com' }, { status: true }));
+    }
+    await expect(authRateLimitBefore(ctxFor('/send-verification-email', { email: 'victim@b.com' })))
+      .rejects.toThrow();
+  });
+
+  it('keeps the verification-resend bucket separate from the password-reset one', async () => {
+    // The deliberate trade recorded on `accountKeyFor`: both flows are what a locked-out
+    // member reaches for, so exhausting password reset must NOT consume the verification
+    // resend that is their only remaining way back in. If the two ever collapse onto one
+    // key this fails, which is the point — the choice is a judgement call and should not be
+    // reversed silently.
+    for (let i = 0; i < RATE_LIMITS.passwordResetPerEmail.limit; i += 1) {
+      await authRateLimitBefore(ctxFor('/request-password-reset', { email: 'locked@b.com' }));
+      await authRateLimitAfter(ctxFor('/request-password-reset', { email: 'locked@b.com' }, { status: true }));
+    }
+    await expect(authRateLimitBefore(ctxFor('/request-password-reset', { email: 'locked@b.com' }))).rejects.toThrow();
+    await expect(authRateLimitBefore(ctxFor('/send-verification-email', { email: 'locked@b.com' })))
+      .resolves.toBeUndefined();
+  });
 });

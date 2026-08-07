@@ -260,6 +260,29 @@ Three changes to `src/auth.ts`:
 
    The email is lowercased before keying so `Ali@x.com` and `ali@x.com` share a bucket.
 
+4. **Per-email mail-bomb limiting**, on the same hook pair, for the two endpoints that
+   accept an **arbitrary** email in the request body and mail whoever owns it:
+
+   | Path | Key | Rule | `clearOnSuccess` |
+   |---|---|---|---|
+   | `/request-password-reset` | `pwreset:email:<email>` | `passwordResetPerEmail` (3/hour) | `false` |
+   | `/send-verification-email` | `verify:email:<email>` | `passwordResetPerEmail` (3/hour) | `false` |
+
+   `clearOnSuccess: false` is the load-bearing half: unlike sign-in, *succeeding* at "send
+   me a mail" repeatedly **is** the abuse, so a successful send must still count.
+
+   `/send-verification-email` was missed in the first pass — it had only the per-IP rule,
+   so one address could mail a chosen unverified member 60 times an hour indefinitely, and
+   rotating IPs lifts even that. §17 groups "password reset / verify resend" under a single
+   per-email threshold; only half of it had been implemented.
+
+   The two use **separate** buckets, deliberately. Sharing one would stop an attacker
+   alternating the endpoints for 6/hour instead of 3, but both flows are what a locked-out
+   member reaches for, and a shared bucket would let three password-reset attempts consume
+   the verification resend that is their only remaining way back in. 6/hour to a victim's
+   inbox is bounded harassment; blocking account recovery is a self-inflicted outage.
+   Availability over enforcement, as everywhere else in this design.
+
 ### 4.7 Local testing
 
 `@upstash/redis` speaks the Upstash **REST** protocol, not RESP, so a vanilla `redis`

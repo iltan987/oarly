@@ -167,6 +167,28 @@ export function accountKeyFor(path: string, body: unknown): AccountRule | null {
   if (path === '/request-password-reset') {
     return { key: `pwreset:email:${safeEmail}`, rule: RATE_LIMITS.passwordResetPerEmail, clearOnSuccess: false };
   }
+  if (path === '/send-verification-email') {
+    // Symmetric with `/request-password-reset`, and for the same reason: this endpoint
+    // takes an ARBITRARY email in the request body and mails whoever owns it. With only
+    // the per-IP rule (`authRateLimitRules`) governing it, one address could mail a chosen
+    // unverified member 60 times an hour, every hour, forever — and rotating IPs lifts even
+    // that. §17 groups "password reset / verify resend" under one per-email threshold; only
+    // half of it was implemented.
+    //
+    // `clearOnSuccess: false` is the load-bearing half. Succeeding at "send me a mail" IS
+    // the abuse here, so a successful send must still count — clearing on success would
+    // make the rule unenforceable, exactly as it would for password reset.
+    //
+    // Deliberately a SEPARATE bucket from `pwreset:email:` rather than a shared one, even
+    // though both are "mail this address" and sharing would stop an attacker alternating
+    // the two endpoints for 6/hour instead of 3. The accepted trade: both flows are what a
+    // locked-out member reaches for, and a shared bucket would let three password-reset
+    // attempts consume the verification resend that is their only remaining way back in.
+    // 6/hour to a victim's inbox is bounded harassment; blocking a member's account
+    // recovery is a self-inflicted outage. Availability over enforcement, as everywhere
+    // else in this module.
+    return { key: `verify:email:${safeEmail}`, rule: RATE_LIMITS.passwordResetPerEmail, clearOnSuccess: false };
+  }
   return null;
 }
 
