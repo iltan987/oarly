@@ -28,16 +28,23 @@ export type RateResult = {
 const PREFIX = 'oarly:rl';
 
 /**
- * The identifier both backends store state under. Folding the rule's own thresholds into
- * it is load-bearing, not decoration: the Upstash path's Redis key is built from this
+ * The identifier both backends store state under. Folding the rule's own `name` into it
+ * is load-bearing, not decoration: the Upstash path's Redis key is built from this
  * identifier plus a bucket number under `PREFIX`, which is the same literal string for
  * every rule, and the in-memory `buckets` map is keyed on it directly. Without the rule
  * folded in, two different rules called with the same caller-supplied `key` (e.g. an
  * account id reused across a login rule and a booking rule) would silently share one
  * counter.
+ *
+ * Discriminating on `rule.name` rather than `rule.limit`/`rule.windowSec` is deliberate:
+ * `RATE_LIMITS` already has multiple rules with identical thresholds (e.g. `bookingPerIp`
+ * and `localePerIp` are both `{ limit: 60, windowSec: 60 }`), so keying on the values
+ * would have reproduced the exact collision this function exists to prevent. `name` is
+ * kept in sync with each rule's own `RATE_LIMITS` key by
+ * `rate-limit-config.test.ts`.
  */
 function storageKey(key: string, rule: RateRule): string {
-  return `${rule.limit}:${rule.windowSec}:${key}`;
+  return `${rule.name}:${key}`;
 }
 
 // --- in-memory fixed-window fallback (dev, test, CI) ---

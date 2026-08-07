@@ -28,19 +28,26 @@ import { rateLimit, rateLimitReset, resetRateLimitState } from '@/lib/rate-limit
 //   - `constructions` counts how many times `new Redis(...)` ran, which is how the
 //     `resetRateLimitState` completeness test observes whether the memoized client was
 //     actually torn down.
-type MockRedisState = { mode: 'reject' | 'hang'; constructions: number };
+//   - `calls` records every `eval`/`evalsha` invocation's Lua KEYS argument, which is how
+//     a test can see that `storageKey(key, rule)` (rate-limit.ts) actually reached the
+//     Upstash call rather than the raw `key` — inspection-only otherwise, since every
+//     other assertion in this file would pass just as well against the raw key.
+type RecordedCall = { method: 'eval' | 'evalsha'; keys: string[] };
+type MockRedisState = { mode: 'reject' | 'hang'; constructions: number; calls: RecordedCall[] };
 
 vi.mock('@upstash/redis', async (importOriginal) => {
   const actual = await importOriginal<typeof UpstashRedis>();
-  const state: MockRedisState = { mode: 'reject', constructions: 0 };
+  const state: MockRedisState = { mode: 'reject', constructions: 0, calls: [] };
   class FailingRedis {
     constructor() {
       state.constructions += 1;
     }
-    eval() {
+    eval(_script: string, keys: string[]) {
+      state.calls.push({ method: 'eval', keys });
       return state.mode === 'hang' ? new Promise(() => {}) : Promise.reject(new Error('kv down'));
     }
-    evalsha() {
+    evalsha(_hash: string, keys: string[]) {
+      state.calls.push({ method: 'evalsha', keys });
       return state.mode === 'hang' ? new Promise(() => {}) : Promise.reject(new Error('kv down'));
     }
   }
@@ -52,7 +59,7 @@ async function mockRedisState(): Promise<MockRedisState> {
   return mod.__mockState;
 }
 
-const RULE = { limit: 3, windowSec: 60 };
+const RULE = { name: 'testRule', limit: 3, windowSec: 60 };
 const T0 = 1_000_000;
 
 describe('rateLimit (in-memory fallback)', () => {
@@ -98,18 +105,29 @@ describe('rateLimit (in-memory fallback)', () => {
     expect((await rateLimit('b', RULE, T0)).success).toBe(true);
   });
 
-  it('keeps buckets separate per rule even when the caller-supplied key collides', async () => {
-    // Two different rules called with the SAME identifier (e.g. an account id reused
-    // across a login rule and a booking rule) must not share one counter.
-    const otherRule = { limit: 1, windowSec: 60 };
+  it('keeps buckets separate per rule even when two rules share identical thresholds', async () => {
+    // The real hazard this guards against: two DIFFERENT rules with the SAME `limit`
+    // and `windowSec` (several such pairs exist in RATE_LIMITS, e.g. `bookingPerIp` and
+    // `localePerIp` are both `{ limit: 60, windowSec: 60 }`) called with the same
+    // caller-supplied identifier (e.g. the same account id, or the same IP) must not
+    // share one counter. Deliberately does NOT vary limit/windowSec between the two
+    // rules — that would only prove the OLD (values-based) storageKey worked, not that
+    // rule identity is what discriminates now.
+    const sameThresholds = { name: 'otherRule', limit: RULE.limit, windowSec: RULE.windowSec };
+    expect(sameThresholds.limit).toBe(RULE.limit);
+    expect(sameThresholds.windowSec).toBe(RULE.windowSec);
+    expect(sameThresholds.name).not.toBe(RULE.name);
+
     expect((await rateLimit('shared', RULE, T0)).success).toBe(true);
-    expect((await rateLimit('shared', otherRule, T0)).success).toBe(true);
-    expect((await rateLimit('shared', otherRule, T0)).success).toBe(false);
-    // RULE's own bucket for 'shared' must still have its own room, unaffected by
-    // otherRule's exhaustion.
     expect((await rateLimit('shared', RULE, T0)).success).toBe(true);
     expect((await rateLimit('shared', RULE, T0)).success).toBe(true);
-    expect((await rateLimit('shared', RULE, T0)).success).toBe(false);
+    expect((await rateLimit('shared', RULE, T0)).success).toBe(false); // RULE's bucket exhausted
+
+    // otherRule's bucket for the SAME identifier must still be fully available.
+    expect((await rateLimit('shared', sameThresholds, T0)).success).toBe(true);
+    expect((await rateLimit('shared', sameThresholds, T0)).success).toBe(true);
+    expect((await rateLimit('shared', sameThresholds, T0)).success).toBe(true);
+    expect((await rateLimit('shared', sameThresholds, T0)).success).toBe(false);
   });
 
   it('rateLimitReset empties a bucket so the next call starts a new window', async () => {
@@ -166,6 +184,7 @@ describe('rateLimit (backend failure)', () => {
     const state = await mockRedisState();
     state.mode = 'reject';
     state.constructions = 0;
+    state.calls = [];
   });
 
   afterEach(() => {
@@ -229,5 +248,26 @@ describe('rateLimit (backend failure)', () => {
     resetRateLimitState();
     await rateLimit('k', RULE, T0);
     expect(state.constructions).toBe(2);
+  });
+
+  it('threads the rule-derived storage key into both the limit and resetUsedTokens calls', async () => {
+    // The Upstash-side counterpart of the in-memory collision test above. The library's
+    // own key derivation is `[prefix, identifier].join(':')` plus a bucket suffix for
+    // `.limit()`, or plus a `*` for `.resetUsedTokens()` — either way, our identifier
+    // (`storageKey(key, rule)`) must show up verbatim inside the Lua call's KEYS entry.
+    // Mutation-tested below: reverting either call site to the raw `key` leaves the
+    // discriminator out and this test catches it.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const state = await mockRedisState();
+
+    await rateLimit('k', RULE, T0);
+    const limitCall = state.calls.at(-1);
+    expect(limitCall?.method).toBe('evalsha');
+    expect(limitCall?.keys[0]).toContain(`:${RULE.name}:k:`);
+
+    await rateLimitReset('k', RULE);
+    const resetCall = state.calls.at(-1);
+    expect(resetCall?.method).toBe('evalsha');
+    expect(resetCall?.keys[0]).toContain(`:${RULE.name}:k:`);
   });
 });
