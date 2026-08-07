@@ -78,7 +78,7 @@ export default async function ManageMembersPage({ params }: { params: Promise<{ 
                       {r.membership.status === 'banned' ? (
                         <StatusPill tone="bad">{t('bookings.bannedBadge')}</StatusPill>
                       ) : r.membership.bannedUntil && r.membership.bannedUntil.getTime() > now.getTime() ? (
-                        <StatusPill tone="warn">{t('bookings.bannedUntilBadge', { date: r.membership.bannedUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) })}</StatusPill>
+                        <StatusPill tone="warn">{t('bookings.bannedUntilBadge', { date: r.membership.bannedUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: club.timezone }) })}</StatusPill>
                       ) : null}
                     </div>
                     {levels.length === 0 ? (

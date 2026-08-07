@@ -414,12 +414,12 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   });
 
   describe('waitlist capacity', () => {
-    async function seedClubWithCapacity(opts: { seats: number; waitlistCapacity: number | null }) {
+    async function seedClubWithCapacity(opts: { seats: number; waitlistCapacity: number | null; quantity?: number }) {
       const tag = `wl-${Date.now()}-${seq++}`;
       const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, multisportMode: 'equal', selfCancelEnabled: true, cancelCutoffHours: null, bookingOpenMode: 'always', bookingOpenLeadDays: null, waitlistCapacity: opts.waitlistCapacity }).returning();
       const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: opts.seats, allowedPayment: 'both' }).returning();
       const [w] = await db.insert(schema.scheduleWindows).values({ clubId: club.id, weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60 }).returning();
-      await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: boat.id, quantity: 1 });
+      await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: boat.id, quantity: opts.quantity ?? 1 });
       return { clubId: club.id, windowId: w.id, boatTypeId: boat.id, startAt: START };
     }
     async function seedMembers(c: { clubId: string }, n: number) {
@@ -455,7 +455,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
       expect(results.filter((r) => !r.ok && r.error === 'waitlist_full')).toHaveLength(7);
 
       const queued = results.filter((r) => r.ok && r.outcome === 'waitlisted').map((r) => (r.ok ? r.queuePosition : null));
-      expect([...queued].sort()).toEqual([1, 2, 3, 4]);
+      expect([...queued].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([1, 2, 3, 4]);
     });
 
     it('holds the line under a concurrent rush', async () => {
@@ -486,6 +486,34 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
       expect(results.filter((r) => r.ok && r.outcome === 'waitlisted')).toHaveLength(7);
     });
 
+    it('turns away everyone once the seats are full when the cap is 0 — no queue at all', async () => {
+      // waitlistCapacity: 0 is semantically distinct from null (unlimited): it
+      // means no queue may form behind a full session.
+      const c = await seedClubWithCapacity({ seats: 2, waitlistCapacity: 0 });
+      const users = await seedMembers(c, 4);
+      const results = [];
+      for (const uid of users) {
+        results.push(await bookSeat(db, { clubId: c.clubId, userId: uid, windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: `z-${uid}`, now: NOW }));
+      }
+      expect(results.filter((r) => r.ok && r.outcome === 'seated')).toHaveLength(2);
+      expect(results.filter((r) => !r.ok && r.error === 'waitlist_full')).toHaveLength(2);
+    });
+
+    it('packs free seats first, then fills each session to its own cap, then rejects', async () => {
+      // A boat with quantity 2 materializes two sessions of this block, each with
+      // its own 2 seats + 1 queue slot: 4 free seats total, then 2 queue slots
+      // total, then everyone else is turned away.
+      const c = await seedClubWithCapacity({ seats: 2, waitlistCapacity: 1, quantity: 2 });
+      const users = await seedMembers(c, 8);
+      const results = [];
+      for (const uid of users) {
+        results.push(await bookSeat(db, { clubId: c.clubId, userId: uid, windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: `m-${uid}`, now: NOW }));
+      }
+      expect(results.filter((r) => r.ok && r.outcome === 'seated')).toHaveLength(4);
+      expect(results.filter((r) => r.ok && r.outcome === 'waitlisted')).toHaveLength(2);
+      expect(results.filter((r) => !r.ok && r.error === 'waitlist_full')).toHaveLength(2);
+    });
+
     it('reopens a queue slot when someone cancels', async () => {
       const c = await seedClubWithCapacity({ seats: 1, waitlistCapacity: 1 });
       const users = await seedMembers(c, 3);
@@ -497,7 +525,10 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
 
       await cancelBooking(db, { clubId: c.clubId, userId: users[1], bookingId: second.bookingId, now: NOW });
       const retry = await bookSeat(db, { clubId: c.clubId, userId: users[2], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: 'q-4', now: NOW });
-      expect(retry.ok).toBe(true);
+      // The freed slot is the QUEUE slot, not the seat itself (the seat is still
+      // held by `first`) — pin outcome + position so this can't pass on a seat
+      // opening up instead.
+      expect(retry).toMatchObject({ ok: true, outcome: 'waitlisted', queuePosition: 1 });
       if (!first.ok) throw new Error('setup failed');
     });
   });

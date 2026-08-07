@@ -162,8 +162,10 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
       //    limit, the invariant lives entirely inside a single session, and the
       //    per-slot advisory lock taken in step 4 already serializes every booking
       //    for this slot. That is what makes the count reliable between here and
-      //    the insert: of 15 concurrent bookers, the first `capacity + waitlist`
-      //    are admitted in arrival order and the rest each read a full count.
+      //    the insert: of 15 concurrent bookers, the first `capacity + waitlist` to
+      //    acquire that lock are admitted and the rest each read a full count —
+      //    Postgres advisory-lock waiters are not served FIFO, so this is
+      //    lock-acquisition order, not arrival order.
       const boatSessions = foc.sessions.filter((s) => s.boatTypeId === input.boatTypeId && s.status === 'open').sort((a, b) => (a.id < b.id ? -1 : 1));
       if (boatSessions.length === 0) return { ok: false, error: 'no_session' };
       const activeRows = await tx.select({ sessionId: bookings.sessionId }).from(bookings).where(and(inArray(bookings.sessionId, boatSessions.map((s) => s.id)), inArray(bookings.status, [...ACTIVE])));
