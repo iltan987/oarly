@@ -7,22 +7,49 @@ import type { RateRule } from '@/lib/rate-limit-config';
 export type RateResult = {
   success: boolean;
   remaining: number;
-  /** Millisecond epoch at which the current window expires. */
+  /**
+   * Millisecond epoch at which the current window expires.
+   *
+   * The two backends anchor this differently, and callers must not assume otherwise.
+   * The in-memory fallback anchors at first use: a bucket's window lasts exactly
+   * `windowSec` from whichever request opened it, tracked via the injected `now`. The
+   * Upstash-backed limiter anchors to epoch-aligned buckets
+   * (`floor(Date.now() / windowMs)`), so `resetAt` is the next epoch boundary — usually
+   * less than a full window away — and does NOT depend on which request happened to be
+   * first. On the Upstash path the injected `now` argument is ignored by the underlying
+   * library entirely; it is only used by this function's own `catch` and
+   * timeout-normalization branches, both of which are fallback values, not real window
+   * state. A test that freezes `now` only controls behaviour on the in-memory path.
+   */
   resetAt: number;
 };
 
 /** Namespaces our keys inside a KV database that may be shared with other features. */
 const PREFIX = 'oarly:rl';
 
+/**
+ * The identifier both backends store state under. Folding the rule's own thresholds into
+ * it is load-bearing, not decoration: the Upstash path's Redis key is built from this
+ * identifier plus a bucket number under `PREFIX`, which is the same literal string for
+ * every rule, and the in-memory `buckets` map is keyed on it directly. Without the rule
+ * folded in, two different rules called with the same caller-supplied `key` (e.g. an
+ * account id reused across a login rule and a booking rule) would silently share one
+ * counter.
+ */
+function storageKey(key: string, rule: RateRule): string {
+  return `${rule.limit}:${rule.windowSec}:${key}`;
+}
+
 // --- in-memory fixed-window fallback (dev, test, CI) ---
 // Single-threaded JS makes check-and-increment atomic here for free.
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
 function inMemory(key: string, rule: RateRule, now: number): RateResult {
-  const bucket = buckets.get(key);
+  const storedKey = storageKey(key, rule);
+  const bucket = buckets.get(storedKey);
   if (!bucket || now >= bucket.resetAt) {
     const resetAt = now + rule.windowSec * 1000;
-    buckets.set(key, { count: 1, resetAt });
+    buckets.set(storedKey, { count: 1, resetAt });
     return { success: true, remaining: rule.limit - 1, resetAt };
   }
   if (bucket.count >= rule.limit) return { success: false, remaining: 0, resetAt: bucket.resetAt };
@@ -34,8 +61,11 @@ function inMemory(key: string, rule: RateRule, now: number): RateResult {
 // `Ratelimit` is constructed per distinct rule and memoized at module scope, together
 // with a per-rule ephemeral cache. Both must live outside any request handler: that is
 // the only way Fluid Compute's instance reuse can reject an already-blocked identifier
-// without paying a Redis round trip. Each rule gets its OWN cache Map so two rules that
-// happen to share a key string cannot poison each other.
+// without paying a Redis round trip. Each rule gets its OWN cache Map, so a blocked
+// identifier cached under one rule cannot leak a false block into another rule's cache —
+// but the cache is a separate concern from the Redis key itself, which is why callers
+// pass `storageKey(key, rule)` as the identifier rather than the raw `key` (see its
+// doc comment).
 const limiters = new Map<string, Ratelimit>();
 let redis: Redis | null = null;
 
@@ -74,7 +104,16 @@ function limiterFor(rule: RateRule): Ratelimit {
 export async function rateLimit(key: string, rule: RateRule, now = Date.now()): Promise<RateResult> {
   if (!upstashConfigured()) return inMemory(key, rule, now);
   try {
-    const result = await limiterFor(rule).limit(key);
+    const result = await limiterFor(rule).limit(storageKey(key, rule));
+    // `@upstash/ratelimit`'s own `timeout` option (set in limiterFor) does NOT throw when
+    // the Redis call is slow — it RESOLVES `{ success: true, limit: 0, remaining: 0,
+    // reset: 0, reason: 'timeout' }` (see applyTimeout in the installed dist/index.mjs).
+    // That is the library's own fail-open, but its zeroed-out fields violate this
+    // module's contract on `resetAt`, so our `catch` below never sees it — it has to be
+    // normalized here to the same sane defaults the catch path returns.
+    if (result.reason === 'timeout' || result.reset <= 0) {
+      return { success: true, remaining: rule.limit, resetAt: now + rule.windowSec * 1000 };
+    }
     return { success: result.success, remaining: result.remaining, resetAt: result.reset };
   } catch (error) {
     console.error('rateLimit: backend unavailable, allowing request', error);
@@ -85,11 +124,11 @@ export async function rateLimit(key: string, rule: RateRule, now = Date.now()): 
 /** Empty `key`'s bucket. Used when a successful sign-in clears an account's failed-attempt count. */
 export async function rateLimitReset(key: string, rule: RateRule): Promise<void> {
   if (!upstashConfigured()) {
-    buckets.delete(key);
+    buckets.delete(storageKey(key, rule));
     return;
   }
   try {
-    await limiterFor(rule).resetUsedTokens(key);
+    await limiterFor(rule).resetUsedTokens(storageKey(key, rule));
   } catch (error) {
     console.error('rateLimitReset: backend unavailable', error);
   }

@@ -18,16 +18,39 @@ import { rateLimit, rateLimitReset, resetRateLimitState } from '@/lib/rate-limit
 // network).
 //
 // What genuinely works: replace `Redis` outright with a minimal stand-in that never runs
-// the real constructor (and so never gets proxied), whose `eval`/`evalsha` reject. That
-// is exactly the surface `Ratelimit.fixedWindow`'s Lua-script call uses.
+// the real constructor (and so never gets proxied), whose `eval`/`evalsha` are driven by
+// shared, test-controlled state:
+//   - `mode: 'reject'` fails the call immediately, for the plain fail-open proof.
+//   - `mode: 'hang'` never settles, forcing `@upstash/ratelimit`'s own internal
+//     `timeout` race (see rate-limit.ts) to be what resolves the call — this is the only
+//     way to reach the RESOLVED (not thrown) `reason: 'timeout'` response the library
+//     produces on a slow backend.
+//   - `constructions` counts how many times `new Redis(...)` ran, which is how the
+//     `resetRateLimitState` completeness test observes whether the memoized client was
+//     actually torn down.
+type MockRedisState = { mode: 'reject' | 'hang'; constructions: number };
+
 vi.mock('@upstash/redis', async (importOriginal) => {
   const actual = await importOriginal<typeof UpstashRedis>();
+  const state: MockRedisState = { mode: 'reject', constructions: 0 };
   class FailingRedis {
-    eval() { return Promise.reject(new Error('kv down')); }
-    evalsha() { return Promise.reject(new Error('kv down')); }
+    constructor() {
+      state.constructions += 1;
+    }
+    eval() {
+      return state.mode === 'hang' ? new Promise(() => {}) : Promise.reject(new Error('kv down'));
+    }
+    evalsha() {
+      return state.mode === 'hang' ? new Promise(() => {}) : Promise.reject(new Error('kv down'));
+    }
   }
-  return { ...actual, Redis: FailingRedis };
+  return { ...actual, Redis: FailingRedis, __mockState: state };
 });
+
+async function mockRedisState(): Promise<MockRedisState> {
+  const mod = (await import('@upstash/redis')) as unknown as { __mockState: MockRedisState };
+  return mod.__mockState;
+}
 
 const RULE = { limit: 3, windowSec: 60 };
 const T0 = 1_000_000;
@@ -75,6 +98,20 @@ describe('rateLimit (in-memory fallback)', () => {
     expect((await rateLimit('b', RULE, T0)).success).toBe(true);
   });
 
+  it('keeps buckets separate per rule even when the caller-supplied key collides', async () => {
+    // Two different rules called with the SAME identifier (e.g. an account id reused
+    // across a login rule and a booking rule) must not share one counter.
+    const otherRule = { limit: 1, windowSec: 60 };
+    expect((await rateLimit('shared', RULE, T0)).success).toBe(true);
+    expect((await rateLimit('shared', otherRule, T0)).success).toBe(true);
+    expect((await rateLimit('shared', otherRule, T0)).success).toBe(false);
+    // RULE's own bucket for 'shared' must still have its own room, unaffected by
+    // otherRule's exhaustion.
+    expect((await rateLimit('shared', RULE, T0)).success).toBe(true);
+    expect((await rateLimit('shared', RULE, T0)).success).toBe(true);
+    expect((await rateLimit('shared', RULE, T0)).success).toBe(false);
+  });
+
   it('rateLimitReset empties a bucket so the next call starts a new window', async () => {
     await rateLimit('k', RULE, T0);
     await rateLimit('k', RULE, T0);
@@ -112,16 +149,40 @@ describe('rateLimit (backend failure)', () => {
   const originalKvUrl = env.KV_REST_API_URL;
   const originalKvToken = env.KV_REST_API_TOKEN;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     resetRateLimitState();
-    Object.defineProperty(env, 'KV_REST_API_URL', { value: 'http://127.0.0.1:1/', configurable: true });
-    Object.defineProperty(env, 'KV_REST_API_TOKEN', { value: 'test-token', configurable: true });
+    Object.defineProperty(env, 'KV_REST_API_URL', {
+      value: 'http://127.0.0.1:1/',
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    Object.defineProperty(env, 'KV_REST_API_TOKEN', {
+      value: 'test-token',
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    const state = await mockRedisState();
+    state.mode = 'reject';
+    state.constructions = 0;
   });
 
   afterEach(() => {
-    Object.defineProperty(env, 'KV_REST_API_URL', { value: originalKvUrl, configurable: true });
-    Object.defineProperty(env, 'KV_REST_API_TOKEN', { value: originalKvToken, configurable: true });
+    Object.defineProperty(env, 'KV_REST_API_URL', {
+      value: originalKvUrl,
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    Object.defineProperty(env, 'KV_REST_API_TOKEN', {
+      value: originalKvToken,
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
     vi.restoreAllMocks();
+    vi.useRealTimers();
     resetRateLimitState();
   });
 
@@ -132,5 +193,41 @@ describe('rateLimit (backend failure)', () => {
 
     expect(result.success).toBe(true);
     expect(console.error).toHaveBeenCalled();
+  });
+
+  it('normalizes the library-internal timeout response instead of returning it verbatim', async () => {
+    // `@upstash/ratelimit`'s own `timeout` option does not throw when the backend is
+    // slow — it RESOLVES `{ success: true, limit: 0, remaining: 0, reset: 0, reason:
+    // 'timeout' }`. Left unnormalized, that reaches callers as `resetAt: 0`, which
+    // `enforceRateLimit` (a later task) would turn into a hugely negative Retry-After.
+    // A `Redis` stand-in whose call never settles is what forces this path, rather than
+    // the `catch` block: a call that HANGS past `timeout` is exactly what the library's
+    // own race resolves via, as opposed to a call that throws.
+    const state = await mockRedisState();
+    state.mode = 'hang';
+    vi.useFakeTimers();
+
+    const pending = rateLimit('k', RULE, T0);
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = await pending;
+
+    expect(result).toEqual({ success: true, remaining: RULE.limit, resetAt: T0 + RULE.windowSec * 1000 });
+  });
+
+  it('resetRateLimitState tears down the memoized Redis client, not just the buckets', async () => {
+    // Mutation-tested: shrinking resetRateLimitState's body to just `buckets.clear()`
+    // (dropping `limiters.clear()` and `redis = null`) leaves this failing, because
+    // `limiterFor`'s `redis ??= new Redis(...)` would then skip reconstruction on the
+    // second call — exactly the bug a stale memoized client (and its ephemeralCache,
+    // which caches BLOCKED identifiers) would reproduce across a module-state reset.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const state = await mockRedisState();
+
+    await rateLimit('k', RULE, T0);
+    expect(state.constructions).toBe(1);
+
+    resetRateLimitState();
+    await rateLimit('k', RULE, T0);
+    expect(state.constructions).toBe(2);
   });
 });
