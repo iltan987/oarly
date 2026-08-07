@@ -128,12 +128,19 @@ describe.skipIf(!url)('markNoShow', () => {
 
   it('reports a ban that was born expired', async () => {
     const ctx = await seed('2d');
+    // A seat that would fall inside a *live* 2-day ban but is nowhere near the
+    // window this already-lapsed ban would have had — it must survive, and
+    // must survive because the ban is over, not merely because no future seat
+    // was seeded (that would make the assertion vacuous).
+    const survivor = await seedFutureSeat(ctx, '2026-04-01');
     const late = zonedWallClockToUtc('2026-03-30', '20:00', TZ);   // marked long after
     const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: late });
     expect(result).toMatchObject({ ok: true, alreadyLapsed: true });
     if (!result.ok) return;
     expect(result.bannedUntil!.getTime()).toBeLessThan(late.getTime());
     expect(result.cancelled).toEqual([]);
+    const [kept] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, survivor.booking.id));
+    expect(kept.status).toBe('booked');
   });
 
   it('never touches the member bookings of another club', async () => {
@@ -174,14 +181,44 @@ describe.skipIf(!url)('markNoShow', () => {
 
   it('takes the later end date when a second absence is marked during a ban', async () => {
     const ctx = await seed('1w');
-    await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
-    // A second missed session two days later, marked in the same sitting.
+    // Mark the LATER session (12 Mar) first, so its own end date (19 Mar) is
+    // already the standing ban. Then mark the EARLIER session (10 Mar), whose
+    // own end date (17 Mar) is less than the standing ban. If recomputeBan
+    // used only the newly-marked penalty's own end date instead of folding
+    // over every row, this would regress to 17 Mar.
     const second = await seedFutureSeat(ctx, '2026-03-12');
+    const firstNow = zonedWallClockToUtc('2026-03-12', '20:00', TZ);
+    const firstResult = await markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, now: firstNow });
+    expect(firstResult.ok).toBe(true);
+    if (!firstResult.ok) return;
+    expect(firstResult.bannedUntil).toEqual(zonedWallClockToUtc('2026-03-19', '07:00', TZ));
+
     const later = zonedWallClockToUtc('2026-03-13', '20:00', TZ);
-    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, now: later });
+    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: later });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // max(10 Mar + 7d, 12 Mar + 7d) = 19 Mar.
+    // max(10 Mar + 7d = 17 Mar, standing ban 19 Mar) = 19 Mar — the standing
+    // ban must survive even though the just-marked penalty's own end is earlier.
     expect(result.bannedUntil).toEqual(zonedWallClockToUtc('2026-03-19', '07:00', TZ));
+  });
+
+  it('leaves a rejected membership rejected — a ban never resurrects it to approved, and a never-policy absence never bans it', async () => {
+    const tag = `att-${Date.now()}-${seq++}`;
+    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, noshowPenalty: 'never' }).returning();
+    const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: 2, allowedPayment: 'both' }).returning();
+    const uid = `${tag}-u`;
+    await db.insert(schema.user).values({ id: uid, name: 'Ali', email: `${uid}@t.co` });
+    const [membership] = await db.insert(schema.memberships).values({ userId: uid, clubId: club.id, status: 'rejected' }).returning();
+    const [slot] = await db.insert(schema.slots).values({ clubId: club.id, date: MISSED_DAY, startAt: MISSED_START, endAt: zonedWallClockToUtc(MISSED_DAY, '08:00', TZ) }).returning();
+    const [session] = await db.insert(schema.sessions).values({ slotId: slot.id, clubId: club.id, boatTypeId: boat.id, capacity: 2 }).returning();
+    const [booking] = await db.insert(schema.bookings).values({ sessionId: session.id, clubId: club.id, userId: uid, paymentType: 'regular', status: 'booked', effectiveAt: MISSED_START, bookingDate: MISSED_DAY }).returning();
+
+    const result = await markNoShow(db, { clubId: club.id, bookingId: booking.id, now: NOW });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.permanent).toBe(true);
+
+    const [m] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, membership.id));
+    expect(m.status).toBe('rejected');
   });
 });

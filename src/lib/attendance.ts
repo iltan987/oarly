@@ -5,6 +5,7 @@ import { bookings, clubs, memberships, penalties, sessions, slots } from '@/db/s
 
 import { applySeating, type Tx } from './booking';
 import { penaltyEndsAt, resolveBan } from './penalty';
+import { isUniqueViolation } from './pg-errors';
 
 const ACTIVE = ['booked', 'waitlisted'] as const;
 
@@ -28,10 +29,15 @@ async function recomputeBan(tx: Tx, membershipId: string, currentStatus: string)
     .where(eq(penalties.membershipId, membershipId));
   const ban = resolveBan(rows);
 
-  // Only ever move status between 'approved' and 'banned'. Writing it
-  // unconditionally would resurrect a rejected membership.
+  // Only ever move status between 'approved' and 'banned', and only when the
+  // membership is currently in one of those two states. Writing 'banned'
+  // unconditionally would ban a rejected/pending membership; writing 'approved'
+  // unconditionally on ban-lift would resurrect it.
   const status: 'banned' | 'approved' | undefined =
-    ban.permanent ? 'banned' : currentStatus === 'banned' ? 'approved' : undefined;
+    currentStatus !== 'approved' && currentStatus !== 'banned' ? undefined
+    : ban.permanent ? 'banned'
+    : currentStatus === 'banned' ? 'approved'
+    : undefined;
   await tx
     .update(memberships)
     .set(status ? { bannedUntil: ban.bannedUntil, status } : { bannedUntil: ban.bannedUntil })
@@ -53,6 +59,18 @@ async function recomputeBan(tx: Tx, membershipId: string, currentStatus: string)
  */
 export async function markNoShow(db: DB, input: { clubId: string; bookingId: string; now?: Date }): Promise<MarkNoShowResult> {
   const now = input.now ?? new Date();
+  try {
+    return await markNoShowTx(db, input, now);
+  } catch (err) {
+    // The already_marked guard above handles the ordinary case; this is the
+    // genuine race two concurrent marks of the same booking can hit between
+    // their check and their insert.
+    if (isUniqueViolation(err, 'penalties_booking_uq')) return { ok: false, error: 'already_marked' };
+    throw err;
+  }
+}
+
+async function markNoShowTx(db: DB, input: { clubId: string; bookingId: string }, now: Date): Promise<MarkNoShowResult> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({
@@ -83,6 +101,15 @@ export async function markNoShow(db: DB, input: { clubId: string; bookingId: str
       .from(memberships)
       .where(and(eq(memberships.userId, row.userId), eq(memberships.clubId, input.clubId)));
     if (!membership) return { ok: false, error: 'not_found' };
+
+    // Same per-slot lock every other seat mutation in this repo takes, so a
+    // concurrent owner action on this same (already-started) session — e.g.
+    // ownerRemoveBooking on a different attendee — can't race the no_show
+    // write and revert it via a stale applySeating re-evaluation. Safe to take
+    // first here: the missed slot has already started (startAt <= now) while
+    // every cascade slot below is strictly in the future, so ascending order
+    // is preserved.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${row.slotStartAt.toISOString()}))`);
 
     await tx.update(bookings).set({ status: 'no_show', queuePosition: null }).where(eq(bookings.id, row.id));
 
