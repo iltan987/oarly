@@ -72,3 +72,35 @@ describe('requireMember', () => {
     await expect(mod.requireMember('demo')).resolves.toMatchObject({ club: { id: 'club1' } });
   });
 });
+
+describe('requireMemberView', () => {
+  const approvedMembership = { id: 'm1', role: 'member', status: 'approved', bannedUntil: null };
+
+  it('requireMemberView admits a member with an active ban so the page can explain it', async () => {
+    // requireMember 404s a banned member, which would leave them staring at a bare
+    // "not found" with no idea why. The view guard must let them through.
+    getClubBySlug.mockResolvedValue({ id: 'club1', slug: 'demo', status: 'active' });
+    getCurrentUser.mockResolvedValue({ id: 'u1', isAdmin: false });
+    vi.spyOn(mod, 'getMembership').mockResolvedValue({
+      ...approvedMembership,
+      bannedUntil: new Date(Date.now() + 60 * 60 * 1000),
+    } as never);
+    const result = await mod.requireMemberView('demo', '/book');
+    expect(result.membership.bannedUntil).toBeInstanceOf(Date);
+  });
+
+  it('requireMemberView admits a permanently banned membership', async () => {
+    getClubBySlug.mockResolvedValue({ id: 'club1', slug: 'demo', status: 'active' });
+    getCurrentUser.mockResolvedValue({ id: 'u1', isAdmin: false });
+    vi.spyOn(mod, 'getMembership').mockResolvedValue({ ...approvedMembership, status: 'banned' } as never);
+    const result = await mod.requireMemberView('demo', '/book');
+    expect(result.membership.status).toBe('banned');
+  });
+
+  it('requireMemberView still rejects a pending membership', async () => {
+    getClubBySlug.mockResolvedValue({ id: 'club1', slug: 'demo', status: 'active' });
+    getCurrentUser.mockResolvedValue({ id: 'u1', isAdmin: false });
+    vi.spyOn(mod, 'getMembership').mockResolvedValue({ ...approvedMembership, status: 'pending' } as never);
+    await expect(mod.requireMemberView('demo', '/book')).rejects.toThrow('NOT_FOUND');
+  });
+});

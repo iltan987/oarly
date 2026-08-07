@@ -72,3 +72,29 @@ export async function requireMember(
   if (!membership || membership.status !== 'approved' || bannedActive) notFound();
   return { club, user, membership };
 }
+
+/**
+ * Like `requireMember`, but admits a member whose membership is banned — timed
+ * or permanent — and returns it so the page can render the reason.
+ *
+ * The split exists because a ban gates ACQUISITION, not viewing or release. A
+ * banned member must still be able to see why, and to give up a seat that
+ * survived the penalty cascade because it falls after the ban ends. Mutating
+ * actions that acquire something keep the strict `requireMember`.
+ */
+export async function requireMemberView(
+  slug: string,
+  returnPath = '/book',
+): Promise<{ club: Club; user: CurrentUser; membership: Membership }> {
+  const origin = parseAppOrigin(env.APP_URL);
+  const club = await getClubBySlug(slug);
+  requireActiveClub(club);
+  const user = await getCurrentUser();
+  if (!user) {
+    const back = `${clubUrl(slug, origin)}${returnPath}`;
+    redirect(`${apexUrl('/sign-in', origin)}?redirect=${encodeURIComponent(back)}`);
+  }
+  const membership = await self.getMembership(appDb, user.id, club.id);
+  if (!membership || (membership.status !== 'approved' && membership.status !== 'banned')) notFound();
+  return { club, user, membership };
+}

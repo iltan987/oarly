@@ -5,7 +5,7 @@ import * as z from 'zod';
 
 import { db } from '@/db';
 import { cancelBooking } from '@/lib/booking';
-import { requireMember } from '@/lib/membership';
+import { requireMemberView } from '@/lib/membership';
 import { notifyBookingCancellation, notifyWaitlistPromotion } from '@/lib/notify';
 
 export type CancelFormState = { status: 'idle' | 'ok' | 'error'; error: string | null };
@@ -13,7 +13,9 @@ export type CancelFormState = { status: 'idle' | 'ok' | 'error'; error: string |
 const cancelSchema = z.object({ bookingId: z.uuid() });
 
 export async function cancelBookingAction(slug: string, _prev: CancelFormState, formData: FormData): Promise<CancelFormState> {
-  const { club, user } = await requireMember(slug, '/bookings');
+  // A ban gates acquisition, not release: a seat that falls after the ban ends
+  // survives the penalty cascade, and its holder must still be able to cancel it.
+  const { club, user } = await requireMemberView(slug, '/bookings');
   const parsed = cancelSchema.safeParse({ bookingId: formData.get('bookingId') });
   if (!parsed.success) return { status: 'error', error: 'generic' };
   const result = await cancelBooking(db, { clubId: club.id, userId: user.id, bookingId: parsed.data.bookingId });

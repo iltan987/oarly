@@ -24,6 +24,8 @@ export type MemberVirtualSession = VirtualSession & {
   myStatus: 'none' | 'booked' | 'waitlisted';
   myQueuePosition: number | null;
   bookingOpensAt: Date | null;
+  /** The member already holds an active MultiSport seat that day, in ANY club. */
+  multisportDayTaken: boolean;
 };
 export type MemberVirtualSlot = Omit<VirtualSlot, 'sessions'> & { sessions: MemberVirtualSession[] };
 export type MemberCalendarDay = Omit<CalendarDay, 'slots'> & { slots: MemberVirtualSlot[] };
@@ -69,6 +71,25 @@ export async function computeMemberCalendar(
     for (const r of myRows) mine.set(r.sessionId, { status: r.status as 'booked' | 'waitlisted', queuePosition: r.queuePosition });
   }
 
+  // The MultiSport daily limit is a property of the CARD, so this query is
+  // deliberately not club-scoped — the one cross-tenant read in the codebase.
+  // It returns dates only, about the requesting user, so it discloses nothing
+  // about any other club.
+  const windowDates = days.map((d) => d.dateISO);
+  const multisportDays = new Set<string>();
+  if (windowDates.length) {
+    const rows = await db
+      .select({ bookingDate: bookings.bookingDate })
+      .from(bookings)
+      .where(and(
+        eq(bookings.userId, member.userId),
+        eq(bookings.paymentType, 'multisport'),
+        inArray(bookings.status, ['booked', 'waitlisted']),
+        inArray(bookings.bookingDate, windowDates),
+      ));
+    for (const r of rows) multisportDays.add(r.bookingDate);
+  }
+
   return days.map((day) => ({
     ...day,
     slots: day.slots.map((slot) => ({
@@ -87,6 +108,7 @@ export async function computeMemberCalendar(
           paymentChoices: paymentChoicesFor(s.allowedPayment),
           myStatus: my?.status ?? 'none',
           myQueuePosition: my?.queuePosition ?? null,
+          multisportDayTaken: multisportDays.has(day.dateISO),
         };
       }),
     })),

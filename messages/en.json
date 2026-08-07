@@ -402,6 +402,10 @@
     "locked": "Locked",
     "cancel": "Cancel",
     "myBookings": "My bookings",
+    "bannedTitle": "Booking suspended",
+    "bannedUntil": "You can't book until {date}.",
+    "bannedPermanent": "Your booking access has been suspended by the club.",
+    "multisportDayTaken": "Your MultiSport card is already used for another session that day.",
     "reasons": {
       "not_approved": "Membership not approved",
       "banned": "Temporarily suspended",
@@ -412,6 +416,7 @@
       "ineligible": "You can't book this session.",
       "already_booked_this_slot": "You already have a booking at this time.",
       "no_session": "That session is no longer available.",
+      "multisport_day_taken": "Your MultiSport card is already used for another session that day.",
       "generic": "Something went wrong. Please try again."
     },
     "myTitle": "My bookings",

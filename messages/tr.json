@@ -402,6 +402,10 @@
     "locked": "Kilitli",
     "cancel": "Vazgeç",
     "myBookings": "Rezervasyonlarım",
+    "bannedTitle": "Rezervasyon askıya alındı",
+    "bannedUntil": "{date} tarihine kadar rezervasyon yapamazsınız.",
+    "bannedPermanent": "Kulüp rezervasyon erişiminizi askıya aldı.",
+    "multisportDayTaken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
     "reasons": {
       "not_approved": "Üyelik onaylanmadı",
       "banned": "Geçici olarak askıya alındı",
@@ -412,6 +416,7 @@
       "ineligible": "Bu seansı ayırtamazsınız.",
       "already_booked_this_slot": "Bu saatte zaten bir rezervasyonunuz var.",
       "no_session": "Bu seans artık mevcut değil.",
+      "multisport_day_taken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
       "generic": "Bir şeyler ters gitti. Lütfen tekrar deneyin."
     },
     "myTitle": "Rezervasyonlarım",

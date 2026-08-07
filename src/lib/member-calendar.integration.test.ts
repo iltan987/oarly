@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
@@ -17,10 +17,17 @@ const START = zonedWallClockToUtc(MON, '08:00', TZ);
 describe.skipIf(!url)('computeMemberCalendar', () => {
   let pool: Pool;
   let db: ReturnType<typeof drizzle<typeof schema>>;
+  let sharedMemberId: string;
+  let seq = 0;
   beforeAll(async () => { pool = new Pool({ connectionString: url }); db = drizzle(pool, { schema }); await migrate(db, { migrationsFolder: './drizzle' }); });
   afterAll(async () => { await pool.end(); });
-
-  let seq = 0;
+  // A fresh shared member per test, so the multisport-day flag from one test's
+  // `seed()` calls (which reuse a single member across clubs) never leaks into
+  // the next test's assertions.
+  beforeEach(async () => {
+    sharedMemberId = `mc-member-${Date.now()}-${seq++}`;
+    await db.insert(schema.user).values({ id: sharedMemberId, name: 'M', email: `${sharedMemberId}@t.co` });
+  });
   async function setup(allowedPayment: 'regular_only' | 'multisport_only' | 'both' = 'both', minSkillRank?: number) {
     const tag = `mc-${Date.now()}-${seq++}`;
     const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, bookingOpenMode: 'always' }).returning();
@@ -32,6 +39,20 @@ describe.skipIf(!url)('computeMemberCalendar', () => {
   }
   const ctx = (userId: string, over: Partial<MemberContext> = {}): MemberContext => ({ userId, membershipStatus: 'approved', bannedUntil: null, skillRank: null, paymentType: 'regular', ...over });
   const opts = { fromDateISO: MON, days: 1, now: new Date('2026-07-01T00:00:00Z') };
+  const DAY = MON;
+  const NOW = opts.now;
+
+  // Two clubs sharing the same member — same club-local date, same user id —
+  // to exercise the deliberately cross-tenant MultiSport-day-taken read.
+  async function seed() {
+    const tag = `mc-${Date.now()}-${seq++}`;
+    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, bookingOpenMode: 'always' }).returning();
+    const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: 2, allowedPayment: 'both' }).returning();
+    const [w] = await db.insert(schema.scheduleWindows).values({ clubId: club.id, weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60 }).returning();
+    await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: boat.id, quantity: 2 });
+    await db.insert(schema.memberships).values({ userId: sharedMemberId, clubId: club.id, role: 'member', status: 'approved' });
+    return { clubId: club.id, userId: sharedMemberId, windowId: w.id, boatTypeId: boat.id, startAt: START, member: ctx(sharedMemberId) };
+  }
 
   it('reports full seatsLeft and none myStatus for a virtual (unbooked) session', async () => {
     const s = await setup();
@@ -66,5 +87,24 @@ describe.skipIf(!url)('computeMemberCalendar', () => {
     expect(session.eligibility).toEqual({ ok: false, reason: 'skill_too_low' });
     expect(session.paymentChoices).toEqual(['multisport']);
     expect(session.defaultPayment).toBe('multisport');
+  });
+
+  it('flags a day on which the member already holds a multisport seat in another club', async () => {
+    const home = await seed();                       // the club whose calendar we compute
+    const other = await seed();                      // an unrelated club, same date
+    await bookSeat(db, { clubId: other.clubId, userId: home.userId, windowId: other.windowId, boatTypeId: other.boatTypeId, startAt: other.startAt, paymentType: 'multisport', idempotencyKey: 'x-1', now: NOW });
+
+    const days = await computeMemberCalendar(db, home.clubId, home.member, { fromDateISO: DAY, days: 1, now: NOW });
+    const session = days[0].slots[0].sessions[0];
+    expect(session.multisportDayTaken).toBe(true);
+  });
+
+  it('leaves the flag clear when the other seat is a regular booking', async () => {
+    const home = await seed();
+    const other = await seed();
+    await bookSeat(db, { clubId: other.clubId, userId: home.userId, windowId: other.windowId, boatTypeId: other.boatTypeId, startAt: other.startAt, paymentType: 'regular', idempotencyKey: 'x-2', now: NOW });
+
+    const days = await computeMemberCalendar(db, home.clubId, home.member, { fromDateISO: DAY, days: 1, now: NOW });
+    expect(days[0].slots[0].sessions[0].multisportDayTaken).toBe(false);
   });
 });
