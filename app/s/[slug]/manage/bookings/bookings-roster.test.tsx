@@ -23,7 +23,18 @@ vi.mock('./attendance-actions', () => ({
   undoNoShowAction: vi.fn(),
 }));
 
-import { ownerRemoveBookingAction } from './actions';
+// The optimistic-append test is about AddMemberForm's own logic, not the
+// member picker's search/debounce behaviour — stub it down to a single
+// button that selects a fixed member.
+vi.mock('./member-combobox', () => ({
+  MemberCombobox: ({ onSelect }: { onSelect: (m: { userId: string; name: string; email: string; phone: string | null }) => void }) => (
+    <button type="button" onClick={() => onSelect({ userId: 'u9', name: 'Charlie', email: 'charlie@example.com', phone: null })}>
+      pick-member
+    </button>
+  ),
+}));
+
+import { ownerAddBookingAction, ownerRemoveBookingAction } from './actions';
 import { undoNoShowAction } from './attendance-actions';
 import { BookingsRoster, type RosterSessionWithPenalty } from './bookings-roster';
 
@@ -132,6 +143,37 @@ describe('BookingsRoster remove flow', () => {
     fireEvent.submit(form);
 
     await waitFor(() => expect(undoButton).toHaveAttribute('data-pending'));
+
+    resolve?.({ ok: true });
+  });
+});
+
+describe('BookingsRoster add flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // The one deliberate optimistic-append exception (spec §3): appending below
+  // the confirmed roster shifts nothing above it, so the new member can show
+  // up before the round trip resolves.
+  it('shows the added member immediately, dimmed, before the action resolves', async () => {
+    let resolve: ((r: { ok: true }) => void) | undefined;
+    vi.mocked(ownerAddBookingAction).mockImplementation(
+      () => new Promise((r) => { resolve = r; }),
+    );
+
+    const session = makeSession({ freeSeats: 1 });
+    render(<BookingsRoster slug="club" sessions={[session]} timezone="UTC" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick-member' }));
+    const addButton = screen.getByRole('button', { name: 'add' });
+    const form = addButton.closest('form');
+    if (!form) throw new Error('add form not found');
+    fireEvent.submit(form);
+
+    // Still unresolved — this proves the row is optimistic, not server-confirmed.
+    await waitFor(() => expect(screen.getByText('Charlie')).toBeInTheDocument());
+    expect(ownerAddBookingAction).toHaveBeenCalledTimes(1);
 
     resolve?.({ ok: true });
   });

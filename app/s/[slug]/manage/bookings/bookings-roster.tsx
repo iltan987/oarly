@@ -1,6 +1,6 @@
 'use client';
 import { useTranslations } from 'next-intl';
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useEffect, useOptimistic, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { StatusPill } from '@/components/booking-status-badge';
@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { RosterSession } from '@/lib/roster';
 import { cn } from '@/lib/utils';
 
-import type { ManageActionResult } from '../action-result';
 import { type MemberHit, ownerAddBookingAction, ownerRemoveBookingAction, type RemoveActionResult } from './actions';
 import { type MarkActionResult, markNoShowAction, type UndoActionResult, undoNoShowAction } from './attendance-actions';
 import { MemberCombobox } from './member-combobox';
@@ -37,8 +36,11 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
   // trick can't see it — this state bridges that. Cleared once rmState resolves, below.
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
 
-  // Remove + add state live here (stable parent): a successful action revalidates
-  // and can unmount the row/add-form, so a row-local toast effect would be dropped.
+  // Remove state lives here (stable parent): a successful removal revalidates
+  // and unmounts the row, so a row-local toast effect would be dropped. (Add
+  // has the same hazard — its own toast fires imperatively after the awaited
+  // action instead, which survives the add-form unmounting just as well; see
+  // `AddMemberFields` below.)
   const [rmState, rmAction] = useActionState<RemoveActionResult | null, FormData>(ownerRemoveBookingAction.bind(null, slug), null);
   const rmHandled = useRef<RemoveActionResult | null>(null);
   useEffect(() => {
@@ -50,16 +52,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
     else toast.error(tm('actionError'));
   }, [rmState, t, tm]);
 
-  const [addState, addAction] = useActionState<ManageActionResult | null, FormData>(ownerAddBookingAction.bind(null, slug), null);
-  const addHandled = useRef<ManageActionResult | null>(null);
-  useEffect(() => {
-    if (addState === null || addState === addHandled.current) return;
-    addHandled.current = addState;
-    if (addState.ok) toast.success(t('added'));
-    else toast.error(tm('actionError'));
-  }, [addState, t, tm]);
-
-  const [markState, markAction, markPending] = useActionState<MarkActionResult | null, FormData>(markNoShowAction.bind(null, slug), null);
+  const [markState, markAction] = useActionState<MarkActionResult | null, FormData>(markNoShowAction.bind(null, slug), null);
   const markHandled = useRef<MarkActionResult | null>(null);
   useEffect(() => {
     if (markState === null || markState === markHandled.current) return;
@@ -158,7 +151,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
               )}
 
               {!closed && s.freeSeats > 0 && s.windowId && (
-                <AddMemberForm session={s} slug={slug} addAction={addAction} />
+                <AddMemberForm session={s} slug={slug} />
               )}
             </CardContent>
           </Card>
@@ -184,7 +177,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
               </p>
               <DialogFooter>
                 <DialogClose render={<Button type="button" variant="ghost" />}>{tm('cancel')}</DialogClose>
-                <Button type="submit" variant="destructive" disabled={markPending}>{t('confirmAbsentCta')}</Button>
+                <PendingButton variant="destructive">{t('confirmAbsentCta')}</PendingButton>
               </DialogFooter>
             </form>
           )}
@@ -219,15 +212,75 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
   );
 }
 
-function AddMemberForm({ session, slug, addAction }: {
-  session: RosterSession; slug: string; addAction: (fd: FormData) => void;
+// Owns the optimistic pending-additions list for one session. Appending below
+// the confirmed roster shifts nothing above it, unlike a remove or an insert
+// in the middle of the list — that is what makes an add safe to show before
+// the round trip resolves (see spec §3). The actual add/reset/toast logic
+// lives in `AddMemberFields` below, which this remounts (via `key`) on a
+// successful add so the picker resets to empty.
+function AddMemberForm({ session, slug }: { session: RosterSession; slug: string }) {
+  const [formKey, setFormKey] = useState(0);
+  const [pendingAdditions, addPendingMember] = useOptimistic<MemberHit[], MemberHit>(
+    [],
+    (current, member) => [...current, member],
+  );
+
+  return (
+    <>
+      {pendingAdditions.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {pendingAdditions.map((m) => (
+            <li key={m.userId} className="flex items-center gap-2 text-sm text-muted-foreground opacity-50">
+              <span className="min-w-0 truncate">{m.name}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <AddMemberFields
+        key={formKey}
+        session={session}
+        slug={slug}
+        onSubmitted={addPendingMember}
+        onAdded={() => setFormKey((k) => k + 1)}
+      />
+    </>
+  );
+}
+
+function AddMemberFields({ session, slug, onSubmitted, onAdded }: {
+  session: RosterSession; slug: string;
+  onSubmitted: (member: MemberHit) => void;
+  onAdded: () => void;
 }) {
   const t = useTranslations('manage.bookings');
+  const tm = useTranslations('manage');
   const [selected, setSelected] = useState<MemberHit | null>(null);
   const [payment, setPayment] = useState<'regular' | 'multisport'>('regular');
 
+  // A plain async function passed as the <form>'s `action` runs inside React's
+  // implicit form-action transition, so `onSubmitted` — a `useOptimistic`
+  // dispatch owned by the parent `AddMemberForm` — is safe to call here on the
+  // current frame. The toast fires imperatively, after the awaited result, so
+  // it does not depend on this component still being mounted to observe a
+  // state change (unlike the hoisted-`useActionState` rows above, this one
+  // has nothing that needs to survive an unmount). `onAdded` remounts this
+  // component with a fresh `key` — the guide's key-increment technique — so
+  // the picker and payment type reset only once the add is confirmed, not
+  // eagerly and not on failure (a rejected add leaves the pick in place to retry).
+  async function handleSubmit(formData: FormData) {
+    if (!selected) return;
+    onSubmitted(selected);
+    const result = await ownerAddBookingAction(slug, null, formData);
+    if (result.ok) {
+      toast.success(t('added'));
+      onAdded();
+    } else {
+      toast.error(tm('actionError'));
+    }
+  }
+
   return (
-    <form action={addAction} className="flex flex-wrap items-center gap-2 border-t pt-2">
+    <form action={handleSubmit} className="flex flex-wrap items-center gap-2 border-t pt-2">
       <input type="hidden" name="windowId" value={session.windowId ?? ''} />
       <input type="hidden" name="boatTypeId" value={session.boatTypeId} />
       <input type="hidden" name="startAt" value={session.startAt.toISOString()} />
