@@ -224,6 +224,7 @@
     "memberRejected": "Member rejected.",
     "skillSaved": "Skill level saved.",
     "actionError": "Something went wrong. Try again.",
+    "cancel": "Cancel",
     "skillLevels": {
       "navLabel": "Skill levels",
       "title": "Skill levels",
@@ -375,7 +376,21 @@
       "paymentMultisport": "MultiSport",
       "waitPosition": "#{n}",
       "removed": "Booking removed.",
-      "added": "Member added."
+      "added": "Member added.",
+      "markAbsent": "Mark absent",
+      "undoAbsent": "Undo",
+      "absent": "Absent",
+      "confirmAbsentTitle": "Mark {name} absent?",
+      "confirmAbsentBan": "They will not be able to book until {date}. Any seats they hold before then will be cancelled and given to the waitlist.",
+      "confirmAbsentPermanent": "Their booking access will be suspended, and every upcoming seat they hold will be cancelled and given to the waitlist.",
+      "confirmAbsentLapsed": "This session is old enough that the ban has already lapsed. The absence will be recorded but will not restrict booking.",
+      "confirmAbsentNoPenalty": "This club does not penalise no-shows, so the absence will be recorded without any ban.",
+      "confirmAbsentCta": "Mark absent",
+      "marked": "Absence recorded.",
+      "markedWithCancellations": "Absence recorded. {count} upcoming bookings were cancelled.",
+      "undone": "Absence removed. Any seats this penalty cancelled were not restored.",
+      "bannedUntilBadge": "Banned until {date}",
+      "bannedBadge": "Suspended"
     }
   },
   "booking": {

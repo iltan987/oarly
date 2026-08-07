@@ -224,6 +224,7 @@
     "memberRejected": "Üye reddedildi",
     "skillSaved": "Seviye kaydedildi",
     "actionError": "Bir şeyler ters gitti. Lütfen tekrar dene.",
+    "cancel": "Vazgeç",
     "skillLevels": {
       "navLabel": "Seviyeler",
       "title": "Seviyeler",
@@ -375,7 +376,21 @@
       "paymentMultisport": "MultiSport",
       "waitPosition": "#{n}",
       "removed": "Rezervasyon kaldırıldı.",
-      "added": "Üye eklendi."
+      "added": "Üye eklendi.",
+      "markAbsent": "Katılmadı",
+      "undoAbsent": "Geri al",
+      "absent": "Katılmadı",
+      "confirmAbsentTitle": "{name} katılmadı olarak işaretlensin mi?",
+      "confirmAbsentBan": "{date} tarihine kadar rezervasyon yapamayacak. O tarihe kadar tuttuğu yerler iptal edilip bekleme listesine verilecek.",
+      "confirmAbsentPermanent": "Rezervasyon erişimi askıya alınacak ve tuttuğu tüm ileri tarihli yerler iptal edilip bekleme listesine verilecek.",
+      "confirmAbsentLapsed": "Bu seans yeterince eski olduğu için ceza süresi çoktan doldu. Katılmama kaydedilecek ama rezervasyonu kısıtlamayacak.",
+      "confirmAbsentNoPenalty": "Bu kulüp katılmama durumunda ceza uygulamıyor; kayıt tutulacak ama ceza verilmeyecek.",
+      "confirmAbsentCta": "Katılmadı olarak işaretle",
+      "marked": "Katılmama kaydedildi.",
+      "markedWithCancellations": "Katılmama kaydedildi. {count} ileri tarihli rezervasyon iptal edildi.",
+      "undone": "Katılmama kaydı kaldırıldı. Bu ceza nedeniyle iptal edilen yerler geri alınmadı.",
+      "bannedUntilBadge": "{date} tarihine kadar yasaklı",
+      "bannedBadge": "Askıya alındı"
     }
   },
   "booking": {

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 
+import { StatusPill } from '@/components/booking-status-badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { db } from '@/db';
 import { memberships, skillLevels, user } from '@/db/schema';
@@ -16,6 +17,7 @@ export default async function ManageMembersPage({ params }: { params: Promise<{ 
   const { slug } = await params;
   const { club } = await requireOwner(slug);
   const t = await getTranslations('manage');
+  const now = new Date();
 
   const rows = await db
     .select({ membership: memberships, name: user.name, email: user.email })
@@ -26,7 +28,7 @@ export default async function ManageMembersPage({ params }: { params: Promise<{ 
   const levels = await db.select().from(skillLevels).where(eq(skillLevels.clubId, club.id)).orderBy(skillLevels.rank);
 
   const pending = rows.filter((r) => r.membership.status === 'pending');
-  const approved = rows.filter((r) => r.membership.status === 'approved');
+  const approved = rows.filter((r) => r.membership.status === 'approved' || r.membership.status === 'banned');
 
   if (rows.length === 0) {
     return <p className="text-muted-foreground">{t('empty')}</p>;
@@ -73,6 +75,11 @@ export default async function ManageMembersPage({ params }: { params: Promise<{ 
                     <div className="flex flex-col gap-0.5">
                       <span className="font-heading text-sm font-semibold">{r.name}</span>
                       <span className="text-xs text-muted-foreground">{r.email}</span>
+                      {r.membership.status === 'banned' ? (
+                        <StatusPill tone="bad">{t('bookings.bannedBadge')}</StatusPill>
+                      ) : r.membership.bannedUntil && r.membership.bannedUntil.getTime() > now.getTime() ? (
+                        <StatusPill tone="warn">{t('bookings.bannedUntilBadge', { date: r.membership.bannedUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) })}</StatusPill>
+                      ) : null}
                     </div>
                     {levels.length === 0 ? (
                       <p className="text-sm text-muted-foreground">{t('noSkillLevels')}</p>

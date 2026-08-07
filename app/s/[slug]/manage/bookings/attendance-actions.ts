@@ -1,0 +1,54 @@
+'use server';
+import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
+import * as z from 'zod';
+
+import { db } from '@/db';
+import { markNoShow, undoNoShow } from '@/lib/attendance';
+import { requireOwner } from '@/lib/membership';
+import { notifyNoShowPenalty, notifyWaitlistPromotion } from '@/lib/notify';
+
+import type { ManageActionResult } from '../action-result';
+
+/** Richer than ManageActionResult so the toast can report how many seats the cascade took. */
+export type MarkActionResult = { ok: true; cancelled: number } | { ok: false };
+
+const bookingSchema = z.object({ bookingId: z.uuid() });
+
+export async function markNoShowAction(slug: string, _prev: MarkActionResult | null, formData: FormData): Promise<MarkActionResult> {
+  const { club } = await requireOwner(slug, '/manage/bookings');
+  const parsed = bookingSchema.safeParse({ bookingId: formData.get('bookingId') });
+  if (!parsed.success) return { ok: false };
+
+  const result = await markNoShow(db, { clubId: club.id, bookingId: parsed.data.bookingId });
+  if (!result.ok) return { ok: false };
+
+  revalidatePath(`/s/${slug}/manage/bookings`);
+  revalidatePath(`/s/${slug}/book`);
+  revalidatePath(`/s/${slug}/bookings`);
+
+  // One combined notice to the penalised member — the per-seat cancellation
+  // emails are deliberately suppressed on this path, because three unrelated
+  // emails arriving at once read as a bug. Promoted waitlisters still get their
+  // ordinary promotion mail: from their side nothing unusual happened.
+  after(async () => {
+    await notifyNoShowPenalty(db, { bookingId: parsed.data.bookingId, bannedUntil: result.bannedUntil, cancelledCount: result.cancelled.length });
+    for (const p of result.promoted) await notifyWaitlistPromotion(db, p);
+  });
+
+  return { ok: true, cancelled: result.cancelled.length };
+}
+
+export async function undoNoShowAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
+  const { club } = await requireOwner(slug, '/manage/bookings');
+  const parsed = bookingSchema.safeParse({ bookingId: formData.get('bookingId') });
+  if (!parsed.success) return { ok: false };
+
+  const result = await undoNoShow(db, { clubId: club.id, bookingId: parsed.data.bookingId });
+  if (!result.ok) return { ok: false };
+
+  revalidatePath(`/s/${slug}/manage/bookings`);
+  revalidatePath(`/s/${slug}/book`);
+  revalidatePath(`/s/${slug}/bookings`);
+  return { ok: true };
+}
