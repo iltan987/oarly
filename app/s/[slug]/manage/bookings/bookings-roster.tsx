@@ -4,14 +4,16 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { StatusPill } from '@/components/booking-status-badge';
+import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { RosterSession } from '@/lib/roster';
+import { cn } from '@/lib/utils';
 
 import type { ManageActionResult } from '../action-result';
-import { type MemberHit, ownerAddBookingAction, ownerRemoveBookingAction } from './actions';
+import { type MemberHit, ownerAddBookingAction, ownerRemoveBookingAction, type RemoveActionResult } from './actions';
 import { type MarkActionResult, markNoShowAction, type UndoActionResult, undoNoShowAction } from './attendance-actions';
 import { MemberCombobox } from './member-combobox';
 
@@ -30,14 +32,21 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
   const t = useTranslations('manage.bookings');
   const tm = useTranslations('manage');
 
+  // Drives the fade-in-place on the row being removed. Base UI's Dialog renders the
+  // confirm form in a portal, so the row's PendingButton-based `has-data-pending:` CSS
+  // trick can't see it — this state bridges that. Cleared once rmState resolves, below.
+  const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
+
   // Remove + add state live here (stable parent): a successful action revalidates
   // and can unmount the row/add-form, so a row-local toast effect would be dropped.
-  const [rmState, rmAction, rmPending] = useActionState<ManageActionResult | null, FormData>(ownerRemoveBookingAction.bind(null, slug), null);
-  const rmHandled = useRef<ManageActionResult | null>(null);
+  const [rmState, rmAction] = useActionState<RemoveActionResult | null, FormData>(ownerRemoveBookingAction.bind(null, slug), null);
+  const rmHandled = useRef<RemoveActionResult | null>(null);
   useEffect(() => {
     if (rmState === null || rmState === rmHandled.current) return;
     rmHandled.current = rmState;
+    setPendingRemovalId(null);
     if (rmState.ok) toast.success(t('removed'));
+    else if (rmState.error === 'not_active') toast.info(t('removeAlready'));
     else toast.error(tm('actionError'));
   }, [rmState, t, tm]);
 
@@ -60,7 +69,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
     else toast.success(t('marked'));
   }, [markState, t, tm]);
 
-  const [undoState, undoAction, undoPending] = useActionState<UndoActionResult | null, FormData>(undoNoShowAction.bind(null, slug), null);
+  const [undoState, undoAction] = useActionState<UndoActionResult | null, FormData>(undoNoShowAction.bind(null, slug), null);
   const undoHandled = useRef<UndoActionResult | null>(null);
   useEffect(() => {
     if (undoState === null || undoState === undoHandled.current) return;
@@ -71,6 +80,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
   }, [undoState, t, tm]);
 
   const [confirming, setConfirming] = useState<{ bookingId: string; name: string; session: RosterSessionWithPenalty } | null>(null);
+  const [removing, setRemoving] = useState<{ bookingId: string; name: string } | null>(null);
   const [now] = useState(() => Date.now());
 
   if (sessions.length === 0) return closed ? null : <p className="text-sm text-muted-foreground">{t('empty')}</p>;
@@ -90,7 +100,13 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
               {s.seated.length > 0 && (
                 <ul className="flex flex-col gap-1">
                   {s.seated.map((m) => (
-                    <li key={m.bookingId} className="flex items-center justify-between gap-2 text-sm">
+                    <li
+                      key={m.bookingId}
+                      className={cn(
+                        'flex items-center justify-between gap-2 text-sm transition-opacity has-data-pending:opacity-40',
+                        pendingRemovalId === m.bookingId && 'opacity-40',
+                      )}
+                    >
                       <span className="min-w-0 truncate">{m.name}</span>
                       <span className="flex shrink-0 items-center gap-1">
                         {m.status === 'no_show' ? (
@@ -98,7 +114,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
                             <StatusPill tone="bad">{t('absent')}</StatusPill>
                             <form action={undoAction}>
                               <input type="hidden" name="bookingId" value={m.bookingId} />
-                              <Button type="submit" size="sm" variant="ghost" disabled={undoPending}>{t('undoAbsent')}</Button>
+                              <PendingButton size="sm" variant="ghost">{t('undoAbsent')}</PendingButton>
                             </form>
                           </>
                         ) : (
@@ -108,10 +124,9 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
                                 {t('markAbsent')}
                               </Button>
                             )}
-                            <form action={rmAction}>
-                              <input type="hidden" name="bookingId" value={m.bookingId} />
-                              <Button type="submit" size="sm" variant="ghost" disabled={rmPending}>{t('remove')}</Button>
-                            </form>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => setRemoving({ bookingId: m.bookingId, name: m.name })}>
+                              {t('remove')}
+                            </Button>
                           </>
                         )}
                       </span>
@@ -126,12 +141,17 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
               {s.waitlisted.length > 0 && (
                 <ul className="flex flex-col gap-1 border-t pt-2">
                   {s.waitlisted.map((m) => (
-                    <li key={m.bookingId} className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+                    <li
+                      key={m.bookingId}
+                      className={cn(
+                        'flex items-center justify-between gap-2 text-sm text-muted-foreground transition-opacity',
+                        pendingRemovalId === m.bookingId && 'opacity-40',
+                      )}
+                    >
                       <span className="min-w-0 truncate">{t('waitPosition', { n: m.queuePosition ?? 0 })} · {m.name}</span>
-                      <form action={rmAction} className="shrink-0">
-                        <input type="hidden" name="bookingId" value={m.bookingId} />
-                        <Button type="submit" size="sm" variant="ghost" disabled={rmPending}>{t('remove')}</Button>
-                      </form>
+                      <Button type="button" size="sm" variant="ghost" className="shrink-0" onClick={() => setRemoving({ bookingId: m.bookingId, name: m.name })}>
+                        {t('remove')}
+                      </Button>
                     </li>
                   ))}
                 </ul>
@@ -165,6 +185,31 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
               <DialogFooter>
                 <DialogClose render={<Button type="button" variant="ghost" />}>{tm('cancel')}</DialogClose>
                 <Button type="submit" variant="destructive" disabled={markPending}>{t('confirmAbsentCta')}</Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={removing !== null} onOpenChange={(open) => { if (!open) setRemoving(null); }}>
+        <DialogContent>
+          {removing && (
+            <form
+              action={rmAction}
+              onSubmit={() => {
+                setPendingRemovalId(removing.bookingId);
+                setRemoving(null);
+              }}
+              className="flex flex-col gap-4"
+            >
+              <input type="hidden" name="bookingId" value={removing.bookingId} />
+              <DialogHeader>
+                <DialogTitle>{t('confirmRemoveTitle', { name: removing.name })}</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">{t('confirmRemoveBody')}</p>
+              <DialogFooter>
+                <DialogClose render={<Button type="button" variant="ghost" />}>{tm('cancel')}</DialogClose>
+                <PendingButton variant="destructive">{t('confirmRemoveCta')}</PendingButton>
               </DialogFooter>
             </form>
           )}
