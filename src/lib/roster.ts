@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 
 import type { DB } from '@/db';
-import { bookings, user } from '@/db/schema';
+import { bookings, clubs, user } from '@/db/schema';
 
 import { computeCalendar } from './calendar';
 
@@ -28,12 +28,14 @@ export type RosterSession = {
   seated: RosterMember[];
   waitlisted: RosterMember[];
   freeSeats: number;
+  waitlistCapacity: number | null;
 };
 export type RosterDay = { dateISO: string; closed: boolean; sessions: RosterSession[] };
 
 /** Owner-facing: the day's sessions (persisted + virtual), each with its booking roster. */
 export async function getDayRoster(db: DB, { clubId, dateISO }: { clubId: string; dateISO: string }): Promise<RosterDay> {
   const [day] = await computeCalendar(db, clubId, { fromDateISO: dateISO, days: 1 });
+  const [club] = await db.select({ waitlistCapacity: clubs.waitlistCapacity }).from(clubs).where(eq(clubs.id, clubId));
 
   const sessionIds: string[] = [];
   for (const slot of day.slots) for (const s of slot.sessions) if (s.sessionId) sessionIds.push(s.sessionId);
@@ -74,6 +76,7 @@ export async function getDayRoster(db: DB, { clubId, dateISO }: { clubId: string
         seated: roster.seated,
         waitlisted: roster.waitlisted,
         freeSeats: Math.max(0, s.capacity - roster.seated.filter((m) => m.status === 'booked').length),
+        waitlistCapacity: club?.waitlistCapacity ?? null,
       });
     }
   }

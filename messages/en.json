@@ -377,6 +377,7 @@
       "paymentRegular": "Regular",
       "paymentMultisport": "MultiSport",
       "waitPosition": "#{n}",
+      "waitingCount": "Waiting {n}/{capacity}",
       "removed": "Booking removed.",
       "added": "Member added.",
       "markAbsent": "Mark absent",
@@ -405,6 +406,7 @@
     "seatsCount": "{count, plural, one {# seat} other {# seats}}",
     "selectDay": "Select {date}",
     "full": "Full",
+    "waitlistFull": "Waitlist full",
     "book": "Book",
     "joinWaitlist": "Join waitlist",
     "booked": "You're booked",
@@ -442,6 +444,7 @@
       "already_booked_this_slot": "You already have a booking at this time.",
       "no_session": "That session is no longer available.",
       "multisport_day_taken": "Your MultiSport card is already used for another session that day.",
+      "waitlist_full": "This session and its waitlist are both full.",
       "generic": "Something went wrong. Please try again."
     },
     "myTitle": "My bookings",

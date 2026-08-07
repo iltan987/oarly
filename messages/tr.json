@@ -377,6 +377,7 @@
       "paymentRegular": "Normal",
       "paymentMultisport": "MultiSport",
       "waitPosition": "#{n}",
+      "waitingCount": "Bekleyen {n}/{capacity}",
       "removed": "Rezervasyon kaldırıldı.",
       "added": "Üye eklendi.",
       "markAbsent": "Katılmadı",
@@ -405,6 +406,7 @@
     "seatsCount": "{count, plural, one {# koltuk} other {# koltuk}}",
     "selectDay": "{date} seç",
     "full": "Dolu",
+    "waitlistFull": "Bekleme listesi dolu",
     "book": "Ayırt",
     "joinWaitlist": "Bekleme listesine gir",
     "booked": "Yerin ayrıldı",
@@ -442,6 +444,7 @@
       "already_booked_this_slot": "Bu saatte zaten bir rezervasyonunuz var.",
       "no_session": "Bu seans artık mevcut değil.",
       "multisport_day_taken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
+      "waitlist_full": "Bu seans ve bekleme listesi dolu.",
       "generic": "Bir şeyler ters gitti. Lütfen tekrar deneyin."
     },
     "myTitle": "Rezervasyonlarım",

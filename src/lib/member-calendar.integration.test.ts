@@ -107,4 +107,41 @@ describe.skipIf(!url)('computeMemberCalendar', () => {
     const days = await computeMemberCalendar(db, home.clubId, home.member, { fromDateISO: DAY, days: 1, now: NOW });
     expect(days[0].slots[0].sessions[0].multisportDayTaken).toBe(false);
   });
+
+  // Materialises a real slots + sessions row (rather than relying on computeCalendar's
+  // virtual projection) so bookings can attach to a concrete sessionId, mirroring how
+  // resolveSeating actually seats and queues bookers.
+  async function seedWithWaitlist({ seats, waitlistCapacity }: { seats: number; waitlistCapacity: number | null }) {
+    const tag = `mc-wl-${Date.now()}-${seq++}`;
+    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, bookingOpenMode: 'always', waitlistCapacity }).returning();
+    const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats, allowedPayment: 'both' }).returning();
+    const [w] = await db.insert(schema.scheduleWindows).values({ clubId: club.id, weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60 }).returning();
+    await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: boat.id, quantity: 1 });
+    const [slot] = await db.insert(schema.slots).values({ clubId: club.id, date: MON, startAt: START, endAt: zonedWallClockToUtc(MON, '09:00', TZ), fromWindowId: w.id }).returning();
+    const [session] = await db.insert(schema.sessions).values({ slotId: slot.id, clubId: club.id, boatTypeId: boat.id, capacity: seats }).returning();
+    await db.insert(schema.memberships).values({ userId: sharedMemberId, clubId: club.id, role: 'member', status: 'approved' });
+    return { clubId: club.id, sessionId: session.id, member: ctx(sharedMemberId) };
+  }
+
+  async function seedActiveBooking(ctx: { clubId: string; sessionId: string }, status: 'booked' | 'waitlisted') {
+    const uid = `mc-wl-user-${Date.now()}-${seq++}`;
+    await db.insert(schema.user).values({ id: uid, name: 'W', email: `${uid}@t.co` });
+    await db.insert(schema.bookings).values({ sessionId: ctx.sessionId, clubId: ctx.clubId, userId: uid, paymentType: 'regular', status, queuePosition: status === 'waitlisted' ? 1 : null, effectiveAt: START, bookingDate: MON });
+  }
+
+  it('reports the remaining waitlist room, and zero once the queue is full', async () => {
+    const ctx = await seedWithWaitlist({ seats: 1, waitlistCapacity: 1 });
+    // Seat one member and queue another: the session is now closed to newcomers.
+    await seedActiveBooking(ctx, 'booked');
+    await seedActiveBooking(ctx, 'waitlisted');
+
+    const days = await computeMemberCalendar(db, ctx.clubId, ctx.member, { fromDateISO: DAY, days: 1, now: NOW });
+    expect(days[0].slots[0].sessions[0].waitlistLeft).toBe(0);
+  });
+
+  it('reports unlimited waitlist room as null', async () => {
+    const ctx = await seedWithWaitlist({ seats: 1, waitlistCapacity: null });
+    const days = await computeMemberCalendar(db, ctx.clubId, ctx.member, { fromDateISO: DAY, days: 1, now: NOW });
+    expect(days[0].slots[0].sessions[0].waitlistLeft).toBeNull();
+  });
 });

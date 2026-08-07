@@ -17,7 +17,7 @@ import { type BookFormState, bookSeatAction } from './actions';
 
 const initial: BookFormState = { status: 'idle', error: null };
 
-type UiState = 'booked' | 'waitlisted' | 'ineligible' | 'notopen' | 'full' | 'open' | 'unavailable';
+type UiState = 'booked' | 'waitlisted' | 'ineligible' | 'notopen' | 'full' | 'waitlistfull' | 'open' | 'unavailable';
 
 type Confirm = { key: string; dayISO: string; slot: MemberVirtualSlot; session: MemberVirtualSession };
 
@@ -33,7 +33,10 @@ function uiStateOf(s: MemberVirtualSession, slot: MemberVirtualSlot): UiState {
   if (s.status !== 'open') return 'unavailable';
   if (!s.eligibility.ok) return 'ineligible';
   if (!s.bookingOpen) return 'notopen';
-  return s.seatsLeft <= 0 ? 'full' : 'open';
+  if (s.seatsLeft > 0) return 'open';
+  // A full session still offers the waitlist — unless the queue is full too, in
+  // which case showing a Join waitlist button would only ever fail.
+  return s.waitlistLeft === 0 ? 'waitlistfull' : 'full';
 }
 
 const toneOf: Record<UiState, BadgeTone> = {
@@ -42,6 +45,7 @@ const toneOf: Record<UiState, BadgeTone> = {
   ineligible: 'neutral',
   notopen: 'info',
   full: 'neutral',
+  waitlistfull: 'neutral',
   open: 'ok',
   unavailable: 'neutral',
 };
@@ -252,6 +256,7 @@ function SessionCard({
   const pillText =
     ui === 'open' ? t('seatsLeft', { count: session.seatsLeft, capacity: session.capacity })
     : ui === 'full' ? t('full')
+    : ui === 'waitlistfull' ? t('waitlistFull')
     : ui === 'booked' ? t('booked')
     : ui === 'waitlisted' ? t('waitlisted', { position: session.myQueuePosition ?? 0 })
     : ui === 'unavailable' ? t('closedByClub')

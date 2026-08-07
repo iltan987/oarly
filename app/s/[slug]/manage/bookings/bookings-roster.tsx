@@ -119,6 +119,9 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
                 </ul>
               )}
 
+              {s.waitlisted.length > 0 && s.waitlistCapacity != null && (
+                <span className="text-xs text-muted-foreground">{t('waitingCount', { n: s.waitlisted.length, capacity: s.waitlistCapacity })}</span>
+              )}
               {s.waitlisted.length > 0 && (
                 <ul className="flex flex-col gap-1 border-t pt-2">
                   {s.waitlisted.map((m) => (
