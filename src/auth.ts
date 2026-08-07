@@ -6,7 +6,12 @@ import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { renderResetEmail, renderVerifyEmail } from '@/emails';
 import { env, trustedOrigins } from '@/env';
-import { authRateLimitRules, authRateLimitStorage } from '@/lib/auth-rate-limit';
+import {
+  authRateLimitAfter,
+  authRateLimitBefore,
+  authRateLimitRules,
+  authRateLimitStorage,
+} from '@/lib/auth-rate-limit';
 import { recordSignupConsent } from '@/lib/consent';
 import { sendEmail } from '@/lib/email';
 
@@ -105,6 +110,15 @@ export const auth = betterAuth({
     // Shared across lambda instances when KV is configured; better-auth's own in-memory
     // storage otherwise, which is correct for dev and test.
     ...(authRateLimitStorage ? { customStorage: authRateLimitStorage } : {}),
+  },
+
+  // §17's identity-keyed limits that the IP-keyed `rateLimit` block above cannot express:
+  // 5 failed sign-ins per ACCOUNT per 15 min, and 3 password-reset requests per EMAIL per
+  // hour. See the doc comments on `authRateLimitBefore`/`authRateLimitAfter` in
+  // @/lib/auth-rate-limit for why consumption happens in `before` and clearing in `after`.
+  hooks: {
+    before: authRateLimitBefore,
+    after: authRateLimitAfter,
   },
 
   // KVKK acknowledgment may only be recorded when the user actually affirmed

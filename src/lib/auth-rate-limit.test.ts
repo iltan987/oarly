@@ -12,13 +12,40 @@ type RateLimitImpl = (
 // lets these tests drive `authConsume`'s MAPPING logic — success -> allowed, resetAt ->
 // retryAfter, fail-open passthrough — with exact, arbitrary `RateResult`s, rather than
 // re-deriving those same result shapes through the real in-memory or Upstash backends.
-let rateLimitImpl: RateLimitImpl;
-
-vi.mock('@/lib/rate-limit', () => ({
-  rateLimit: (...args: Parameters<RateLimitImpl>) => rateLimitImpl(...args),
+//
+// `rateLimit` is the only export overridden; `resetRateLimitState` and `rateLimitReset`
+// are passed through to the real module via `importOriginal` so the
+// `authRateLimitBefore`/`authRateLimitAfter` tests below can exercise the actual in-memory
+// bucket (multi-attempt counting, reset-on-success) rather than a canned response.
+// `mockState.realRateLimit` captures the unmocked implementation so those tests can point
+// `mockState.rateLimitImpl` at real bucket semantics instead of a fixed `RateLimitResult`.
+// Held in a `vi.hoisted` object (rather than plain top-level `let`s) because the
+// `vi.mock` factory below is itself hoisted above ordinary statements and may not
+// reference top-level variables that aren't declared through `vi.hoisted`.
+const mockState = vi.hoisted(() => ({
+  rateLimitImpl: undefined as unknown as RateLimitImpl,
+  realRateLimit: undefined as unknown as RateLimitImpl,
 }));
 
-import { authConsume, authRateLimitRules } from '@/lib/auth-rate-limit';
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<{ rateLimit: RateLimitImpl }>();
+  mockState.realRateLimit = actual.rateLimit;
+  return {
+    ...actual,
+    rateLimit: (...args: Parameters<RateLimitImpl>) => mockState.rateLimitImpl(...args),
+  };
+});
+
+import { APIError } from 'better-auth/api';
+
+import {
+  accountKeyFor,
+  authConsume,
+  authRateLimitAfter,
+  authRateLimitBefore,
+  authRateLimitRules,
+} from '@/lib/auth-rate-limit';
+import { resetRateLimitState } from '@/lib/rate-limit';
 import { RATE_LIMITS } from '@/lib/rate-limit-config';
 
 describe('authRateLimitRules', () => {
@@ -79,12 +106,12 @@ describe('authConsume', () => {
   });
 
   it('allows while the backend reports success', async () => {
-    rateLimitImpl = async () => ({ success: true, remaining: 4, resetAt: NOW + 60_000 });
+    mockState.rateLimitImpl = async () => ({ success: true, remaining: 4, resetAt: NOW + 60_000 });
     expect(await authConsume('k', RULE)).toEqual({ allowed: true, retryAfter: null });
   });
 
   it('reports allowed:false with a positive integer retryAfter once exhausted', async () => {
-    rateLimitImpl = async () => ({ success: false, remaining: 0, resetAt: NOW + 45_000 });
+    mockState.rateLimitImpl = async () => ({ success: false, remaining: 0, resetAt: NOW + 45_000 });
     const result = await authConsume('k', RULE);
     expect(result.allowed).toBe(false);
     expect(result.retryAfter).toBe(45);
@@ -99,7 +126,7 @@ describe('authConsume', () => {
     // Mutation-tested: reverting authConsume to inline `Math.max(0, Math.ceil(...))`
     // (the exact regression this test guards against) makes this assertion fail, since
     // Math.ceil((NOW - NOW) / 1000) is 0, not 1. Confirmed by hand.
-    rateLimitImpl = async () => ({ success: false, remaining: 0, resetAt: NOW });
+    mockState.rateLimitImpl = async () => ({ success: false, remaining: 0, resetAt: NOW });
     const result = await authConsume('k', RULE);
     expect(result.allowed).toBe(false);
     expect(result.retryAfter).toBe(1);
@@ -110,7 +137,81 @@ describe('authConsume', () => {
     // resolves `{ success: true, ... }` (see rate-limit.ts's own catch block and its
     // dedicated fail-open tests). This proves `authConsume` forwards that result as
     // `allowed: true` rather than, say, misreading `remaining === limit` as a rejection.
-    rateLimitImpl = async () => ({ success: true, remaining: RULE.max, resetAt: NOW + RULE.window * 1000 });
+    mockState.rateLimitImpl = async () => ({ success: true, remaining: RULE.max, resetAt: NOW + RULE.window * 1000 });
     expect(await authConsume('k', RULE)).toEqual({ allowed: true, retryAfter: null });
+  });
+});
+
+describe('accountKeyFor', () => {
+  it('keys a sign-in by lowercased email and clears on success', () => {
+    expect(accountKeyFor('/sign-in/email', { email: 'Ali@Example.COM', password: 'x' })).toEqual({
+      key: 'login:acct:ali@example.com',
+      rule: RATE_LIMITS.loginPerAccount,
+      clearOnSuccess: true,
+    });
+  });
+
+  it('keys a password-reset request by email and does NOT clear on success', () => {
+    // Succeeding at "please email me a reset link" repeatedly IS the abuse, so a
+    // successful request must still count against the mailbox's budget.
+    expect(accountKeyFor('/request-password-reset', { email: 'bob@example.com' })).toEqual({
+      key: 'pwreset:email:bob@example.com',
+      rule: RATE_LIMITS.passwordResetPerEmail,
+      clearOnSuccess: false,
+    });
+  });
+
+  it('returns null for paths it does not govern', () => {
+    expect(accountKeyFor('/sign-up/email', { email: 'a@b.com' })).toBeNull();
+    expect(accountKeyFor('/get-session', {})).toBeNull();
+  });
+
+  it('returns null when the body carries no usable email', () => {
+    expect(accountKeyFor('/sign-in/email', {})).toBeNull();
+    expect(accountKeyFor('/sign-in/email', { email: '' })).toBeNull();
+    expect(accountKeyFor('/sign-in/email', { email: 42 })).toBeNull();
+    expect(accountKeyFor('/sign-in/email', null)).toBeNull();
+    expect(accountKeyFor('/sign-in/email', undefined)).toBeNull();
+  });
+
+  it('trims surrounding whitespace before keying', () => {
+    expect(accountKeyFor('/sign-in/email', { email: '  ali@example.com  ' })?.key)
+      .toBe('login:acct:ali@example.com');
+  });
+});
+
+describe('authRateLimitBefore / authRateLimitAfter', () => {
+  beforeEach(() => {
+    // Point the mocked `rateLimit` at the real in-memory implementation so these tests
+    // exercise actual bucket accumulation instead of a canned `authConsume`-style stub.
+    mockState.rateLimitImpl = mockState.realRateLimit;
+    resetRateLimitState();
+  });
+
+  const ctxFor = (path: string, body: unknown, returned?: unknown) =>
+    ({ path, body, context: { returned } }) as never;
+
+  it('rejects the sixth sign-in attempt for one account', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await expect(authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }))).resolves.toBeUndefined();
+    }
+    await expect(authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }))).rejects.toThrow();
+  });
+
+  it('a successful attempt clears the count', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }));
+    }
+    await authRateLimitAfter(ctxFor('/sign-in/email', { email: 'a@b.com' }, { user: { id: 'u1' } }));
+    await expect(authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }))).resolves.toBeUndefined();
+  });
+
+  it('a failed attempt does not clear the count', async () => {
+    const failure = new APIError('UNAUTHORIZED', { message: 'bad password' });
+    for (let i = 0; i < 5; i += 1) {
+      await authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }));
+      await authRateLimitAfter(ctxFor('/sign-in/email', { email: 'a@b.com' }, failure));
+    }
+    await expect(authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }))).rejects.toThrow();
   });
 });

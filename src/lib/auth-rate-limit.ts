@@ -1,8 +1,9 @@
 import { Redis } from '@upstash/redis';
+import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api';
 
 import { env } from '@/env';
-import { rateLimit } from '@/lib/rate-limit';
-import { RATE_LIMITS } from '@/lib/rate-limit-config';
+import { rateLimit, rateLimitReset } from '@/lib/rate-limit';
+import { RATE_LIMITS, type RateRule } from '@/lib/rate-limit-config';
 import { retryAfterSeconds } from '@/lib/rate-limit-guard';
 
 type StoredRateLimit = { key: string; count: number; lastRequest: number };
@@ -21,15 +22,19 @@ const rule = (r: { limit: number; windowSec: number }) => ({ window: r.windowSec
  * vs. the defaults' seconds-scale bursts).
  *
  * `/sign-in/email` is the one exception, and it is a KNOWN, ACCEPTED trade, not an
- * oversight: 20/60s is marginally LOOSER in burst shape than the 3/10s default it
- * replaces (3/10s permits 18/min and 1080/hour; 20/60s permits 20/min and 1200/hour — more
- * at every horizon, not less). This is accepted because 20/60s is §17's specified
- * `loginPerIp` value, and the real control against credential stuffing on this endpoint is
- * a per-ACCOUNT rule (`RATE_LIMITS.loginPerAccount`), which better-auth's IP-keyed limiter
- * cannot express. That per-account rule does NOT exist yet in this file — it is unused
- * anywhere in the repo at this commit and is expected to land as a `hooks.before` check in
- * a later task. Until it does, `/sign-in/email` is protected only by this IP-keyed rule,
- * which is a real (if modest) gap against a distributed attacker.
+ * oversight: 20/60s is LOOSER in burst shape than the 3/10s default it replaces at every
+ * horizon that matters — the worst case is the 10-second one `authRateLimitRules` itself
+ * can't see: the default permits 3 in any 10s slice, a fixed 20/60s window permits up to
+ * 20 in the first 10s of its window, a 6.7x loosening. At the minute and hour horizons it
+ * is milder but still a loosening (3/10s permits 18/min and 1080/hour; 20/60s permits
+ * 20/min and 1200/hour). This is accepted because 20/60s is §17's specified `loginPerIp`
+ * value, and the real control against credential stuffing on this endpoint is the
+ * per-ACCOUNT rule below (`RATE_LIMITS.loginPerAccount`, applied by `authRateLimitBefore`/
+ * `authRateLimitAfter`), which better-auth's IP-keyed limiter cannot express. With that
+ * hook wired into `hooks.before`/`hooks.after` in `src/auth.ts`, `/sign-in/email` is
+ * protected by BOTH dimensions: this IP-keyed rule (real accounts sharing one address) and
+ * the identity-keyed one (one account attacked from many addresses) — the distributed
+ * attacker gap once documented here is closed.
  */
 export const authRateLimitRules = {
   '/sign-in/email': rule(RATE_LIMITS.loginPerIp),
@@ -114,3 +119,62 @@ export const authRateLimitStorage = (() => {
     consume: authConsume,
   };
 })();
+
+type AccountRule = { key: string; rule: RateRule; clearOnSuccess: boolean };
+
+/** The email in an auth request body, normalized, or null if there isn't a usable one. */
+function emailOf(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const raw = (body as { email?: unknown }).email;
+  if (typeof raw !== 'string') return null;
+  const normalized = raw.trim().toLowerCase();
+  return normalized || null;
+}
+
+/**
+ * The identity-keyed rule governing `path`, or null.
+ *
+ * Pure and exported so the routing decision is testable without a request: the hooks
+ * below are thin wrappers whose only job is to call this and act on the answer.
+ */
+export function accountKeyFor(path: string, body: unknown): AccountRule | null {
+  const email = emailOf(body);
+  if (!email) return null;
+  if (path === '/sign-in/email') {
+    return { key: `login:acct:${email}`, rule: RATE_LIMITS.loginPerAccount, clearOnSuccess: true };
+  }
+  if (path === '/request-password-reset') {
+    return { key: `pwreset:email:${email}`, rule: RATE_LIMITS.passwordResetPerEmail, clearOnSuccess: false };
+  }
+  return null;
+}
+
+/**
+ * Consume one token BEFORE the endpoint runs.
+ *
+ * Consuming up front rather than peeking is what makes this atomic: a peek is a read, so
+ * a burst of parallel sign-in attempts would all observe an unexhausted bucket and all
+ * proceed — the exact shape of credential stuffing.
+ */
+export const authRateLimitBefore = createAuthMiddleware(async (ctx) => {
+  const match = accountKeyFor(ctx.path, ctx.body);
+  if (!match) return;
+  const result = await rateLimit(match.key, match.rule);
+  if (!result.success) {
+    throw new APIError('TOO_MANY_REQUESTS', { message: 'Too many attempts. Please try again later.' });
+  }
+});
+
+/**
+ * Clear the bucket when the attempt SUCCEEDED, so honest sign-ins never accumulate.
+ *
+ * `after` hooks run even for a failed endpoint: dispatchAuthEndpoint catches the APIError
+ * and puts it on `ctx.context.returned` before running them
+ * (better-auth@1.6.26 dist/api/dispatch.mjs:229-242). Hence the isAPIError test.
+ */
+export const authRateLimitAfter = createAuthMiddleware(async (ctx) => {
+  const match = accountKeyFor(ctx.path, ctx.body);
+  if (!match?.clearOnSuccess) return;
+  if (isAPIError(ctx.context.returned)) return;
+  await rateLimitReset(match.key, match.rule);
+});
