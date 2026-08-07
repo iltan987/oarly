@@ -353,7 +353,7 @@
       "waitlistCapacityHint": "Dolu bir seansın arkasında kaç üye sıraya girebilir. Sınırsız için boş bırakın.",
       "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin.",
       "saved": "Politikalar kaydedildi.",
-      "errorInvalidInput": "İşaretli alanları kontrol edip tekrar deneyin."
+      "errorInvalidInput": "Bazı değerler geçerli aralığın dışında. Kontrol edip tekrar deneyin."
     },
     "schedulePreview": {
       "title": "Program önizleme",
@@ -400,6 +400,7 @@
       "confirmAbsentCta": "Katılmadı olarak işaretle",
       "marked": "Katılmama kaydedildi.",
       "markedWithCancellations": "Katılmama kaydedildi. {count} ileri tarihli rezervasyon iptal edildi.",
+      "markAlready": "Bu üye zaten katılmadı olarak işaretlenmiş.",
       "undone": "Katılmama kaydı kaldırıldı. Bu ceza nedeniyle iptal edilen yerler geri alınmadı.",
       "undoConflict": "Bu yer artık geri alınamıyor — başkası tarafından tutulmuş.",
       "bannedUntilBadge": "{date} tarihine kadar yasaklı",

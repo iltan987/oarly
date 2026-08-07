@@ -1,6 +1,6 @@
 'use client';
 import { useTranslations } from 'next-intl';
-import { useActionState, useEffect, useOptimistic, useRef, useState } from 'react';
+import { startTransition, useActionState, useEffect, useOptimistic, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { StatusPill } from '@/components/booking-status-badge';
@@ -15,6 +15,9 @@ import { cn } from '@/lib/utils';
 import { type MemberHit, ownerAddBookingAction, ownerRemoveBookingAction, type RemoveActionResult } from './actions';
 import { type MarkActionResult, markNoShowAction, type UndoActionResult, undoNoShowAction } from './attendance-actions';
 import { MemberCombobox } from './member-combobox';
+
+/** A seat added optimistically, tagged with the session card it belongs under. */
+type PendingAddition = { sessionKey: string; member: MemberHit };
 
 export type RosterSessionWithPenalty = RosterSession & {
   banEndsAt: Date | null;
@@ -35,6 +38,24 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
   // confirm form in a portal, so the row's PendingButton-based `has-data-pending:` CSS
   // trick can't see it — this state bridges that. Cleared once rmState resolves, below.
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
+
+  // Same bridge for "mark absent", which has the same portalled-confirm-form problem
+  // AND the slowest round trip in this file (marking cascades booking cancellations and
+  // penalty mail). Its dialog closes on submit, so without this the operator sees
+  // nothing at all change for the whole trip — the very defect this branch fixed for
+  // remove. Cleared once markState resolves, below.
+  const [pendingAbsenceId, setPendingAbsenceId] = useState<string | null>(null);
+
+  // Optimistic seat additions, owned HERE rather than in AddMemberForm so they can be
+  // rendered as trailing <li>s of the confirmed seated list. Rendering them below the
+  // waitlist instead would make the server's confirmation jump the new member up past
+  // every waitlisted row — shifting those rows' destructive controls at round-trip
+  // completion, which is exactly the delayed reflow of §1.2. As trailing seated rows,
+  // confirmation is a pure in-place replacement that moves nothing.
+  const [pendingAdditions, addPendingMember] = useOptimistic<PendingAddition[], PendingAddition>(
+    [],
+    (current, addition) => [...current, addition],
+  );
 
   // Remove state lives here (stable parent): a successful removal revalidates
   // and unmounts the row, so a row-local toast effect would be dropped. (Add
@@ -57,9 +78,12 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
   useEffect(() => {
     if (markState === null || markState === markHandled.current) return;
     markHandled.current = markState;
-    if (!markState.ok) toast.error(tm('actionError'));
-    else if (markState.cancelled > 0) toast.success(t('markedWithCancellations', { count: markState.cancelled }));
-    else toast.success(t('marked'));
+    setPendingAbsenceId(null);
+    if (markState.ok) {
+      if (markState.cancelled > 0) toast.success(t('markedWithCancellations', { count: markState.cancelled }));
+      else toast.success(t('marked'));
+    } else if (markState.error === 'already_marked') toast.info(t('markAlready'));
+    else toast.error(tm('actionError'));
   }, [markState, t, tm]);
 
   const [undoState, undoAction] = useActionState<UndoActionResult | null, FormData>(undoNoShowAction.bind(null, slug), null);
@@ -82,22 +106,24 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
     <div className="flex flex-col gap-3">
       {sessions.map((s, i) => {
         const time = `${fmt(s.startAt, timezone)}–${fmt(s.endAt, timezone)}`;
+        const sessionKey = s.sessionId ?? `${s.boatTypeId}-${i}`;
+        const pending = pendingAdditions.filter((p) => p.sessionKey === sessionKey);
         return (
-          <Card key={s.sessionId ?? `${s.boatTypeId}-${i}`} size="sm">
+          <Card key={sessionKey} size="sm">
             <CardContent className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-heading text-sm font-semibold">{s.boatName} · {time}</span>
                 <span className="text-xs text-muted-foreground">{s.seated.filter((m) => m.status === 'booked').length}/{s.capacity}</span>
               </div>
 
-              {s.seated.length > 0 && (
+              {(s.seated.length > 0 || pending.length > 0) && (
                 <ul className="flex flex-col gap-1">
                   {s.seated.map((m) => (
                     <li
                       key={m.bookingId}
                       className={cn(
                         'flex items-center justify-between gap-2 text-sm transition-opacity has-data-pending:opacity-40',
-                        pendingRemovalId === m.bookingId && 'opacity-40',
+                        (pendingRemovalId === m.bookingId || pendingAbsenceId === m.bookingId) && 'opacity-40',
                       )}
                     >
                       <span className="min-w-0 truncate">{m.name}</span>
@@ -123,6 +149,16 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
                           </>
                         )}
                       </span>
+                    </li>
+                  ))}
+                  {/*
+                    Trailing rows of the SEATED list, dimmed until the server confirms.
+                    When it does, the optimistic row is replaced in place by the real
+                    one — no row above or below it moves.
+                  */}
+                  {pending.map((p) => (
+                    <li key={p.member.userId} className="flex items-center justify-between gap-2 text-sm text-muted-foreground opacity-50">
+                      <span className="min-w-0 truncate">{p.member.name}</span>
                     </li>
                   ))}
                 </ul>
@@ -151,7 +187,11 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
               )}
 
               {!closed && s.freeSeats > 0 && s.windowId && (
-                <AddMemberForm session={s} slug={slug} />
+                <AddMemberForm
+                  session={s}
+                  slug={slug}
+                  onSubmitted={(member) => addPendingMember({ sessionKey, member })}
+                />
               )}
             </CardContent>
           </Card>
@@ -161,7 +201,14 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
       <Dialog open={confirming !== null} onOpenChange={(open) => { if (!open) setConfirming(null); }}>
         <DialogContent>
           {confirming && (
-            <form action={markAction} onSubmit={() => setConfirming(null)} className="flex flex-col gap-4">
+            <form
+              action={markAction}
+              onSubmit={() => {
+                setPendingAbsenceId(confirming.bookingId);
+                setConfirming(null);
+              }}
+              className="flex flex-col gap-4"
+            >
               <input type="hidden" name="bookingId" value={confirming.bookingId} />
               <DialogHeader>
                 <DialogTitle>{t('confirmAbsentTitle', { name: confirming.name })}</DialogTitle>
@@ -212,38 +259,31 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
   );
 }
 
-// Owns the optimistic pending-additions list for one session. Appending below
-// the confirmed roster shifts nothing above it, unlike a remove or an insert
-// in the middle of the list — that is what makes an add safe to show before
-// the round trip resolves (see spec §3). The actual add/reset/toast logic
-// lives in `AddMemberFields` below, which this remounts (via `key`) on a
-// successful add so the picker resets to empty.
-function AddMemberForm({ session, slug }: { session: RosterSession; slug: string }) {
+/**
+ * Appending below the confirmed roster shifts nothing above it, unlike a remove or an
+ * insert in the middle of the list — that is what makes an add safe to show before the
+ * round trip resolves (see spec §3). The optimistic list itself is owned by
+ * `BookingsRoster` so it can render inside the seated <ul>; this component only
+ * forwards the pick to it and remounts `AddMemberFields` (via `key`) on a successful
+ * add so the picker resets to empty.
+ */
+function AddMemberForm({ session, slug, onSubmitted }: {
+  session: RosterSession; slug: string;
+  onSubmitted: (member: MemberHit) => void;
+}) {
   const [formKey, setFormKey] = useState(0);
-  const [pendingAdditions, addPendingMember] = useOptimistic<MemberHit[], MemberHit>(
-    [],
-    (current, member) => [...current, member],
-  );
 
   return (
-    <>
-      {pendingAdditions.length > 0 && (
-        <ul className="flex flex-col gap-1">
-          {pendingAdditions.map((m) => (
-            <li key={m.userId} className="flex items-center gap-2 text-sm text-muted-foreground opacity-50">
-              <span className="min-w-0 truncate">{m.name}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <AddMemberFields
-        key={formKey}
-        session={session}
-        slug={slug}
-        onSubmitted={addPendingMember}
-        onAdded={() => setFormKey((k) => k + 1)}
-      />
-    </>
+    <AddMemberFields
+      key={formKey}
+      session={session}
+      slug={slug}
+      onSubmitted={onSubmitted}
+      // Post-`await` state update, so it must be wrapped in `startTransition`
+      // (spec §4.4) — outside one React warns and applies it synchronously,
+      // tearing it out of the action's transition.
+      onAdded={() => startTransition(() => setFormKey((k) => k + 1))}
+    />
   );
 }
 

@@ -8,8 +8,12 @@ import { markNoShow, undoNoShow } from '@/lib/attendance';
 import { requireOwner } from '@/lib/membership';
 import { notifyNoShowPenalty, notifyWaitlistPromotion } from '@/lib/notify';
 
-/** Richer than ManageActionResult so the toast can report how many seats the cascade took. */
-export type MarkActionResult = { ok: true; cancelled: number } | { ok: false };
+/**
+ * Richer than ManageActionResult so the toast can report how many seats the cascade
+ * took, and — mirroring RemoveActionResult's `not_active` — so a repeat mark of an
+ * already-absent booking reads as benign rather than as a generic failure.
+ */
+export type MarkActionResult = { ok: true; cancelled: number } | { ok: false; error?: 'already_marked' };
 
 /** Richer than ManageActionResult so the toast can distinguish a lost-race restore from a generic error. */
 export type UndoActionResult = { ok: true } | { ok: false; error?: 'restore_conflict' };
@@ -22,7 +26,7 @@ export async function markNoShowAction(slug: string, _prev: MarkActionResult | n
   if (!parsed.success) return { ok: false };
 
   const result = await markNoShow(db, { clubId: club.id, bookingId: parsed.data.bookingId });
-  if (!result.ok) return { ok: false };
+  if (!result.ok) return result.error === 'already_marked' ? { ok: false, error: 'already_marked' } : { ok: false };
 
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);

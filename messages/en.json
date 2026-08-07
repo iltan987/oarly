@@ -353,7 +353,7 @@
       "waitlistCapacityHint": "How many members may queue behind a full session. Leave empty for no limit.",
       "errorInvalidLead": "Enter a lead of at least 1 day, or choose \"Always open\".",
       "saved": "Policies saved.",
-      "errorInvalidInput": "Check the highlighted fields and try again."
+      "errorInvalidInput": "Some values are out of range. Check them and try again."
     },
     "schedulePreview": {
       "title": "Schedule preview",
@@ -400,6 +400,7 @@
       "confirmAbsentCta": "Mark absent",
       "marked": "Absence recorded.",
       "markedWithCancellations": "Absence recorded. {count} upcoming bookings were cancelled.",
+      "markAlready": "That member was already marked absent.",
       "undone": "Absence removed. Any seats this penalty cancelled were not restored.",
       "undoConflict": "This seat can no longer be restored — it has since been taken.",
       "bannedUntilBadge": "Banned until {date}",
