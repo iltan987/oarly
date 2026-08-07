@@ -1,5 +1,8 @@
 import { NextRequest } from 'next/server';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { resetRateLimitState } from '@/lib/rate-limit';
+import * as rateLimitGuard from '@/lib/rate-limit-guard';
 
 import { proxy } from '../proxy';
 
@@ -8,7 +11,29 @@ function req(url: string, host: string) {
   return new NextRequest(new URL(url), { headers: { host } });
 }
 
+// POST requests drive the §17 baseline (proxy.ts's own module-level bucket state via
+// enforceBaseline -> enforceRateLimit -> rateLimit). Each call site below gets its own
+// x-forwarded-for so tests never share a bucket with each other.
+function postReq(ip: string) {
+  return new NextRequest(new URL('http://localhost:3000/'), {
+    method: 'POST',
+    headers: { host: 'localhost:3000', 'x-forwarded-for': ip },
+  });
+}
+
+function getReq(ip: string) {
+  return new NextRequest(new URL('http://localhost:3000/'), {
+    method: 'GET',
+    headers: { host: 'localhost:3000', 'x-forwarded-for': ip },
+  });
+}
+
 describe('proxy', () => {
+  // proxy() transitively reaches rate-limit.ts's module-level `buckets` map through
+  // enforceBaseline -> enforceRateLimit -> rateLimit. Without this reset, tests leak
+  // state into each other and pass or fail by file order.
+  beforeEach(() => { resetRateLimitState(); });
+
   it('passes apex home through (no rewrite/redirect)', async () => {
     const res = await proxy(req('http://localhost:3000/', 'localhost:3000'));
     expect(res.headers.get('x-middleware-rewrite')).toBeNull();
@@ -46,5 +71,53 @@ describe('proxy', () => {
     request.headers.set('x-tenant-slug', 'evil');
     const res = await proxy(request);
     expect(res.headers.get('x-middleware-request-x-tenant-slug')).toBe('demo');
+  });
+});
+
+describe('proxy — §17 general baseline', () => {
+  beforeEach(() => { resetRateLimitState(); });
+
+  it('allows up to 100 POSTs/min per IP, then rejects the 101st with 429', async () => {
+    const ip = '203.0.113.50';
+    for (let i = 0; i < 100; i += 1) {
+      const res = await proxy(postReq(ip));
+      expect(res.status).not.toBe(429);
+    }
+    const res = await proxy(postReq(ip));
+    expect(res.status).toBe(429);
+  });
+
+  it('the 429 carries a positive integer Retry-After header', async () => {
+    const ip = '203.0.113.51';
+    for (let i = 0; i < 100; i += 1) await proxy(postReq(ip));
+    const res = await proxy(postReq(ip));
+    expect(res.status).toBe(429);
+    const retryAfter = res.headers.get('retry-after');
+    expect(retryAfter).toMatch(/^\d+$/);
+    expect(Number(retryAfter)).toBeGreaterThan(0);
+  });
+
+  it('still routes a GET normally from an IP already exhausted on POST', async () => {
+    const ip = '203.0.113.52';
+    for (let i = 0; i < 100; i += 1) await proxy(postReq(ip));
+    const blocked = await proxy(postReq(ip));
+    expect(blocked.status).toBe(429); // sanity: this IP really is exhausted for POST
+    const res = await proxy(getReq(ip));
+    expect(res.status).not.toBe(429);
+  });
+
+  it('fails open when the baseline check throws, so a broken limiter cannot take the proxy down', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const baselineSpy = vi
+      .spyOn(rateLimitGuard, 'enforceBaseline')
+      .mockRejectedValueOnce(new Error('kv down'));
+
+    const res = await proxy(req('http://localhost:3000/', 'localhost:3000'));
+
+    expect(res.status).not.toBe(429);
+    expect(errorSpy).toHaveBeenCalled();
+
+    baselineSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });

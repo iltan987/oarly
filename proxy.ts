@@ -13,12 +13,20 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // A raw 429 is not an RSC payload, so React surfaces it as a generic failure rather
   // than a toast — accepted, because at 100/min this only trips for scripted abuse and
   // every named action carries a much tighter limit that DOES produce a toast.
-  const baseline = await enforceBaseline(request);
-  if (baseline.limited) {
-    return new NextResponse(null, {
-      status: 429,
-      headers: { 'Retry-After': String(baseline.retryAfterSec) },
-    });
+  try {
+    const baseline = await enforceBaseline(request);
+    if (baseline.limited) {
+      return new NextResponse(null, {
+        status: 429,
+        headers: { 'Retry-After': String(baseline.retryAfterSec) },
+      });
+    }
+  } catch (error) {
+    // A rate limiter must never be able to take the site down. `enforceBaseline` already
+    // fails open internally (it bottoms out in `rateLimit`'s own try/catch), but this is
+    // the proxy's hottest code path — every POST to the app runs through it — so it gets
+    // its own safety net rather than trusting that guarantee to hold two modules away.
+    console.error('proxy: enforceBaseline threw, allowing request through', error);
   }
 
   const host = request.headers.get('host') ?? origin.rootDomain;
