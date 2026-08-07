@@ -42,7 +42,8 @@
     "pending": "Your request to join is pending approval.",
     "approved": "You're a member of this club.",
     "rejected": "Your request to join was rejected.",
-    "banned": "You can't book sessions at this club right now."
+    "banned": "You can't book sessions at this club right now.",
+    "rateLimited": "Too many requests. Please try again later."
   },
   "emails": {
     "verify": {
@@ -168,7 +169,8 @@
     "errorOwnerNotFound": "No user with that email. The account must be created first.",
     "errorNameInvalid": "Club name must be at least 2 characters.",
     "errorOwnerEmailInvalid": "Enter a valid email.",
-    "actionError": "Couldn't update the club. Try again."
+    "actionError": "Couldn't update the club. Try again.",
+    "errorTooManyRequests": "Too many requests. Please try again later."
   },
   "requestClub": {
     "title": "Club request",

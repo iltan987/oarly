@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 
 import { db } from '@/db';
 import { ownedClubId, setClubLogo } from '@/lib/club-profile';
+import { RATE_LIMITS } from '@/lib/rate-limit-config';
+import { enforceRateLimit } from '@/lib/rate-limit-guard';
 import { logoSaveSchema } from '@/lib/schemas';
 import { getCurrentUser } from '@/lib/session';
 
@@ -12,6 +14,14 @@ import { getCurrentUser } from '@/lib/session';
 export async function POST(request: Request): Promise<NextResponse> {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Not authorized' }, { status: 401 });
+
+  // Shares one bucket with /api/club-logo/upload on purpose: an upload is always
+  // followed by a save, so a single logoUploadPerAccount budget covers both halves
+  // of a logo change.
+  const verdict = await enforceRateLimit([
+    { key: `logo:acct:${user.id}`, rule: RATE_LIMITS.logoUploadPerAccount },
+  ]);
+  if (verdict.limited) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   let payload: unknown;
   try {

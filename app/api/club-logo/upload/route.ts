@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 
 import { db } from '@/db';
 import { ownedClubId } from '@/lib/club-profile';
+import { RATE_LIMITS } from '@/lib/rate-limit-config';
+import { enforceRateLimit } from '@/lib/rate-limit-guard';
 import { getCurrentUser } from '@/lib/session';
 
 // No image/svg+xml: an SVG served from our Blob origin is an active document, and it
@@ -24,6 +26,13 @@ export async function POST(request: Request): Promise<NextResponse> {
       onBeforeGenerateToken: async (_pathname, clientPayload) => {
         const user = await getCurrentUser();
         if (!user) throw new Error('Not authorized');
+        // Shares one bucket with /api/club-logo/save on purpose: an upload is always
+        // followed by a save, so a single logoUploadPerAccount budget covers both
+        // halves of a logo change.
+        const verdict = await enforceRateLimit([
+          { key: `logo:acct:${user.id}`, rule: RATE_LIMITS.logoUploadPerAccount },
+        ]);
+        if (verdict.limited) throw new Error('Rate limited');
         const clubId = await ownedClubId(db, user.id, clientPayload ?? '');
         if (!clubId) throw new Error('Not authorized');
         return {
@@ -39,8 +48,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
     return NextResponse.json(json);
   } catch (error) {
-    // Auth failures get a 401; everything else is a generic 400 — the raw Blob
-    // error message is logged, not echoed to the client (avoids info-leak).
+    // Auth failures get a 401, rate-limit rejections a 429, everything else a generic
+    // 400 — the raw Blob error message is logged, not echoed to the client (avoids
+    // info-leak).
+    if ((error as Error).message === 'Rate limited') {
+      return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+    }
     if ((error as Error).message === 'Not authorized') {
       return NextResponse.json({ error: 'Not authorized' }, { status: 401 });
     }

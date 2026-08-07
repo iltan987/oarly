@@ -42,7 +42,8 @@
     "pending": "Katılma isteğin onay bekliyor.",
     "approved": "Bu kulübün üyesisin.",
     "rejected": "Katılma isteğin reddedildi.",
-    "banned": "Şu anda bu kulüpte rezervasyon yapamazsın."
+    "banned": "Şu anda bu kulüpte rezervasyon yapamazsın.",
+    "rateLimited": "Çok fazla istek. Lütfen daha sonra tekrar deneyin."
   },
   "emails": {
     "verify": {
@@ -168,7 +169,8 @@
     "errorOwnerNotFound": "Bu e-postayla bir kullanıcı bulunamadı. Önce hesabı oluşturulmalı.",
     "errorNameInvalid": "Kulüp adı en az 2 karakter olmalı.",
     "errorOwnerEmailInvalid": "Geçerli bir e-posta gir.",
-    "actionError": "Kulüp güncellenemedi. Tekrar dene."
+    "actionError": "Kulüp güncellenemedi. Tekrar dene.",
+    "errorTooManyRequests": "Çok fazla istek. Lütfen daha sonra tekrar deneyin."
   },
   "requestClub": {
     "title": "Kulüp başvurusu",
