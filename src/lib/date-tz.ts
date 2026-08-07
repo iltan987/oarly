@@ -39,42 +39,13 @@ export function addDaysISO(dateISO: string, n: number): string {
 
 /** Add `n` calendar months to a YYYY-MM-DD label, clamping to the month end (timezone-independent). */
 export function addMonthsISO(dateISO: string, n: number): string {
-  // Parse the ISO date
-  const year = parseInt(dateISO.substring(0, 4));
-  const month = parseInt(dateISO.substring(5, 7));
-  const day = parseInt(dateISO.substring(8, 10));
-
-  // Calculate target year and month
-  let targetYear = year;
-  let targetMonth = month + n; // 1-based
-
-  // Handle month overflow/underflow
-  while (targetMonth > 12) {
-    targetMonth -= 12;
-    targetYear += 1;
-  }
-  while (targetMonth < 1) {
-    targetMonth += 12;
-    targetYear -= 1;
-  }
-
-  // Find the last day of the target month by creating the first day of next month and backing up one day
-  let nextMonth = targetMonth + 1;
-  let nextYear = targetYear;
-  if (nextMonth > 12) {
-    nextMonth = 1;
-    nextYear += 1;
-  }
-
-  const firstOfNextMonth = new Date(`${String(nextYear).padStart(4, '0')}-${String(nextMonth).padStart(2, '0')}-01T00:00:00Z`);
-  firstOfNextMonth.setUTCDate(0); // Back up to the last day of the target month
-  const maxDay = firstOfNextMonth.getUTCDate();
-
-  // Clamp the day to the maximum valid day of the target month
-  const clampedDay = Math.min(day, maxDay);
-
-  // Create result string in ISO format
-  return `${String(targetYear).padStart(4, '0')}-${String(targetMonth).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
+  const [y, m, d] = dateISO.split('-').map(Number);
+  // Date.UTC normalises out-of-range months, so no manual rollover is needed —
+  // and building in UTC avoids the local-field trap that broke the date-fns version.
+  const firstOfTarget = new Date(Date.UTC(y, m - 1 + n, 1));
+  const daysInTarget = new Date(Date.UTC(firstOfTarget.getUTCFullYear(), firstOfTarget.getUTCMonth() + 1, 0)).getUTCDate();
+  firstOfTarget.setUTCDate(Math.min(d, daysInTarget));
+  return fmtUTC(firstOfTarget);
 }
 
 /** The `days` consecutive calendar-date labels starting at `fromDateISO`. */

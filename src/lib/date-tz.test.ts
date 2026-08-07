@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  addDaysISO, eachDateISO, minutesToHHMM, todayInClub, toMinutes, utcToClubDate, weekdayOfDateISO, zonedWallClockToUtc,
+  addDaysISO, addMonthsISO, eachDateISO, minutesToHHMM, todayInClub, toMinutes, utcToClubDate, weekdayOfDateISO, zonedWallClockToUtc,
 } from './date-tz';
 
 const TZ = 'Europe/Istanbul'; // UTC+3, no DST since 2016
@@ -35,5 +35,18 @@ describe('date-tz', () => {
     expect(toMinutes('08:30:00')).toBe(510);
     expect(minutesToHHMM(510)).toBe('08:30');
     expect(minutesToHHMM(0)).toBe('00:00');
+  });
+
+  it('adds calendar months to a date, clamping month ends', () => {
+    // Non-leap-year month-end clamping
+    expect(addMonthsISO('2026-01-31', 1)).toBe('2026-02-28');
+    // Leap year
+    expect(addMonthsISO('2024-01-31', 1)).toBe('2024-02-29');
+    // Year rollover
+    expect(addMonthsISO('2026-12-31', 1)).toBe('2027-01-31');
+    // Negative month offset
+    expect(addMonthsISO('2026-03-15', -1)).toBe('2026-02-15');
+    // Negative month across year boundary
+    expect(addMonthsISO('2026-01-15', -1)).toBe('2025-12-15');
   });
 });
