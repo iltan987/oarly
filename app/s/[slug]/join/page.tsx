@@ -11,6 +11,7 @@ import { requireClub } from '@/lib/tenant';
 import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
 
 import { joinAction } from './actions';
+import { JoinForm } from './join-form';
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
@@ -54,10 +55,7 @@ export default async function JoinPage({
       {membership ? (
         <p className="text-muted-foreground">{statusMsg}</p>
       ) : (
-        <form action={joinAction.bind(null, slug)} className="w-full">
-          <p className="mb-4 text-muted-foreground">{t('joinBody')}</p>
-          <button type="submit" className={buttonVariants({ className: 'w-full' })}>{tj('requestToJoin')}</button>
-        </form>
+        <JoinForm action={joinAction.bind(null, slug)} body={t('joinBody')} cta={tj('requestToJoin')} />
       )}
     </main>
   );
