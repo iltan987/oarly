@@ -5,9 +5,17 @@ import { bookings, user } from '@/db/schema';
 
 import { computeCalendar } from './calendar';
 
-const ACTIVE = ['booked', 'waitlisted'] as const;
+// A no-show is still shown: the owner needs to see the mark to undo it. The
+// previous active-only filter made a marked booking vanish from the roster.
+const VISIBLE = ['booked', 'waitlisted', 'no_show'] as const;
 
-export type RosterMember = { bookingId: string; name: string; paymentType: 'regular' | 'multisport'; queuePosition: number | null };
+export type RosterMember = {
+  bookingId: string;
+  name: string;
+  paymentType: 'regular' | 'multisport';
+  queuePosition: number | null;
+  status: 'booked' | 'waitlisted' | 'no_show';
+};
 export type RosterSession = {
   sessionId: string | null;
   windowId: string | null;
@@ -35,16 +43,17 @@ export async function getDayRoster(db: DB, { clubId, dateISO }: { clubId: string
         .select({ bookingId: bookings.id, sessionId: bookings.sessionId, status: bookings.status, paymentType: bookings.paymentType, queuePosition: bookings.queuePosition, effectiveAt: bookings.effectiveAt, name: user.name })
         .from(bookings)
         .innerJoin(user, eq(user.id, bookings.userId))
-        .where(and(inArray(bookings.sessionId, sessionIds), inArray(bookings.status, [...ACTIVE])))
+        .where(and(inArray(bookings.sessionId, sessionIds), inArray(bookings.status, [...VISIBLE])))
     : [];
 
   const bySession = new Map<string, { seated: RosterMember[]; waitlisted: RosterMember[] }>();
   const ordered = [...rows].sort((a, b) => a.effectiveAt.getTime() - b.effectiveAt.getTime());
   for (const r of ordered) {
     const bucket = bySession.get(r.sessionId) ?? { seated: [], waitlisted: [] };
-    const member: RosterMember = { bookingId: r.bookingId, name: r.name, paymentType: r.paymentType, queuePosition: r.queuePosition };
-    if (r.status === 'booked') bucket.seated.push(member);
-    else bucket.waitlisted.push(member);
+    const status = r.status as 'booked' | 'waitlisted' | 'no_show';
+    const member: RosterMember = { bookingId: r.bookingId, name: r.name, paymentType: r.paymentType, queuePosition: r.queuePosition, status };
+    if (status === 'waitlisted') bucket.waitlisted.push(member);
+    else bucket.seated.push(member);
     bySession.set(r.sessionId, bucket);
   }
   for (const bucket of bySession.values()) bucket.waitlisted.sort((x, y) => (x.queuePosition ?? 0) - (y.queuePosition ?? 0));
@@ -64,7 +73,7 @@ export async function getDayRoster(db: DB, { clubId, dateISO }: { clubId: string
         status: s.status,
         seated: roster.seated,
         waitlisted: roster.waitlisted,
-        freeSeats: Math.max(0, s.capacity - roster.seated.length),
+        freeSeats: Math.max(0, s.capacity - roster.seated.filter((m) => m.status === 'booked').length),
       });
     }
   }

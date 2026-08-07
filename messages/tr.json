@@ -80,11 +80,19 @@
         "heading": "Rezervasyonunuz kaldırıldı",
         "intro": "Kulüp bu seanstaki rezervasyonunuzu kaldırdı. Ayrıntılar aşağıda."
       },
+      "noShow": {
+        "subject": "Katılmadığınız kaydedildi",
+        "heading": "Katılmadığınız kaydedildi",
+        "intro": "Kulüp bu seansa katılmadığınızı kaydetti.",
+        "introNoBan": "Kulüp bu seansa katılmadığınızı kaydetti. Rezervasyon erişiminiz etkilenmedi."
+      },
       "labels": {
         "club": "Kulüp",
         "boat": "Tekne",
         "when": "Tarih",
-        "queuePosition": "Sıra"
+        "queuePosition": "Sıra",
+        "bannedUntil": "Rezervasyon yapamayacağınız tarih",
+        "cancelledBookings": "İptal edilen rezervasyonlar"
       }
     }
   },

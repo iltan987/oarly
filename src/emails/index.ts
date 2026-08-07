@@ -118,3 +118,26 @@ export async function renderOwnerRemoval(locale: string, data: BookingWhen): Pro
   const t = await loadEmailsTranslator(validLocale);
   return renderNotice(validLocale, t('booking.ownerRemoval.subject'), t('booking.ownerRemoval.heading'), t('booking.ownerRemoval.intro'), baseRows(t, data, validLocale));
 }
+
+export async function renderNoShowPenalty(
+  locale: string,
+  data: BookingWhen & { bannedUntil: Date | null; cancelledCount: number },
+): Promise<RenderedEmail> {
+  const validLocale = toLocale(locale);
+  const t = await loadEmailsTranslator(validLocale);
+  const rows = baseRows(t, data, validLocale);
+  if (data.bannedUntil) {
+    rows.push({
+      label: t('booking.labels.bannedUntil'),
+      value: new Intl.DateTimeFormat(validLocale, { timeZone: data.timezone, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).format(data.bannedUntil),
+    });
+  }
+  if (data.cancelledCount > 0) {
+    rows.push({ label: t('booking.labels.cancelledBookings'), value: String(data.cancelledCount) });
+  }
+  // One notice, not three: the cascade would otherwise fire a cancellation email
+  // per seat alongside this one, all within a second, leaving the member to
+  // reassemble the story themselves.
+  const intro = data.bannedUntil ? t('booking.noShow.intro') : t('booking.noShow.introNoBan');
+  return renderNotice(validLocale, t('booking.noShow.subject'), t('booking.noShow.heading'), intro, rows);
+}

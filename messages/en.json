@@ -80,11 +80,19 @@
         "heading": "Your booking was removed",
         "intro": "The club removed your booking for this session. Details below."
       },
+      "noShow": {
+        "subject": "You were marked absent",
+        "heading": "You were marked absent",
+        "intro": "The club recorded that you did not attend this session.",
+        "introNoBan": "The club recorded that you did not attend this session. Your booking access is unaffected."
+      },
       "labels": {
         "club": "Club",
         "boat": "Boat",
         "when": "When",
-        "queuePosition": "Queue position"
+        "queuePosition": "Queue position",
+        "bannedUntil": "Cannot book until",
+        "cancelledBookings": "Bookings cancelled"
       }
     }
   },
