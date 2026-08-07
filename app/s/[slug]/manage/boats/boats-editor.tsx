@@ -3,6 +3,7 @@ import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -94,7 +95,7 @@ function BoatForm({ slug, boat, levels, labels, action, className, onSuccess, on
   className: string; onSuccess: () => void; onCancel: () => void;
 }) {
   const t = useTranslations('manage');
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(action.bind(null, slug), null);
+  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(action.bind(null, slug), null);
   // Gate on the state object's identity (useActionState returns a fresh object
   // per submission) so the toast/close fires once per result and not again when
   // an unrelated re-render changes the `onSuccess`/`t` identities.
@@ -116,7 +117,7 @@ function BoatForm({ slug, boat, levels, labels, action, className, onSuccess, on
       {boat && <input type="hidden" name="boatId" value={boat.id} />}
       <BoatFields boat={boat} levels={levels} labels={labels} formId={boat?.id ?? 'new'} />
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={pending}>{labels.save}</Button>
+        <PendingButton size="sm">{labels.save}</PendingButton>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>{labels.cancel}</Button>
       </div>
     </form>
@@ -125,7 +126,7 @@ function BoatForm({ slug, boat, levels, labels, action, className, onSuccess, on
 
 function BoatActiveButton({ slug, boatId, active, label }: { slug: string; boatId: string; active: boolean; label: string }) {
   const t = useTranslations('manage');
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(setBoatActiveAction.bind(null, slug), null);
+  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(setBoatActiveAction.bind(null, slug), null);
 
   useEffect(() => {
     if (state === null) return;
@@ -137,7 +138,7 @@ function BoatActiveButton({ slug, boatId, active, label }: { slug: string; boatI
     <form action={formAction}>
       <input type="hidden" name="boatId" value={boatId} />
       <input type="hidden" name="active" value={active ? 'false' : 'true'} />
-      <Button type="submit" size="sm" variant="ghost" disabled={pending}>{label}</Button>
+      <PendingButton size="sm" variant="ghost">{label}</PendingButton>
     </form>
   );
 }

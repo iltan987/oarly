@@ -50,7 +50,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
     else toast.error(tm('actionError'));
   }, [rmState, t, tm]);
 
-  const [addState, addAction, addPending] = useActionState<ManageActionResult | null, FormData>(ownerAddBookingAction.bind(null, slug), null);
+  const [addState, addAction] = useActionState<ManageActionResult | null, FormData>(ownerAddBookingAction.bind(null, slug), null);
   const addHandled = useRef<ManageActionResult | null>(null);
   useEffect(() => {
     if (addState === null || addState === addHandled.current) return;
@@ -158,7 +158,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
               )}
 
               {!closed && s.freeSeats > 0 && s.windowId && (
-                <AddMemberForm session={s} slug={slug} addAction={addAction} addPending={addPending} />
+                <AddMemberForm session={s} slug={slug} addAction={addAction} />
               )}
             </CardContent>
           </Card>
@@ -219,8 +219,8 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
   );
 }
 
-function AddMemberForm({ session, slug, addAction, addPending }: {
-  session: RosterSession; slug: string; addAction: (fd: FormData) => void; addPending: boolean;
+function AddMemberForm({ session, slug, addAction }: {
+  session: RosterSession; slug: string; addAction: (fd: FormData) => void;
 }) {
   const t = useTranslations('manage.bookings');
   const [selected, setSelected] = useState<MemberHit | null>(null);
@@ -243,7 +243,7 @@ function AddMemberForm({ session, slug, addAction, addPending }: {
           <SelectItem value="multisport">{t('paymentMultisport')}</SelectItem>
         </SelectContent>
       </Select>
-      <Button type="submit" size="sm" disabled={addPending || !selected}>{t('add')}</Button>
+      <PendingButton size="sm" disabled={!selected}>{t('add')}</PendingButton>
     </form>
   );
 }

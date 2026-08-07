@@ -3,6 +3,7 @@ import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -28,7 +29,7 @@ export function SkillLevelsEditor({ slug, levels, labels, confirms }: {
   // successful delete revalidates the route and removes that row, which would
   // unmount a row-local effect before its toast fires. This parent survives the
   // removal, so the toast is reliable.
-  const [delState, delAction, delPending] = useActionState<ManageActionResult | null, FormData>(deleteSkillLevelAction.bind(null, slug), null);
+  const [delState, delAction] = useActionState<ManageActionResult | null, FormData>(deleteSkillLevelAction.bind(null, slug), null);
   const delHandled = useRef<ManageActionResult | null>(null);
   useEffect(() => {
     if (delState === null || delState === delHandled.current) return;
@@ -45,7 +46,7 @@ export function SkillLevelsEditor({ slug, levels, labels, confirms }: {
       {levels.length === 0 ? <p className="text-sm text-muted-foreground">{labels.empty}</p> : (
         <ul className="divide-y rounded-lg border">
           {levels.map((lvl, i) => (
-            <li key={lvl.id} className="flex items-center justify-between gap-2 p-3">
+            <li key={lvl.id} className="flex items-center justify-between gap-2 p-3 transition-opacity has-data-pending:opacity-40">
               {editing === lvl.id ? (
                 <RenameForm slug={slug} level={lvl} labels={labels} onDone={() => setEditing(null)} />
               ) : confirming === lvl.id ? (
@@ -54,7 +55,7 @@ export function SkillLevelsEditor({ slug, levels, labels, confirms }: {
                   <div className="flex shrink-0 items-center gap-1">
                     <form action={delAction}>
                       <input type="hidden" name="skillLevelId" value={lvl.id} />
-                      <Button type="submit" size="sm" variant="destructive" disabled={delPending}>{labels.deleteConfirmYes}</Button>
+                      <PendingButton size="sm" variant="destructive">{labels.deleteConfirmYes}</PendingButton>
                     </form>
                     <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(null)}>{labels.cancel}</Button>
                   </div>
@@ -83,7 +84,7 @@ function AddForm({ slug, labels }: { slug: string; labels: Labels }) {
   const t = useTranslations('manage.skillLevels');
   const tm = useTranslations('manage');
   const formRef = useRef<HTMLFormElement>(null);
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(addSkillLevelAction.bind(null, slug), null);
+  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(addSkillLevelAction.bind(null, slug), null);
 
   useEffect(() => {
     if (state === null) return;
@@ -101,7 +102,7 @@ function AddForm({ slug, labels }: { slug: string; labels: Labels }) {
         <FieldLabel htmlFor="new-level" className="sr-only">{labels.add}</FieldLabel>
         <Input id="new-level" name="name" placeholder={labels.addPlaceholder} required />
       </Field>
-      <Button type="submit" disabled={pending}>{labels.add}</Button>
+      <PendingButton>{labels.add}</PendingButton>
     </form>
   );
 }
@@ -109,7 +110,7 @@ function AddForm({ slug, labels }: { slug: string; labels: Labels }) {
 function RenameForm({ slug, level, labels, onDone }: { slug: string; level: Level; labels: Labels; onDone: () => void }) {
   const t = useTranslations('manage.skillLevels');
   const tm = useTranslations('manage');
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(renameSkillLevelAction.bind(null, slug), null);
+  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(renameSkillLevelAction.bind(null, slug), null);
   const handledRef = useRef<ManageActionResult | null>(null);
 
   useEffect(() => {
@@ -130,7 +131,7 @@ function RenameForm({ slug, level, labels, onDone }: { slug: string; level: Leve
         <FieldLabel htmlFor={`name-${level.id}`} className="sr-only">{labels.rename}</FieldLabel>
         <Input id={`name-${level.id}`} name="name" defaultValue={level.name} autoFocus />
       </Field>
-      <Button type="submit" size="sm" disabled={pending}>{labels.save}</Button>
+      <PendingButton size="sm">{labels.save}</PendingButton>
       <Button type="button" size="sm" variant="ghost" onClick={onDone}>{labels.cancel}</Button>
     </form>
   );
@@ -140,7 +141,7 @@ function ArrowForm({ slug, id, direction, disabled, label, children }: {
   slug: string; id: string; direction: 'up' | 'down'; disabled: boolean; label: string; children: React.ReactNode;
 }) {
   const tm = useTranslations('manage');
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(reorderSkillLevelAction.bind(null, slug), null);
+  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(reorderSkillLevelAction.bind(null, slug), null);
 
   // Reorder is a frequent nudge — surface failures only, no success toast noise.
   useEffect(() => {
@@ -151,7 +152,7 @@ function ArrowForm({ slug, id, direction, disabled, label, children }: {
     <form action={formAction}>
       <input type="hidden" name="skillLevelId" value={id} />
       <input type="hidden" name="direction" value={direction} />
-      <Button type="submit" size="icon" variant="ghost" aria-label={label} disabled={disabled || pending}>{children}</Button>
+      <PendingButton size="icon" variant="ghost" aria-label={label} disabled={disabled}>{children}</PendingButton>
     </form>
   );
 }

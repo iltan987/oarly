@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useActionState, useEffect } from 'react';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
+import { PendingButton } from '@/components/pending-button';
 
 import { setClubStatusAction, type SetClubStatusState } from './actions';
 
@@ -20,7 +20,7 @@ export function ClubStatusButton({
   label: string;
 }) {
   const t = useTranslations('admin');
-  const [state, formAction, pending] = useActionState(setClubStatusAction, initial);
+  const [state, formAction] = useActionState(setClubStatusAction, initial);
 
   useEffect(() => {
     if (state === null) return;
@@ -35,14 +35,12 @@ export function ClubStatusButton({
     <form action={formAction}>
       <input type="hidden" name="clubId" value={clubId} />
       <input type="hidden" name="status" value={targetStatus === 'active' ? 'active' : 'suspend'} />
-      <Button
-        type="submit"
+      <PendingButton
         size="sm"
         variant={targetStatus === 'suspended' ? 'destructive' : 'default'}
-        disabled={pending}
       >
         {label}
-      </Button>
+      </PendingButton>
     </form>
   );
 }
