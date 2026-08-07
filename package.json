@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "test:integration": "TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test vitest run --no-file-parallelism",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node scripts/local-migrate.mjs",
     "db:seed": "tsx scripts/seed-dev.ts",
     "auth:generate": "pnpm dlx @better-auth/cli@1.4.21 generate --config ./src/auth.ts --output ./src/db/schema/auth.ts",
     "prepare": "husky"
