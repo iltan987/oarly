@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { rateLimit, resetRateLimitState } from '@/lib/rate-limit';
+import { RATE_LIMITS } from '@/lib/rate-limit-config';
 import { enforceBaseline, enforceRateLimit, retryAfterSeconds } from '@/lib/rate-limit-guard';
 
 const ACCOUNT = { name: 'testAccount', limit: 2, windowSec: 60 };
@@ -82,6 +83,12 @@ describe('enforceRateLimit', () => {
 });
 
 describe('enforceBaseline', () => {
+  // Derived from the config, not hardcoded: this rule is deliberately tuned (100 -> 1000,
+  // so a whole club behind one NAT cannot exhaust it at slot-open), and a literal here
+  // would turn every future tuning into a spurious failure in a file that is not about
+  // thresholds at all.
+  const BASELINE = RATE_LIMITS.apiBaselinePerIp.limit;
+
   beforeEach(() => { resetRateLimitState(); });
 
   const req = (method: string, ip?: string) => ({
@@ -90,13 +97,13 @@ describe('enforceBaseline', () => {
   });
 
   it('does not consume anything for a GET', async () => {
-    for (let i = 0; i < 200; i += 1) {
+    for (let i = 0; i < BASELINE * 2; i += 1) {
       expect(await enforceBaseline(req('GET', '203.0.113.7'), T0)).toEqual({ limited: false });
     }
   });
 
-  it('consumes on POST and rejects past the §17 baseline of 100/min', async () => {
-    for (let i = 0; i < 100; i += 1) {
+  it('consumes on POST and rejects past the §17 baseline', async () => {
+    for (let i = 0; i < BASELINE; i += 1) {
       expect(await enforceBaseline(req('POST', '203.0.113.7'), T0)).toEqual({ limited: false });
     }
     const verdict = await enforceBaseline(req('POST', '203.0.113.7'), T0);
@@ -104,13 +111,13 @@ describe('enforceBaseline', () => {
   });
 
   it('buckets by IP, so one exhausted client does not block another', async () => {
-    for (let i = 0; i < 100; i += 1) await enforceBaseline(req('POST', '203.0.113.7'), T0);
+    for (let i = 0; i < BASELINE; i += 1) await enforceBaseline(req('POST', '203.0.113.7'), T0);
     expect(await enforceBaseline(req('POST', '203.0.113.7'), T0)).toMatchObject({ limited: true });
     expect(await enforceBaseline(req('POST', '198.51.100.4'), T0)).toEqual({ limited: false });
   });
 
   it('falls back to a single shared bucket when no IP header is present', async () => {
-    for (let i = 0; i < 100; i += 1) await enforceBaseline(req('POST'), T0);
+    for (let i = 0; i < BASELINE; i += 1) await enforceBaseline(req('POST'), T0);
     expect(await enforceBaseline(req('POST'), T0)).toMatchObject({ limited: true });
   });
 });
