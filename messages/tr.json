@@ -346,6 +346,8 @@
       "multisportPriority": "Öncelik — normal rezervasyonlar önce",
       "multisportHint": "Öncelik modunda MultiSport rezervasyonu, normal rezervasyonlar tekneyi doldurmazsa yer tutar.",
       "openOnHolidays": "Resmi tatillerde seans yapılsın",
+      "waitlistCapacity": "Seans başına bekleme listesi boyutu",
+      "waitlistCapacityHint": "Dolu bir seansın arkasında kaç üye sıraya girebilir. Sınırsız için boş bırakın.",
       "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin."
     },
     "schedulePreview": {

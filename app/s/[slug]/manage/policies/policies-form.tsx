@@ -16,12 +16,14 @@ type Settings = {
   noshowPenalty: 'off' | '2d' | '1w' | '2w' | '1m' | 'never';
   multisportMode: 'equal' | 'priority';
   openOnHolidays: boolean;
+  waitlistCapacity: number | null;
 };
 type Labels = {
   save: string; bookingOpen: string; bookingOpenAlways: string; bookingOpenLead: string; leadDays: string;
   selfCancel: string; cancelCutoff: string; noshow: string; noshowOff: string; noshow2d: string; noshow1w: string;
   noshow2w: string; noshow1m: string; noshowNever: string; multisport: string; multisportEqual: string;
-  multisportPriority: string; multisportHint: string; openOnHolidays: string; errorInvalidLead: string;
+  multisportPriority: string; multisportHint: string; openOnHolidays: string; waitlistCapacity: string;
+  waitlistCapacityHint: string; errorInvalidLead: string;
 };
 
 const initial: PoliciesState = { status: 'idle' };
@@ -70,6 +72,11 @@ export function PoliciesForm({ slug, settings, labels }: { slug: string; setting
       <Field>
         <FieldLabel htmlFor="cancelCutoffHours">{labels.cancelCutoff}</FieldLabel>
         <Input id="cancelCutoffHours" name="cancelCutoffHours" type="number" min={0} max={720} defaultValue={settings.cancelCutoffHours ?? ''} />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="waitlistCapacity">{labels.waitlistCapacity}</FieldLabel>
+        <Input id="waitlistCapacity" name="waitlistCapacity" type="number" min={0} max={999} defaultValue={settings.waitlistCapacity ?? ''} />
+        <p className="text-xs text-muted-foreground">{labels.waitlistCapacityHint}</p>
       </Field>
       <Field>
         <FieldLabel htmlFor="noshowPenalty">{labels.noshow}</FieldLabel>

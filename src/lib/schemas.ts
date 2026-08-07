@@ -93,6 +93,7 @@ export const schedulingSettingsSchema = z
     noshowPenalty: z.enum(['off', '2d', '1w', '2w', '1m', 'never']),
     multisportMode: z.enum(['equal', 'priority']),
     openOnHolidays: z.boolean(),
+    waitlistCapacity: z.coerce.number().int().min(0).max(999).nullable(),
   })
   .refine((v) => v.bookingOpenMode !== 'lead' || v.bookingOpenLeadDays !== null, {
     message: 'lead mode requires lead days',
