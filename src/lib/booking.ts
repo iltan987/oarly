@@ -142,7 +142,7 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
     // 9. Insert the booking as waitlisted, then resolve seating for the target session.
     //    Sticky rule (resolveSeating): existing seated bookings are never demoted;
     //    the new booking takes a free seat if one exists, else joins the waitlist.
-    const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'waitlisted', effectiveAt: now, source: 'member', idempotencyKey: input.idempotencyKey }).returning({ id: bookings.id });
+    const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'waitlisted', effectiveAt: now, source: 'member', idempotencyKey: input.idempotencyKey, bookingDate: dateISO }).returning({ id: bookings.id });
     const active = await tx.select({ id: bookings.id, status: bookings.status, paymentType: bookings.paymentType, effectiveAt: bookings.effectiveAt }).from(bookings).where(and(eq(bookings.sessionId, target.id), inArray(bookings.status, [...ACTIVE])));
     const assignments = resolveSeating(active.map((a) => ({ id: a.id, status: a.status as 'booked' | 'waitlisted', paymentType: a.paymentType, effectiveAt: a.effectiveAt })), target.capacity, club.multisportMode);
     for (const a of assignments) await tx.update(bookings).set({ status: a.status, queuePosition: a.queuePosition }).where(eq(bookings.id, a.id));
@@ -278,7 +278,7 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
     const target = boatSessions.find((s) => (activeCount.get(s.id) ?? 0) < s.capacity);
     if (!target) return { ok: false, error: 'session_full' };
 
-    const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'booked', effectiveAt: now, source: 'owner' }).returning({ id: bookings.id });
+    const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'booked', effectiveAt: now, source: 'owner', bookingDate: dateISO }).returning({ id: bookings.id });
     await applySeating(tx, target.id, target.capacity, club.multisportMode);
     return { ok: true, bookingId: inserted.id };
   });

@@ -32,7 +32,7 @@ describe.skipIf(!url)('getDayRoster', () => {
     const mk = async (name: string, status: 'booked' | 'waitlisted', qpos: number | null) => {
       const uid = `${tag}-${name}`;
       await db.insert(schema.user).values({ id: uid, name, email: `${uid}@t.co` });
-      await db.insert(schema.bookings).values({ sessionId: session.id, clubId: club.id, userId: uid, paymentType: 'regular', status, queuePosition: qpos, effectiveAt: START });
+      await db.insert(schema.bookings).values({ sessionId: session.id, clubId: club.id, userId: uid, paymentType: 'regular', status, queuePosition: qpos, effectiveAt: START, bookingDate: MON });
     };
     await mk('alice', 'booked', null);
     await mk('bob', 'waitlisted', 1);

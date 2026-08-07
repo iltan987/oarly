@@ -35,3 +35,34 @@ describe('bookings schema', () => {
     expect(cols).toEqual(expect.arrayContaining(['membership_id', 'reason', 'banned_until']));
   });
 });
+
+describe('bookings booking_date', () => {
+  it('carries a not-null club-local booking date', () => {
+    const cols = Object.fromEntries(getTableConfig(bookings).columns.map((c) => [c.name, c]));
+    expect(cols['booking_date']).toBeDefined();
+    expect(cols['booking_date'].notNull).toBe(true);
+  });
+
+  it('has a partial unique index enforcing one active multisport seat per user per day', () => {
+    const idx = getTableConfig(bookings).indexes.find((i) => i.config.name === 'bookings_multisport_day_uq');
+    expect(idx).toBeDefined();
+    expect(idx!.config.unique).toBe(true);
+    expect(idx!.config.columns.map((c) => (c as { name: string }).name)).toEqual(['user_id', 'booking_date']);
+    expect(idx!.config.where).toBeDefined();
+  });
+});
+
+describe('penalties undo handles', () => {
+  it('links to the booking it penalises and flags permanence', () => {
+    const cols = Object.fromEntries(getTableConfig(penalties).columns.map((c) => [c.name, c]));
+    expect(cols['booking_id']).toBeDefined();
+    expect(cols['permanent']).toBeDefined();
+    expect(cols['permanent'].notNull).toBe(true);
+  });
+
+  it('allows at most one penalty per booking', () => {
+    const idx = getTableConfig(penalties).indexes.find((i) => i.config.name === 'penalties_booking_uq');
+    expect(idx).toBeDefined();
+    expect(idx!.config.unique).toBe(true);
+  });
+});

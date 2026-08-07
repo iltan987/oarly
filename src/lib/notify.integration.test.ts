@@ -36,7 +36,7 @@ describe.skipIf(!url)('notify', () => {
     const [session] = await db.insert(schema.sessions).values({ slotId: slot.id, clubId: club.id, boatTypeId: boat.id, capacity: 2 }).returning();
     const uid = `${tag}-u`;
     await db.insert(schema.user).values({ id: uid, name: 'Rower', email: `${uid}@t.co` });
-    const [booking] = await db.insert(schema.bookings).values({ sessionId: session.id, clubId: club.id, userId: uid, paymentType: 'regular', status, queuePosition, effectiveAt: START }).returning();
+    const [booking] = await db.insert(schema.bookings).values({ sessionId: session.id, clubId: club.id, userId: uid, paymentType: 'regular', status, queuePosition, effectiveAt: START, bookingDate: MON }).returning();
     return { club, session, uid, booking, email: `${uid}@t.co` };
   }
 
