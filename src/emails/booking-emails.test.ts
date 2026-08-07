@@ -48,12 +48,20 @@ describe('renderNoShowPenalty', () => {
     expect(email.text).toContain('Cannot book until');
     expect(email.text).toContain('Bookings cancelled');
     expect(email.text).toContain('2');
+    // introNoBan's reassurance ("access is unaffected") must NOT leak into the
+    // banned case — the intro string chosen must match the ban, not the seat
+    // count or row presence, which the assertions above don't pin down.
+    expect(email.text).toContain('The club recorded that you did not attend this session.');
+    expect(email.text).not.toContain('Your booking access is unaffected.');
   });
 
   it('omits the ban rows when no ban was imposed', async () => {
     const email = await renderNoShowPenalty('en', { ...when, bannedUntil: null, cancelledCount: 0 });
     expect(email.text).not.toContain('Cannot book until');
     expect(email.text).not.toContain('Bookings cancelled');
+    // The reassurance copy is the only thing that proves the no-ban intro
+    // (rather than the generic ban intro) was actually selected.
+    expect(email.text).toContain('Your booking access is unaffected.');
   });
 
   it('renders in Turkish', async () => {

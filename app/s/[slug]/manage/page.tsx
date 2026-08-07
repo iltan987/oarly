@@ -85,7 +85,9 @@ export default async function ManageOverviewPage({ params }: { params: Promise<{
   }
 
   const pendingCount = pending?.n ?? 0;
-  const seated = today.sessions.reduce((n, s) => n + s.seated.length, 0);
+  // seated includes no_show rows (kept visible so an owner can undo the mark), so
+  // count only genuinely-held seats — same rule getDayRoster uses for freeSeats.
+  const seated = today.sessions.reduce((n, s) => n + s.seated.filter((m) => m.status === 'booked').length, 0);
   const waitlisted = today.sessions.reduce((n, s) => n + s.waitlisted.length, 0);
   const capacity = today.sessions.reduce((n, s) => n + s.capacity, 0);
 

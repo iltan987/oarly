@@ -47,7 +47,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: { s
             <CardContent className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-heading text-sm font-semibold">{s.boatName} · {time}</span>
-                <span className="text-xs text-muted-foreground">{s.seated.length}/{s.capacity}</span>
+                <span className="text-xs text-muted-foreground">{s.seated.filter((m) => m.status === 'booked').length}/{s.capacity}</span>
               </div>
 
               {s.seated.length > 0 && (
