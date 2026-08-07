@@ -3,6 +3,7 @@ import { upload } from '@vercel/blob/client';
 import { useState } from 'react';
 
 import { buttonVariants } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
 export function LogoUpload({ slug, initialUrl, labels }: {
@@ -88,14 +89,18 @@ export function LogoUpload({ slug, initialUrl, labels }: {
           />
           {busy ? labels.logoUploading : labels.logoUpload}
         </label>
-        {url && !busy && (
+        {url && (
           // type="button": this lives inside the profile <form>, so without it
           // a click would submit the form instead of removing the logo.
+          // Stays mounted while busy (unlike a naive `{url && !busy}` guard) so the
+          // pending signal is visible instead of the trigger vanishing mid-flight.
           <button
             type="button"
             onClick={onRemove}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
+            disabled={busy}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), busy && 'pointer-events-none opacity-50')}
           >
+            {busy && <Spinner />}
             {labels.logoRemove}
           </button>
         )}

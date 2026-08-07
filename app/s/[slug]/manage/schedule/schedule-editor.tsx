@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 
+import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
 
 import { deleteWindowAction } from './actions';
@@ -39,7 +40,7 @@ export function ScheduleEditor({ slug, windows, boats, weekdayNames, labels }: {
             {dayWindows.length > 0 && (
               <ul className="flex flex-col gap-2">
                 {dayWindows.map((w) => (
-                  <li key={w.id} className="rounded-lg border p-3">
+                  <li key={w.id} className="rounded-lg border p-3 transition-opacity has-data-pending:opacity-40">
                     {editingId === w.id ? (
                       <WindowForm slug={slug} weekday={wd} window={w} boats={boats} labels={labels} onClose={() => setEditingId(null)} />
                     ) : (
@@ -51,7 +52,7 @@ export function ScheduleEditor({ slug, windows, boats, weekdayNames, labels }: {
                           <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingId(w.id); setAddingDay(null); }}>{labels.edit}</Button>
                           <form action={deleteWindowAction.bind(null, slug)}>
                             <input type="hidden" name="windowId" value={w.id} />
-                            <Button type="submit" size="sm" variant="ghost">{labels.delete}</Button>
+                            <PendingButton size="sm" variant="ghost">{labels.delete}</PendingButton>
                           </form>
                         </div>
                       </div>
