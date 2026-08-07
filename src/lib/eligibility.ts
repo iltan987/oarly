@@ -17,6 +17,10 @@ export function checkEligibility(input: {
   paymentType: 'regular' | 'multisport';
   now: Date;
 }): EligibilityResult {
+  // Checked ahead of the generic status test so a permanent ban reports itself
+  // honestly. `never` penalties set membership.status = 'banned' and carry no
+  // banned_until date, so the timed check below would never catch them.
+  if (input.membershipStatus === 'banned') return { ok: false, reason: 'banned' };
   if (input.membershipStatus !== 'approved') return { ok: false, reason: 'not_approved' };
   if (input.bannedUntil && input.bannedUntil.getTime() > input.now.getTime()) return { ok: false, reason: 'banned' };
   if (input.boatMinSkillRank != null) {

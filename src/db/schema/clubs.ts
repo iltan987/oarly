@@ -23,6 +23,11 @@ export const clubs = pgTable('clubs', {
   bookingOpenLeadDays: integer('booking_open_lead_days'),
   selfCancelEnabled: boolean('self_cancel_enabled').notNull().default(true),
   cancelCutoffHours: integer('cancel_cutoff_hours'),
+  // How many members may queue behind a full session. null = unlimited (today's
+  // behaviour). A club policy rather than a per-boat property, for the same
+  // reason cancel_cutoff_hours is: it describes how much queue the club wants to
+  // manage, not a physical fact about a hull.
+  waitlistCapacity: integer('waitlist_capacity'),
   noshowPenalty: noshowPenaltyEnum('noshow_penalty').notNull().default('off'),
   openOnHolidays: boolean('open_on_holidays').notNull().default(false),
   brandAccent: text('brand_accent'),

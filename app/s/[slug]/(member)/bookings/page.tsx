@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { db } from '@/db';
 import { boatTypes, bookings, sessions, slots } from '@/db/schema';
-import { requireMember } from '@/lib/membership';
+import { requireMemberView } from '@/lib/membership';
 
 import { type BookingRow, BookingsList } from './bookings-list';
 
@@ -12,7 +12,7 @@ export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default async function MyBookingsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const { club, user } = await requireMember(slug, '/bookings');
+  const { club, user } = await requireMemberView(slug, '/bookings');
   const t = await getTranslations('booking');
   const now = new Date();
 

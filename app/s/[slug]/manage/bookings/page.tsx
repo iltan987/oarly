@@ -7,6 +7,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { db } from '@/db';
 import { addDaysISO, utcToClubDate } from '@/lib/date-tz';
 import { requireOwner } from '@/lib/membership';
+import { penaltyEndsAt } from '@/lib/penalty';
 import { getDayRoster } from '@/lib/roster';
 
 import { BookingsRoster } from './bookings-roster';
@@ -26,6 +27,19 @@ export default async function ManageBookingsPage({ params, searchParams }: { par
   const dateISO = sp.date && dateRe.test(sp.date) ? sp.date : today;
 
   const roster = await getDayRoster(db, { clubId: club.id, dateISO });
+
+  const now = new Date();
+  const sessions = roster.sessions.map((s) => {
+    const ends = penaltyEndsAt({ sessionStartAt: s.startAt, timezone: club.timezone, policy: club.noshowPenalty });
+    const permanent = ends === 'permanent';
+    const endsAt = permanent ? null : ends;
+    return {
+      ...s,
+      banEndsAt: endsAt,
+      banPermanent: permanent,
+      banLapsed: !permanent && endsAt != null && endsAt.getTime() <= now.getTime(),
+    };
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -47,7 +61,7 @@ export default async function ManageBookingsPage({ params, searchParams }: { par
         invariant ownerAddBooking's override comment relies on.
       */}
       {roster.closed && <p className="text-sm text-muted-foreground">{t('closed')}</p>}
-      <BookingsRoster slug={slug} sessions={roster.sessions} timezone={club.timezone} closed={roster.closed} />
+      <BookingsRoster slug={slug} sessions={sessions} timezone={club.timezone} closed={roster.closed} />
     </div>
   );
 }

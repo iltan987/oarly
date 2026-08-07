@@ -12,6 +12,7 @@ export async function savePoliciesAction(slug: string, _prev: PoliciesState, for
   const { club } = await requireOwner(slug, '/manage/policies');
   const leadRaw = String(formData.get('bookingOpenLeadDays') ?? '').trim();
   const cutoffRaw = String(formData.get('cancelCutoffHours') ?? '').trim();
+  const waitlistRaw = String(formData.get('waitlistCapacity') ?? '').trim();
   const parsed = schedulingSettingsSchema.safeParse({
     bookingOpenMode: formData.get('bookingOpenMode'),
     bookingOpenLeadDays: leadRaw === '' ? null : leadRaw,
@@ -20,6 +21,7 @@ export async function savePoliciesAction(slug: string, _prev: PoliciesState, for
     noshowPenalty: formData.get('noshowPenalty'),
     multisportMode: formData.get('multisportMode'),
     openOnHolidays: formData.get('openOnHolidays') === 'on',
+    waitlistCapacity: waitlistRaw === '' ? null : waitlistRaw,
   });
   if (!parsed.success) return { status: 'error' };
   const result = await updateSchedulingSettings(db, club.id, parsed.data);

@@ -92,7 +92,7 @@ describe('windowSchema', () => {
 });
 
 describe('schedulingSettingsSchema', () => {
-  const base = { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', openOnHolidays: false } as const;
+  const base = { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', openOnHolidays: false, waitlistCapacity: null } as const;
   it('accepts always mode with null lead days', () => {
     expect(schedulingSettingsSchema.safeParse(base).success).toBe(true);
   });
@@ -101,6 +101,15 @@ describe('schedulingSettingsSchema', () => {
   });
   it('rejects lead mode with null lead days', () => {
     expect(schedulingSettingsSchema.safeParse({ ...base, bookingOpenMode: 'lead', bookingOpenLeadDays: null }).success).toBe(false);
+  });
+  it('accepts a waitlist capacity and treats it as optional', () => {
+    expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: 4 }).success).toBe(true);
+    expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: null }).success).toBe(true);
+    expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: 0 }).success).toBe(true);
+  });
+  it('rejects a negative or absurd waitlist capacity', () => {
+    expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: -1 }).success).toBe(false);
+    expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: 1000 }).success).toBe(false);
   });
 });
 

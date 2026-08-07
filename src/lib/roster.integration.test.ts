@@ -1,3 +1,4 @@
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
@@ -32,7 +33,7 @@ describe.skipIf(!url)('getDayRoster', () => {
     const mk = async (name: string, status: 'booked' | 'waitlisted', qpos: number | null) => {
       const uid = `${tag}-${name}`;
       await db.insert(schema.user).values({ id: uid, name, email: `${uid}@t.co` });
-      await db.insert(schema.bookings).values({ sessionId: session.id, clubId: club.id, userId: uid, paymentType: 'regular', status, queuePosition: qpos, effectiveAt: START });
+      await db.insert(schema.bookings).values({ sessionId: session.id, clubId: club.id, userId: uid, paymentType: 'regular', status, queuePosition: qpos, effectiveAt: START, bookingDate: MON });
     };
     await mk('alice', 'booked', null);
     await mk('bob', 'waitlisted', 1);
@@ -60,5 +61,23 @@ describe.skipIf(!url)('getDayRoster', () => {
     expect(sess).toBeTruthy();
     expect(sess!.seated.map((m) => m.name)).toEqual(['alice']);
     expect(sess!.waitlisted.map((m) => m.name)).toEqual(['bob']);
+  });
+
+  it('keeps a booking marked absent visible, and frees its seat', async () => {
+    // Without this the owner would have nothing to undo: the roster filtered to
+    // active statuses only, so marking a no-show made the row vanish.
+    const { club } = await seed();
+    // seed() creates a seated alice AND a waitlisted bob — scope to the seated one,
+    // or this test silently marks the waitlister and proves nothing.
+    const [row] = await db.select().from(schema.bookings)
+      .where(and(eq(schema.bookings.clubId, club.id), eq(schema.bookings.status, 'booked')));
+    await db.update(schema.bookings).set({ status: 'no_show' }).where(eq(schema.bookings.id, row.id));
+
+    const roster = await getDayRoster(db, { clubId: club.id, dateISO: MON });
+    const sess = roster.sessions.find((x) => x.startAt.getTime() === START.getTime())!;
+    const marked = sess.seated.find((m) => m.bookingId === row.id);
+    expect(marked).toBeDefined();
+    expect(marked!.status).toBe('no_show');
+    expect(sess.freeSeats).toBe(1);
   });
 });

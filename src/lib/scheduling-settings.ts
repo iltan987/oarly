@@ -11,6 +11,7 @@ export interface SchedulingSettingsInput {
   noshowPenalty: 'off' | '2d' | '1w' | '2w' | '1m' | 'never';
   multisportMode: 'equal' | 'priority';
   openOnHolidays: boolean;
+  waitlistCapacity: number | null;
 }
 export type SchedulingResult = { ok: true } | { ok: false; error: 'invalid_lead' };
 
@@ -24,6 +25,7 @@ export async function getSchedulingSettings(db: DB, clubId: string): Promise<Sch
       noshowPenalty: clubs.noshowPenalty,
       multisportMode: clubs.multisportMode,
       openOnHolidays: clubs.openOnHolidays,
+      waitlistCapacity: clubs.waitlistCapacity,
     })
     .from(clubs)
     .where(eq(clubs.id, clubId))
@@ -46,6 +48,7 @@ export async function updateSchedulingSettings(db: DB, clubId: string, input: Sc
       noshowPenalty: input.noshowPenalty,
       multisportMode: input.multisportMode,
       openOnHolidays: input.openOnHolidays,
+      waitlistCapacity: input.waitlistCapacity,
     })
     .where(eq(clubs.id, clubId));
   return { ok: true };

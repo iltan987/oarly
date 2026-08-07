@@ -2,7 +2,7 @@ import { and, eq, type SQL } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { boatTypes, bookings, clubs, notifications, sessions, slots, user } from '@/db/schema';
-import { renderBookingCancellation, renderBookingConfirmation, renderOwnerRemoval, renderWaitlistPromotion } from '@/emails';
+import { renderBookingCancellation, renderBookingConfirmation, renderNoShowPenalty, renderOwnerRemoval, renderWaitlistPromotion } from '@/emails';
 import { sendEmail } from '@/lib/email';
 
 type Ctx = {
@@ -75,6 +75,21 @@ export async function notifyOwnerRemoval(db: DB, { bookingId }: { bookingId: str
     await sendEmail({ to: ctx.toEmail, subject: email.subject, html: email.html, text: email.text });
   } catch (err) {
     console.error('notifyOwnerRemoval failed', err);
+  }
+}
+
+/** Best-effort: emails the single combined no-show notice. Never throws. */
+export async function notifyNoShowPenalty(
+  db: DB,
+  { bookingId, bannedUntil, cancelledCount }: { bookingId: string; bannedUntil: Date | null; cancelledCount: number },
+): Promise<void> {
+  try {
+    const ctx = await loadCtx(db, eq(bookings.id, bookingId));
+    if (!ctx) return;
+    const email = await renderNoShowPenalty(ctx.locale, { clubName: ctx.clubName, boatName: ctx.boatName, startAt: ctx.startAt, endAt: ctx.endAt, timezone: ctx.timezone, bannedUntil, cancelledCount });
+    await sendEmail({ to: ctx.toEmail, subject: email.subject, html: email.html, text: email.text });
+  } catch (err) {
+    console.error('notifyNoShowPenalty failed', err);
   }
 }
 

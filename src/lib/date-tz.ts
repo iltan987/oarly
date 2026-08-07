@@ -37,6 +37,17 @@ export function addDaysISO(dateISO: string, n: number): string {
   return fmtUTC(addDays(new Date(`${dateISO}T00:00:00Z`), n));
 }
 
+/** Add `n` calendar months to a YYYY-MM-DD label, clamping to the month end (timezone-independent). */
+export function addMonthsISO(dateISO: string, n: number): string {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  // Date.UTC normalises out-of-range months, so no manual rollover is needed —
+  // and building in UTC avoids the local-field trap that broke the date-fns version.
+  const firstOfTarget = new Date(Date.UTC(y, m - 1 + n, 1));
+  const daysInTarget = new Date(Date.UTC(firstOfTarget.getUTCFullYear(), firstOfTarget.getUTCMonth() + 1, 0)).getUTCDate();
+  firstOfTarget.setUTCDate(Math.min(d, daysInTarget));
+  return fmtUTC(firstOfTarget);
+}
+
 /** The `days` consecutive calendar-date labels starting at `fromDateISO`. */
 export function eachDateISO(fromDateISO: string, days: number): string[] {
   return Array.from({ length: days }, (_, i) => addDaysISO(fromDateISO, i));

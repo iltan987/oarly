@@ -41,6 +41,18 @@ describe('checkEligibility', () => {
   });
 
   it('applies rules in order: membership before skill', () => {
-    expect(checkEligibility({ ...base, membershipStatus: 'banned', boatMinSkillRank: 9, memberSkillRank: 0 })).toEqual({ ok: false, reason: 'not_approved' });
+    expect(checkEligibility({ ...base, membershipStatus: 'pending', boatMinSkillRank: 9, memberSkillRank: 0 })).toEqual({ ok: false, reason: 'not_approved' });
+  });
+
+  it('reports a permanently banned membership as banned, not as unapproved', () => {
+    expect(checkEligibility({
+      membershipStatus: 'banned',
+      bannedUntil: null,
+      memberSkillRank: null,
+      boatMinSkillRank: null,
+      boatAllowedPayment: 'both',
+      paymentType: 'regular',
+      now: new Date('2026-03-10T04:00:00Z'),
+    })).toEqual({ ok: false, reason: 'banned' });
   });
 });

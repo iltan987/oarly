@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
@@ -17,10 +17,17 @@ const START = zonedWallClockToUtc(MON, '08:00', TZ);
 describe.skipIf(!url)('computeMemberCalendar', () => {
   let pool: Pool;
   let db: ReturnType<typeof drizzle<typeof schema>>;
+  let sharedMemberId: string;
+  let seq = 0;
   beforeAll(async () => { pool = new Pool({ connectionString: url }); db = drizzle(pool, { schema }); await migrate(db, { migrationsFolder: './drizzle' }); });
   afterAll(async () => { await pool.end(); });
-
-  let seq = 0;
+  // A fresh shared member per test, so the multisport-day flag from one test's
+  // `seed()` calls (which reuse a single member across clubs) never leaks into
+  // the next test's assertions.
+  beforeEach(async () => {
+    sharedMemberId = `mc-member-${Date.now()}-${seq++}`;
+    await db.insert(schema.user).values({ id: sharedMemberId, name: 'M', email: `${sharedMemberId}@t.co` });
+  });
   async function setup(allowedPayment: 'regular_only' | 'multisport_only' | 'both' = 'both', minSkillRank?: number) {
     const tag = `mc-${Date.now()}-${seq++}`;
     const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, bookingOpenMode: 'always' }).returning();
@@ -32,6 +39,20 @@ describe.skipIf(!url)('computeMemberCalendar', () => {
   }
   const ctx = (userId: string, over: Partial<MemberContext> = {}): MemberContext => ({ userId, membershipStatus: 'approved', bannedUntil: null, skillRank: null, paymentType: 'regular', ...over });
   const opts = { fromDateISO: MON, days: 1, now: new Date('2026-07-01T00:00:00Z') };
+  const DAY = MON;
+  const NOW = opts.now;
+
+  // Two clubs sharing the same member — same club-local date, same user id —
+  // to exercise the deliberately cross-tenant MultiSport-day-taken read.
+  async function seed() {
+    const tag = `mc-${Date.now()}-${seq++}`;
+    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, bookingOpenMode: 'always' }).returning();
+    const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: 2, allowedPayment: 'both' }).returning();
+    const [w] = await db.insert(schema.scheduleWindows).values({ clubId: club.id, weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60 }).returning();
+    await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: boat.id, quantity: 2 });
+    await db.insert(schema.memberships).values({ userId: sharedMemberId, clubId: club.id, role: 'member', status: 'approved' });
+    return { clubId: club.id, userId: sharedMemberId, windowId: w.id, boatTypeId: boat.id, startAt: START, member: ctx(sharedMemberId) };
+  }
 
   it('reports full seatsLeft and none myStatus for a virtual (unbooked) session', async () => {
     const s = await setup();
@@ -66,5 +87,61 @@ describe.skipIf(!url)('computeMemberCalendar', () => {
     expect(session.eligibility).toEqual({ ok: false, reason: 'skill_too_low' });
     expect(session.paymentChoices).toEqual(['multisport']);
     expect(session.defaultPayment).toBe('multisport');
+  });
+
+  it('flags a day on which the member already holds a multisport seat in another club', async () => {
+    const home = await seed();                       // the club whose calendar we compute
+    const other = await seed();                      // an unrelated club, same date
+    await bookSeat(db, { clubId: other.clubId, userId: home.userId, windowId: other.windowId, boatTypeId: other.boatTypeId, startAt: other.startAt, paymentType: 'multisport', idempotencyKey: 'x-1', now: NOW });
+
+    const days = await computeMemberCalendar(db, home.clubId, home.member, { fromDateISO: DAY, days: 1, now: NOW });
+    const session = days[0].slots[0].sessions[0];
+    expect(session.multisportDayTaken).toBe(true);
+  });
+
+  it('leaves the flag clear when the other seat is a regular booking', async () => {
+    const home = await seed();
+    const other = await seed();
+    await bookSeat(db, { clubId: other.clubId, userId: home.userId, windowId: other.windowId, boatTypeId: other.boatTypeId, startAt: other.startAt, paymentType: 'regular', idempotencyKey: 'x-2', now: NOW });
+
+    const days = await computeMemberCalendar(db, home.clubId, home.member, { fromDateISO: DAY, days: 1, now: NOW });
+    expect(days[0].slots[0].sessions[0].multisportDayTaken).toBe(false);
+  });
+
+  // Materialises a real slots + sessions row (rather than relying on computeCalendar's
+  // virtual projection) so bookings can attach to a concrete sessionId, mirroring how
+  // resolveSeating actually seats and queues bookers.
+  async function seedWithWaitlist({ seats, waitlistCapacity }: { seats: number; waitlistCapacity: number | null }) {
+    const tag = `mc-wl-${Date.now()}-${seq++}`;
+    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, bookingOpenMode: 'always', waitlistCapacity }).returning();
+    const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats, allowedPayment: 'both' }).returning();
+    const [w] = await db.insert(schema.scheduleWindows).values({ clubId: club.id, weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60 }).returning();
+    await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: boat.id, quantity: 1 });
+    const [slot] = await db.insert(schema.slots).values({ clubId: club.id, date: MON, startAt: START, endAt: zonedWallClockToUtc(MON, '09:00', TZ), fromWindowId: w.id }).returning();
+    const [session] = await db.insert(schema.sessions).values({ slotId: slot.id, clubId: club.id, boatTypeId: boat.id, capacity: seats }).returning();
+    await db.insert(schema.memberships).values({ userId: sharedMemberId, clubId: club.id, role: 'member', status: 'approved' });
+    return { clubId: club.id, sessionId: session.id, member: ctx(sharedMemberId) };
+  }
+
+  async function seedActiveBooking(ctx: { clubId: string; sessionId: string }, status: 'booked' | 'waitlisted') {
+    const uid = `mc-wl-user-${Date.now()}-${seq++}`;
+    await db.insert(schema.user).values({ id: uid, name: 'W', email: `${uid}@t.co` });
+    await db.insert(schema.bookings).values({ sessionId: ctx.sessionId, clubId: ctx.clubId, userId: uid, paymentType: 'regular', status, queuePosition: status === 'waitlisted' ? 1 : null, effectiveAt: START, bookingDate: MON });
+  }
+
+  it('reports the remaining waitlist room, and zero once the queue is full', async () => {
+    const ctx = await seedWithWaitlist({ seats: 1, waitlistCapacity: 1 });
+    // Seat one member and queue another: the session is now closed to newcomers.
+    await seedActiveBooking(ctx, 'booked');
+    await seedActiveBooking(ctx, 'waitlisted');
+
+    const days = await computeMemberCalendar(db, ctx.clubId, ctx.member, { fromDateISO: DAY, days: 1, now: NOW });
+    expect(days[0].slots[0].sessions[0].waitlistLeft).toBe(0);
+  });
+
+  it('reports unlimited waitlist room as null', async () => {
+    const ctx = await seedWithWaitlist({ seats: 1, waitlistCapacity: null });
+    const days = await computeMemberCalendar(db, ctx.clubId, ctx.member, { fromDateISO: DAY, days: 1, now: NOW });
+    expect(days[0].slots[0].sessions[0].waitlistLeft).toBeNull();
   });
 });

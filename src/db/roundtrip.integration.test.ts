@@ -45,11 +45,11 @@ describe.skipIf(!url)('db round-trip', () => {
     }).returning();
 
     await db.insert(schema.bookings).values({
-      sessionId: sess.id, clubId: club.id, userId: u.id, paymentType: 'regular', effectiveAt: new Date(),
+      sessionId: sess.id, clubId: club.id, userId: u.id, paymentType: 'regular', effectiveAt: new Date(), bookingDate: '2026-08-01',
     });
     await expect(
       db.insert(schema.bookings).values({
-        sessionId: sess.id, clubId: club.id, userId: u.id, paymentType: 'regular', effectiveAt: new Date(),
+        sessionId: sess.id, clubId: club.id, userId: u.id, paymentType: 'regular', effectiveAt: new Date(), bookingDate: '2026-08-01',
       }),
     ).rejects.toThrow();
   });

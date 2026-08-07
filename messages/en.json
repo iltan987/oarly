@@ -80,11 +80,19 @@
         "heading": "Your booking was removed",
         "intro": "The club removed your booking for this session. Details below."
       },
+      "noShow": {
+        "subject": "You were marked absent",
+        "heading": "You were marked absent",
+        "intro": "The club recorded that you did not attend this session.",
+        "introNoBan": "The club recorded that you did not attend this session. Your booking access is unaffected."
+      },
       "labels": {
         "club": "Club",
         "boat": "Boat",
         "when": "When",
-        "queuePosition": "Queue position"
+        "queuePosition": "Queue position",
+        "bannedUntil": "Cannot book until",
+        "cancelledBookings": "Bookings cancelled"
       }
     }
   },
@@ -216,6 +224,7 @@
     "memberRejected": "Member rejected.",
     "skillSaved": "Skill level saved.",
     "actionError": "Something went wrong. Try again.",
+    "cancel": "Cancel",
     "skillLevels": {
       "navLabel": "Skill levels",
       "title": "Skill levels",
@@ -337,6 +346,8 @@
       "multisportPriority": "Priority — regular bookings come first",
       "multisportHint": "In Priority mode a MultiSport booking only holds a seat if regular bookings don't fill the boat.",
       "openOnHolidays": "Run sessions on national holidays",
+      "waitlistCapacity": "Waitlist size per session",
+      "waitlistCapacityHint": "How many members may queue behind a full session. Leave empty for no limit.",
       "errorInvalidLead": "Enter a lead of at least 1 day, or choose \"Always open\"."
     },
     "schedulePreview": {
@@ -366,8 +377,24 @@
       "paymentRegular": "Regular",
       "paymentMultisport": "MultiSport",
       "waitPosition": "#{n}",
+      "waitingCount": "Waiting {n}/{capacity}",
       "removed": "Booking removed.",
-      "added": "Member added."
+      "added": "Member added.",
+      "markAbsent": "Mark absent",
+      "undoAbsent": "Undo",
+      "absent": "Absent",
+      "confirmAbsentTitle": "Mark {name} absent?",
+      "confirmAbsentBan": "They will not be able to book until {date}. Any seats they hold before then will be cancelled and given to the waitlist.",
+      "confirmAbsentPermanent": "Their booking access will be suspended, and every upcoming seat they hold will be cancelled and given to the waitlist.",
+      "confirmAbsentLapsed": "This session is old enough that this absence adds no new restriction. Any restriction already in force for this member still applies.",
+      "confirmAbsentNoPenalty": "This club does not penalise no-shows, so this absence adds no new restriction. Any restriction already in force for this member still applies.",
+      "confirmAbsentCta": "Mark absent",
+      "marked": "Absence recorded.",
+      "markedWithCancellations": "Absence recorded. {count} upcoming bookings were cancelled.",
+      "undone": "Absence removed. Any seats this penalty cancelled were not restored.",
+      "undoConflict": "This seat can no longer be restored — it has since been taken.",
+      "bannedUntilBadge": "Banned until {date}",
+      "bannedBadge": "Suspended"
     }
   },
   "booking": {
@@ -380,6 +407,7 @@
     "seatsCount": "{count, plural, one {# seat} other {# seats}}",
     "selectDay": "Select {date}",
     "full": "Full",
+    "waitlistFull": "Waitlist full",
     "book": "Book",
     "joinWaitlist": "Join waitlist",
     "booked": "You're booked",
@@ -402,6 +430,10 @@
     "locked": "Locked",
     "cancel": "Cancel",
     "myBookings": "My bookings",
+    "bannedTitle": "Booking suspended",
+    "bannedUntil": "You can't book until {date}.",
+    "bannedPermanent": "Your booking access has been suspended by the club.",
+    "multisportDayTaken": "Your MultiSport card is already used for another session that day.",
     "reasons": {
       "not_approved": "Membership not approved",
       "banned": "Temporarily suspended",
@@ -412,6 +444,8 @@
       "ineligible": "You can't book this session.",
       "already_booked_this_slot": "You already have a booking at this time.",
       "no_session": "That session is no longer available.",
+      "multisport_day_taken": "Your MultiSport card is already used for another session that day.",
+      "waitlist_full": "This session and its waitlist are both full.",
       "generic": "Something went wrong. Please try again."
     },
     "myTitle": "My bookings",

@@ -80,11 +80,19 @@
         "heading": "Rezervasyonunuz kaldırıldı",
         "intro": "Kulüp bu seanstaki rezervasyonunuzu kaldırdı. Ayrıntılar aşağıda."
       },
+      "noShow": {
+        "subject": "Katılmadığınız kaydedildi",
+        "heading": "Katılmadığınız kaydedildi",
+        "intro": "Kulüp bu seansa katılmadığınızı kaydetti.",
+        "introNoBan": "Kulüp bu seansa katılmadığınızı kaydetti. Rezervasyon erişiminiz etkilenmedi."
+      },
       "labels": {
         "club": "Kulüp",
         "boat": "Tekne",
         "when": "Tarih",
-        "queuePosition": "Sıra"
+        "queuePosition": "Sıra",
+        "bannedUntil": "Rezervasyon yapamayacağınız tarih",
+        "cancelledBookings": "İptal edilen rezervasyonlar"
       }
     }
   },
@@ -216,6 +224,7 @@
     "memberRejected": "Üye reddedildi",
     "skillSaved": "Seviye kaydedildi",
     "actionError": "Bir şeyler ters gitti. Lütfen tekrar dene.",
+    "cancel": "Vazgeç",
     "skillLevels": {
       "navLabel": "Seviyeler",
       "title": "Seviyeler",
@@ -337,6 +346,8 @@
       "multisportPriority": "Öncelik — normal rezervasyonlar önce",
       "multisportHint": "Öncelik modunda MultiSport rezervasyonu, normal rezervasyonlar tekneyi doldurmazsa yer tutar.",
       "openOnHolidays": "Resmi tatillerde seans yapılsın",
+      "waitlistCapacity": "Seans başına bekleme listesi boyutu",
+      "waitlistCapacityHint": "Dolu bir seansın arkasında kaç üye sıraya girebilir. Sınırsız için boş bırakın.",
       "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin."
     },
     "schedulePreview": {
@@ -366,8 +377,24 @@
       "paymentRegular": "Normal",
       "paymentMultisport": "MultiSport",
       "waitPosition": "#{n}",
+      "waitingCount": "Bekleyen {n}/{capacity}",
       "removed": "Rezervasyon kaldırıldı.",
-      "added": "Üye eklendi."
+      "added": "Üye eklendi.",
+      "markAbsent": "Katılmadı",
+      "undoAbsent": "Geri al",
+      "absent": "Katılmadı",
+      "confirmAbsentTitle": "{name} katılmadı olarak işaretlensin mi?",
+      "confirmAbsentBan": "{date} tarihine kadar rezervasyon yapamayacak. O tarihe kadar tuttuğu yerler iptal edilip bekleme listesine verilecek.",
+      "confirmAbsentPermanent": "Rezervasyon erişimi askıya alınacak ve tuttuğu tüm ileri tarihli yerler iptal edilip bekleme listesine verilecek.",
+      "confirmAbsentLapsed": "Bu seans yeterince eski olduğu için bu katılmama yeni bir kısıtlama getirmeyecek. Üyenin hâlihazırda bir kısıtlaması varsa geçerliliğini korur.",
+      "confirmAbsentNoPenalty": "Bu kulüp katılmama durumunda ceza uygulamıyor, bu yüzden bu katılmama yeni bir kısıtlama getirmeyecek. Üyenin hâlihazırda bir kısıtlaması varsa geçerliliğini korur.",
+      "confirmAbsentCta": "Katılmadı olarak işaretle",
+      "marked": "Katılmama kaydedildi.",
+      "markedWithCancellations": "Katılmama kaydedildi. {count} ileri tarihli rezervasyon iptal edildi.",
+      "undone": "Katılmama kaydı kaldırıldı. Bu ceza nedeniyle iptal edilen yerler geri alınmadı.",
+      "undoConflict": "Bu yer artık geri alınamıyor — başkası tarafından tutulmuş.",
+      "bannedUntilBadge": "{date} tarihine kadar yasaklı",
+      "bannedBadge": "Askıya alındı"
     }
   },
   "booking": {
@@ -380,6 +407,7 @@
     "seatsCount": "{count, plural, one {# koltuk} other {# koltuk}}",
     "selectDay": "{date} seç",
     "full": "Dolu",
+    "waitlistFull": "Bekleme listesi dolu",
     "book": "Ayırt",
     "joinWaitlist": "Bekleme listesine gir",
     "booked": "Yerin ayrıldı",
@@ -402,6 +430,10 @@
     "locked": "Kilitli",
     "cancel": "Vazgeç",
     "myBookings": "Rezervasyonlarım",
+    "bannedTitle": "Rezervasyon askıya alındı",
+    "bannedUntil": "{date} tarihine kadar rezervasyon yapamazsınız.",
+    "bannedPermanent": "Kulüp rezervasyon erişiminizi askıya aldı.",
+    "multisportDayTaken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
     "reasons": {
       "not_approved": "Üyelik onaylanmadı",
       "banned": "Geçici olarak askıya alındı",
@@ -412,6 +444,8 @@
       "ineligible": "Bu seansı ayırtamazsınız.",
       "already_booked_this_slot": "Bu saatte zaten bir rezervasyonunuz var.",
       "no_session": "Bu seans artık mevcut değil.",
+      "multisport_day_taken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
+      "waitlist_full": "Bu seans ve bekleme listesi dolu.",
       "generic": "Bir şeyler ters gitti. Lütfen tekrar deneyin."
     },
     "myTitle": "Rezervasyonlarım",

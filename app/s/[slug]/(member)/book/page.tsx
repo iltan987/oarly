@@ -6,7 +6,7 @@ import { db } from '@/db';
 import { skillLevels } from '@/db/schema';
 import { todayInClub } from '@/lib/date-tz';
 import { computeMemberCalendar, type PaymentType } from '@/lib/member-calendar';
-import { requireMember } from '@/lib/membership';
+import { requireMemberView } from '@/lib/membership';
 
 import { BookCalendar } from './book-calendar';
 
@@ -16,7 +16,7 @@ const BOOK_DAYS = 14;
 
 export default async function BookPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const { club, user, membership } = await requireMember(slug, '/book');
+  const { club, user, membership } = await requireMemberView(slug, '/book');
   const t = await getTranslations('booking');
 
   let skillRank: number | null = null;
@@ -44,7 +44,13 @@ export default async function BookPage({ params }: { params: Promise<{ slug: str
         <h1 className="font-heading text-xl font-semibold">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">{t('description', { days: BOOK_DAYS })}</p>
       </div>
-      <BookCalendar slug={slug} days={days} timeZone={club.timezone} />
+      <BookCalendar
+        slug={slug}
+        days={days}
+        timeZone={club.timezone}
+        bannedUntil={membership.bannedUntil}
+        bannedPermanently={membership.status === 'banned'}
+      />
     </>
   );
 }

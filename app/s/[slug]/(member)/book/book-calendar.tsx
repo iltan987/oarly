@@ -17,7 +17,7 @@ import { type BookFormState, bookSeatAction } from './actions';
 
 const initial: BookFormState = { status: 'idle', error: null };
 
-type UiState = 'booked' | 'waitlisted' | 'ineligible' | 'notopen' | 'full' | 'open' | 'unavailable';
+type UiState = 'booked' | 'waitlisted' | 'ineligible' | 'notopen' | 'full' | 'waitlistfull' | 'open' | 'unavailable';
 
 type Confirm = { key: string; dayISO: string; slot: MemberVirtualSlot; session: MemberVirtualSession };
 
@@ -33,7 +33,10 @@ function uiStateOf(s: MemberVirtualSession, slot: MemberVirtualSlot): UiState {
   if (s.status !== 'open') return 'unavailable';
   if (!s.eligibility.ok) return 'ineligible';
   if (!s.bookingOpen) return 'notopen';
-  return s.seatsLeft <= 0 ? 'full' : 'open';
+  if (s.seatsLeft > 0) return 'open';
+  // A full session still offers the waitlist — unless the queue is full too, in
+  // which case showing a Join waitlist button would only ever fail.
+  return s.waitlistLeft === 0 ? 'waitlistfull' : 'full';
 }
 
 const toneOf: Record<UiState, BadgeTone> = {
@@ -42,6 +45,7 @@ const toneOf: Record<UiState, BadgeTone> = {
   ineligible: 'neutral',
   notopen: 'info',
   full: 'neutral',
+  waitlistfull: 'neutral',
   open: 'ok',
   unavailable: 'neutral',
 };
@@ -150,6 +154,7 @@ function ConfirmBooking({
   const [idempotencyKey] = useState(() => (globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(36).slice(2)}`));
   const [payment, setPayment] = useState(session.defaultPayment);
   const isWaitlist = uiStateOf(session, slot) === 'full';
+  const multisportBlocked = payment === 'multisport' && session.multisportDayTaken;
 
   useEffect(() => {
     if (state.status === 'ok') {
@@ -216,10 +221,11 @@ function ConfirmBooking({
       ) : (
         <input type="hidden" name="paymentType" value={session.paymentChoices[0]} />
       )}
+      {multisportBlocked && <p className="text-sm text-warn">{t('multisportDayTaken')}</p>}
       {state.status === 'error' && <p className="text-sm text-destructive">{t(`errors.${state.error ?? 'generic'}`)}</p>}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="ghost" />}>{t('cancel')}</DialogClose>
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || multisportBlocked}>
           {pending && <Spinner />}
           {isWaitlist ? t('confirmWaitlistCta') : t('confirmCta')}
         </Button>
@@ -250,6 +256,7 @@ function SessionCard({
   const pillText =
     ui === 'open' ? t('seatsLeft', { count: session.seatsLeft, capacity: session.capacity })
     : ui === 'full' ? t('full')
+    : ui === 'waitlistfull' ? t('waitlistFull')
     : ui === 'booked' ? t('booked')
     : ui === 'waitlisted' ? t('waitlisted', { position: session.myQueuePosition ?? 0 })
     : ui === 'unavailable' ? t('closedByClub')
@@ -319,11 +326,21 @@ function ClosedDay({ day, timeZone, t, f }: { day: MemberCalendarDay; timeZone: 
   );
 }
 
-export function BookCalendar({ slug, days, timeZone }: { slug: string; days: MemberCalendarDay[]; timeZone: string }) {
+export function BookCalendar({ slug, days, timeZone, bannedUntil, bannedPermanently }: {
+  slug: string;
+  days: MemberCalendarDay[];
+  timeZone: string;
+  bannedUntil: Date | null;
+  bannedPermanently: boolean;
+}) {
   const t = useTranslations('booking');
   const f = useFormatter();
   const [selectedDate, setSelectedDate] = useState<string>(() => (days.find((d) => d.slots.length > 0) ?? days[0])?.dateISO ?? '');
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  // The page is server-rendered fresh on every load with the current ban state, so
+  // pinning "now" at mount (rather than calling Date.now() during render) is both
+  // pure and accurate for the lifetime of this view.
+  const [now] = useState(() => Date.now());
 
   // Fall back to the first day with sessions (or the first day) if the previously
   // selected date no longer exists in a refreshed `days` window — computed at
@@ -335,6 +352,16 @@ export function BookCalendar({ slug, days, timeZone }: { slug: string; days: Mem
 
   return (
     <div className="flex flex-col gap-4">
+      {(bannedPermanently || (bannedUntil && bannedUntil.getTime() > now)) && (
+        <div className="mb-3 rounded-card border border-bad/30 bg-bad-bg px-3 py-2 text-sm text-bad" role="status">
+          <p className="font-medium">{t('bannedTitle')}</p>
+          <p>
+            {bannedPermanently
+              ? t('bannedPermanent')
+              : t('bannedUntil', { date: f.dateTime(bannedUntil!, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone }) })}
+          </p>
+        </div>
+      )}
       <DateStrip days={days} selected={selectedDay?.dateISO ?? ''} onSelect={setSelectedDate} />
       {selectedDay && (
         <div className="flex flex-col gap-3">

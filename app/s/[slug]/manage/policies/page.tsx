@@ -31,7 +31,8 @@ export default async function PoliciesPage({ params }: { params: Promise<{ slug:
           cancelCutoff: t('cancelCutoff'), noshow: t('noshow'), noshowOff: t('noshowOff'), noshow2d: t('noshow2d'),
           noshow1w: t('noshow1w'), noshow2w: t('noshow2w'), noshow1m: t('noshow1m'), noshowNever: t('noshowNever'),
           multisport: t('multisport'), multisportEqual: t('multisportEqual'), multisportPriority: t('multisportPriority'),
-          multisportHint: t('multisportHint'), openOnHolidays: t('openOnHolidays'), errorInvalidLead: t('errorInvalidLead'),
+          multisportHint: t('multisportHint'), openOnHolidays: t('openOnHolidays'), waitlistCapacity: t('waitlistCapacity'),
+          waitlistCapacityHint: t('waitlistCapacityHint'), errorInvalidLead: t('errorInvalidLead'),
         }}
       />
     </div>
