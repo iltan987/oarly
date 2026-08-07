@@ -2,7 +2,7 @@
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 
-import { Button } from '@/components/ui/button';
+import { PendingButton } from '@/components/pending-button';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 
@@ -10,7 +10,7 @@ import { createClubAction, type CreateClubState } from './actions';
 
 export default function NewClubPage() {
   const t = useTranslations('admin');
-  const [state, action, pending] = useActionState<CreateClubState, FormData>(createClubAction, {});
+  const [state, action] = useActionState<CreateClubState, FormData>(createClubAction, {});
   const e = state.errors ?? {};
   return (
     <form action={action} className="max-w-md">
@@ -30,7 +30,7 @@ export default function NewClubPage() {
           <Input id="ownerEmail" name="ownerEmail" type="email" aria-invalid={!!e.ownerEmail} required />
           {e.ownerEmail && <FieldError>{e.ownerEmail}</FieldError>}
         </Field>
-        <Button type="submit" disabled={pending}>{t('create')}</Button>
+        <PendingButton>{t('create')}</PendingButton>
       </FieldGroup>
     </form>
   );
