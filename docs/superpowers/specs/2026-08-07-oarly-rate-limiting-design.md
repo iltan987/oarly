@@ -87,13 +87,12 @@ race and is the same guarantee the in-memory fallback has for free (single-threa
 export type RateResult = { success: boolean; remaining: number; resetAt: number };
 
 export async function rateLimit(key: string, rule: RateRule, now?: number): Promise<RateResult>;
-export async function rateLimitPeek(key: string, rule: RateRule, now?: number): Promise<RateResult>;
+export async function rateLimitReset(key: string, rule: RateRule): Promise<void>;
 export function resetRateLimitState(): void;   // test-only
 ```
 
-- `rateLimit` consumes one token. `rateLimitPeek` reports the state **without**
-  consuming — needed by the failed-login rule (§4.4), which must not count a successful
-  login against the account.
+- `rateLimit` consumes one token. `rateLimitReset` empties a bucket — needed by the
+  failed-login rule (§4.6), where a successful sign-in clears the account's counter.
 - `resetAt` is a millisecond epoch, so callers can compute `Retry-After`.
 - **Fail open.** A `timeout: 1000` on the `Ratelimit` instance plus a `try/catch` around
   every call means a Redis outage degrades to "unlimited", not to "nobody can book". This
@@ -221,13 +220,22 @@ Three changes to `src/auth.ts`:
 3. **Per-account failed-login limiting.** better-auth keys its own limits by IP, so §17's
    "5 failed attempts / 15 min per account" cannot be expressed as a `customRule`. It is
    implemented as a pair of hooks on `/sign-in/email`:
-   - `hooks.before` — `rateLimitPeek` on `login:acct:<lowercased email>`; if already
-     exhausted, throw `APIError('TOO_MANY_REQUESTS')`.
-   - `hooks.after` — consume a token **only when the response indicates failure**.
+   - `hooks.before` — consume one token on `login:acct:<lowercased email>`; when the
+     bucket is empty, throw `APIError('TOO_MANY_REQUESTS')`.
+   - `hooks.after` — when the endpoint **succeeded**, `rateLimitReset` that bucket.
 
-   Peek-then-consume-on-failure is what makes the rule match the spec's word *failed*. A
-   naive consume-on-every-attempt would lock out a member who legitimately signs in on
-   six devices in fifteen minutes.
+   *Consume-then-clear-on-success*, not *peek-then-consume-on-failure*. Both express
+   "5 **failed** attempts", but only this one is atomic: a peek is a read, so N parallel
+   attempts would all observe an unexhausted bucket and proceed — precisely the shape of
+   a stuffing attack. Consuming in `before` makes every attempt pay up front, and the
+   reset on success means a member legitimately signing in on six devices in fifteen
+   minutes never accumulates a count.
+
+   `after` hooks run even when the endpoint threw: `dispatchAuthEndpoint` catches an
+   `APIError`, stores it on `ctx.context.returned`, and *then* runs the after hooks
+   (verified in the installed `better-auth@1.6.26`, `dist/api/dispatch.mjs:229-242`). So
+   success is detected as "`ctx.context.returned` is not an API error" — via the exported
+   `isAPIError`, which is what better-auth itself uses.
 
    The email is lowercased before keying so `Ali@x.com` and `ali@x.com` share a bucket.
 
@@ -251,7 +259,7 @@ exactly K succeed — the assertion the old `INCR`/`EXPIRE` implementation would
 | Level | What |
 |---|---|
 | unit | `parseClientIp` — chain, single, whitespace, `x-real-ip` fallback, absent |
-| unit | in-memory limiter — consume, exhaust, window roll, `peek` does not consume, `resetAt` |
+| unit | in-memory limiter — consume, exhaust, window roll, `resetAt`, `rateLimitReset` empties a bucket |
 | unit | `enforceRateLimit` — passes all, rejects first, **does not consume the second bucket after the first rejects** |
 | unit | fail-open — a limiter whose backend throws returns `success: true` |
 | unit | proxy baseline decision — POST checked, GET skipped |
