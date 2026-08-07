@@ -12,7 +12,12 @@ export function LogoUpload({ slug, initialUrl, labels }: {
   labels: { logo: string; logoUpload: string; logoUploading: string; logoError: string; logoRemove: string };
 }) {
   const [url, setUrl] = useState(initialUrl ?? '');
-  const [busy, setBusy] = useState(false);
+  // Separate flags rather than one shared flag: with a single one an in-flight
+  // upload also spins the Remove button, which reads as "removal in progress" when
+  // nothing of the sort is happening. Both controls still DISABLE for either
+  // operation — they write the same field — but only the one actually running spins.
+  const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState(false);
 
   // Persist immediately so the logo sticks without a separate profile Save.
@@ -30,7 +35,7 @@ export function LogoUpload({ slug, initialUrl, labels }: {
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setBusy(true);
+    setUploading(true);
     setError(false);
     try {
       const blob = await upload(`club-logos/${slug}/${file.name}`, file, {
@@ -43,12 +48,12 @@ export function LogoUpload({ slug, initialUrl, labels }: {
     } catch {
       setError(true);
     } finally {
-      setBusy(false);
+      setUploading(false);
     }
   }
 
   async function onRemove() {
-    setBusy(true);
+    setRemoving(true);
     setError(false);
     try {
       await persist('');
@@ -56,7 +61,7 @@ export function LogoUpload({ slug, initialUrl, labels }: {
     } catch {
       setError(true);
     } finally {
-      setBusy(false);
+      setRemoving(false);
     }
   }
 
@@ -78,29 +83,29 @@ export function LogoUpload({ slug, initialUrl, labels }: {
           behavior for free with no extra JS.
         */}
         <label
-          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), busy && 'pointer-events-none opacity-50')}
+          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), (uploading || removing) && 'pointer-events-none opacity-50')}
         >
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
             onChange={onChange}
-            disabled={busy}
+            disabled={uploading || removing}
             className="hidden"
           />
-          {busy ? labels.logoUploading : labels.logoUpload}
+          {uploading ? labels.logoUploading : labels.logoUpload}
         </label>
         {url && (
           // type="button": this lives inside the profile <form>, so without it
           // a click would submit the form instead of removing the logo.
-          // Stays mounted while busy (unlike a naive `{url && !busy}` guard) so the
-          // pending signal is visible instead of the trigger vanishing mid-flight.
+          // Stays mounted while removing (unlike a naive `{url && !removing}` guard)
+          // so the pending signal is visible instead of the trigger vanishing mid-flight.
           <button
             type="button"
             onClick={onRemove}
-            disabled={busy}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), busy && 'pointer-events-none opacity-50')}
+            disabled={uploading || removing}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), (uploading || removing) && 'pointer-events-none opacity-50')}
           >
-            {busy && <Spinner />}
+            {removing && <Spinner />}
             {labels.logoRemove}
           </button>
         )}

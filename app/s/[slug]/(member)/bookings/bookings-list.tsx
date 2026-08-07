@@ -24,13 +24,15 @@ const initial: CancelFormState = { status: 'idle', error: null };
 
 function CancelButton({ slug, bookingId }: { slug: string; bookingId: string }) {
   const t = useTranslations('booking');
-  const tm = useTranslations('manage');
   const [state, formAction] = useActionState(cancelBookingAction.bind(null, slug), initial);
 
+  // The toast carries the SAME specific reason as the inline line below it — a
+  // generic "something went wrong" alongside a specific reason just contradicts
+  // itself. (It also kept the owner-facing `manage` namespace on a member page.)
   useEffect(() => {
     if (state.status === 'ok') toast.success(t('cancelledToast'));
-    else if (state.status === 'error') toast.error(tm('actionError'));
-  }, [state, t, tm]);
+    else if (state.status === 'error') toast.error(t(`cancelErrors.${state.error ?? 'generic'}`));
+  }, [state, t]);
 
   return (
     <form action={formAction} className="flex items-center gap-2">

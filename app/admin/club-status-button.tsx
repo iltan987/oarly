@@ -28,9 +28,13 @@ export function ClubStatusButton({
 
   // A plain async function passed as the <form>'s `action` runs inside
   // React's implicit form-action transition, so `setOptimistic` is safe to
-  // call here on the current frame. It reads `optimistic.targetStatus` (not
-  // the `targetStatus` prop) so a second click before the first toggle
-  // resolves composes on top of the first, rather than reading a stale prop.
+  // call here on the current frame. It reads `optimistic.targetStatus` rather
+  // than the `targetStatus` prop because the prop stays stale until the route
+  // revalidates: after the flip, the prop still describes the OLD status, so
+  // deriving the next target from it would flip straight back. (No second
+  // in-flight click to compose with here — PendingButton disables this button
+  // for the whole pending window, unlike the sibling rows in
+  // skill-levels-editor, where each row is its own form.)
   async function handleSubmit(formData: FormData) {
     setOptimistic(
       optimistic.targetStatus === 'active'

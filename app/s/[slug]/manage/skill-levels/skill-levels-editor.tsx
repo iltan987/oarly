@@ -67,11 +67,15 @@ export function SkillLevelsEditor({ slug, levels, labels, confirms }: {
       {optimisticLevels.length === 0 ? <p className="text-sm text-muted-foreground">{labels.empty}</p> : (
         <ul className="divide-y rounded-lg border">
           {optimisticLevels.map((lvl, i) => (
-            <li key={lvl.id} className="flex items-center justify-between gap-2 p-3 transition-opacity has-data-pending:opacity-40">
+            <li key={lvl.id} className="flex items-center justify-between gap-2 p-3">
               {editing === lvl.id ? (
                 <RenameForm slug={slug} level={lvl} labels={labels} onDone={() => setEditing(null)} />
               ) : confirming === lvl.id ? (
-                <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                // Fade-in-place is scoped to the delete confirmation, not hung off the
+                // <li>. On the <li> it also fired for reorder — dimming the row that had
+                // just optimistically moved, when the whole point of an optimistic swap
+                // is that the move reads as already done, not as unconfirmed.
+                <div className="flex flex-1 flex-col gap-2 transition-opacity has-data-pending:opacity-40 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-xs text-muted-foreground">{confirms[lvl.id]}</span>
                   <div className="flex shrink-0 items-center gap-1">
                     <form action={delAction}>
