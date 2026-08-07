@@ -1,5 +1,7 @@
 import { rateLimit } from '@/lib/rate-limit';
 import type { RateRule } from '@/lib/rate-limit-config';
+import { RATE_LIMITS } from '@/lib/rate-limit-config';
+import { parseClientIp } from '@/lib/request-ip';
 
 export type RateCheck = { key: string; rule: RateRule };
 export type RateVerdict = { limited: false } | { limited: true; retryAfterSec: number };
@@ -34,4 +36,24 @@ export async function enforceRateLimit(checks: RateCheck[], now = Date.now()): P
     }
   }
   return { limited: false };
+}
+
+/**
+ * §17's "general API baseline: 100/min per IP", applied in `proxy.ts`.
+ *
+ * POST only. Every GET is a navigation, a prefetch, or an RSC fetch, and charging those
+ * would both break normal browsing and put a Redis round trip on every page view. A POST
+ * to a non-`/api` path is always a server action, so this is the one hook that reaches
+ * every action — including `setLocale`, which has no auth guard to hang a check on.
+ */
+export async function enforceBaseline(
+  req: { method: string; headers: Headers },
+  now = Date.now(),
+): Promise<RateVerdict> {
+  if (req.method !== 'POST') return { limited: false };
+  const ip = parseClientIp({
+    xForwardedFor: req.headers.get('x-forwarded-for'),
+    xRealIp: req.headers.get('x-real-ip'),
+  });
+  return enforceRateLimit([{ key: `base:ip:${ip}`, rule: RATE_LIMITS.apiBaselinePerIp }], now);
 }

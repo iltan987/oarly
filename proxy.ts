@@ -2,12 +2,25 @@ import type { NextRequest, ProxyConfig } from 'next/server';
 import { NextResponse } from 'next/server';
 
 import { env } from '@/env';
+import { enforceBaseline } from '@/lib/rate-limit-guard';
 import { routeRequest } from '@/lib/tenant-routing';
 import { parseAppOrigin } from '@/lib/urls';
 
 const origin = parseAppOrigin(env.APP_URL);
 
-export function proxy(request: NextRequest): NextResponse {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
+  // §17's general baseline. POST-only, so browsing costs nothing; see enforceBaseline.
+  // A raw 429 is not an RSC payload, so React surfaces it as a generic failure rather
+  // than a toast — accepted, because at 100/min this only trips for scripted abuse and
+  // every named action carries a much tighter limit that DOES produce a toast.
+  const baseline = await enforceBaseline(request);
+  if (baseline.limited) {
+    return new NextResponse(null, {
+      status: 429,
+      headers: { 'Retry-After': String(baseline.retryAfterSec) },
+    });
+  }
+
   const host = request.headers.get('host') ?? origin.rootDomain;
   const { pathname, search } = request.nextUrl;
   const decision = routeRequest({ host, pathname, search, origin });

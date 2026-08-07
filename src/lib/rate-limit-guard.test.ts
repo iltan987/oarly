@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { rateLimit, resetRateLimitState } from '@/lib/rate-limit';
-import { enforceRateLimit, retryAfterSeconds } from '@/lib/rate-limit-guard';
+import { enforceBaseline, enforceRateLimit, retryAfterSeconds } from '@/lib/rate-limit-guard';
 
 const ACCOUNT = { name: 'testAccount', limit: 2, windowSec: 60 };
 const IP = { name: 'testIp', limit: 10, windowSec: 60 };
@@ -78,5 +78,39 @@ describe('enforceRateLimit', () => {
 
   it('treats an empty check list as unlimited', async () => {
     expect(await enforceRateLimit([], T0)).toEqual({ limited: false });
+  });
+});
+
+describe('enforceBaseline', () => {
+  beforeEach(() => { resetRateLimitState(); });
+
+  const req = (method: string, ip?: string) => ({
+    method,
+    headers: new Headers(ip ? { 'x-forwarded-for': ip } : {}),
+  });
+
+  it('does not consume anything for a GET', async () => {
+    for (let i = 0; i < 200; i += 1) {
+      expect(await enforceBaseline(req('GET', '203.0.113.7'), T0)).toEqual({ limited: false });
+    }
+  });
+
+  it('consumes on POST and rejects past the §17 baseline of 100/min', async () => {
+    for (let i = 0; i < 100; i += 1) {
+      expect(await enforceBaseline(req('POST', '203.0.113.7'), T0)).toEqual({ limited: false });
+    }
+    const verdict = await enforceBaseline(req('POST', '203.0.113.7'), T0);
+    expect(verdict).toEqual({ limited: true, retryAfterSec: 60 });
+  });
+
+  it('buckets by IP, so one exhausted client does not block another', async () => {
+    for (let i = 0; i < 100; i += 1) await enforceBaseline(req('POST', '203.0.113.7'), T0);
+    expect(await enforceBaseline(req('POST', '203.0.113.7'), T0)).toMatchObject({ limited: true });
+    expect(await enforceBaseline(req('POST', '198.51.100.4'), T0)).toEqual({ limited: false });
+  });
+
+  it('falls back to a single shared bucket when no IP header is present', async () => {
+    for (let i = 0; i < 100; i += 1) await enforceBaseline(req('POST'), T0);
+    expect(await enforceBaseline(req('POST'), T0)).toMatchObject({ limited: true });
   });
 });
