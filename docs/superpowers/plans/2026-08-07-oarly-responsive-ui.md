@@ -304,7 +304,14 @@ Add a second state object (e.g. `removing: { bookingId: string; name: string } |
 
 - [ ] **Step 4: Fade the row in place**
 
-Every remaining in-row submit (`undoAction`, and the dialog's own submit) uses `PendingButton`. Add `has-data-pending:opacity-40 transition-opacity` to the seated `<li>` (`:93`) and the waitlisted `<li>` (`:129`) so a row with an in-flight action dims itself. Do not remove the row from `s.seated` / `s.waitlisted` optimistically.
+Do not remove the row from `s.seated` / `s.waitlisted` optimistically — re-read the Context block above for why.
+
+**The `has-data-pending:` CSS trick does NOT work for the remove case.** Base UI's `Dialog` renders its content in a **portal**, so the confirm dialog's `PendingButton` is not a DOM descendant of the row's `<li>` and `:has()` will never match it. Drive that row's fade from state instead:
+
+- Keep a `pendingRemovalId: string | null` in the roster. Set it at submit time (in the dialog form's `onSubmit`, alongside closing the dialog), and clear it in the existing `rmState` toast effect once a result arrives.
+- Dim the matching row with `className={... + (pendingRemovalId === m.bookingId ? ' opacity-40' : '')}` plus `transition-opacity`.
+
+`has-data-pending:opacity-40 transition-opacity` **is** correct for the in-row submits that are not portalled — the undo-absent form (`:99-102`) and the add-member form — because their `PendingButton` really is inside the row. Use it there.
 
 - [ ] **Step 5: Drop the now-redundant shared pending flags**
 
