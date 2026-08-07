@@ -325,12 +325,37 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
       expect(second).toEqual({ ok: false, error: 'multisport_day_taken' });
     });
 
+    it('rejects a second multisport seat via the owner override too — the card, not the club, sets this rule', async () => {
+      const a = await seedClub({ allowedPayment: 'both' });
+      const b = await seedClub({ allowedPayment: 'both' });
+      const uid = await seedUserInBoth(a, b);
+
+      const first = await bookSeat(db, { clubId: a.clubId, userId: uid, windowId: a.windowId, boatTypeId: a.boatTypeId, startAt: a.startAt, paymentType: 'multisport', idempotencyKey: 'k-a', now: NOW });
+      expect(first.ok).toBe(true);
+
+      const second = await ownerAddBooking(db, { clubId: b.clubId, windowId: b.windowId, boatTypeId: b.boatTypeId, startAt: b.startAt, userId: uid, paymentType: 'multisport', now: NOW });
+      expect(second).toEqual({ ok: false, error: 'multisport_day_taken' });
+    });
+
     it('still allows a regular seat the same day', async () => {
       const a = await seedClub({ allowedPayment: 'both' });
       const b = await seedClub({ allowedPayment: 'both' });
       const uid = await seedUserInBoth(a, b);
-      await bookSeat(db, { clubId: a.clubId, userId: uid, windowId: a.windowId, boatTypeId: a.boatTypeId, startAt: a.startAt, paymentType: 'multisport', idempotencyKey: 'k-a', now: NOW });
+      const first = await bookSeat(db, { clubId: a.clubId, userId: uid, windowId: a.windowId, boatTypeId: a.boatTypeId, startAt: a.startAt, paymentType: 'multisport', idempotencyKey: 'k-a', now: NOW });
+      expect(first.ok).toBe(true);
       const second = await bookSeat(db, { clubId: b.clubId, userId: uid, windowId: b.windowId, boatTypeId: b.boatTypeId, startAt: b.startAt, paymentType: 'regular', idempotencyKey: 'k-b', now: NOW });
+      expect(second.ok).toBe(true);
+    });
+
+    it('allows a multisport seat the same day after an earlier regular booking', async () => {
+      // The reverse of the case above: an over-broad guard that forgot to require
+      // the *existing* row to be multisport would wrongly block this.
+      const a = await seedClub({ allowedPayment: 'both' });
+      const b = await seedClub({ allowedPayment: 'both' });
+      const uid = await seedUserInBoth(a, b);
+      const first = await bookSeat(db, { clubId: a.clubId, userId: uid, windowId: a.windowId, boatTypeId: a.boatTypeId, startAt: a.startAt, paymentType: 'regular', idempotencyKey: 'k-a', now: NOW });
+      expect(first.ok).toBe(true);
+      const second = await bookSeat(db, { clubId: b.clubId, userId: uid, windowId: b.windowId, boatTypeId: b.boatTypeId, startAt: b.startAt, paymentType: 'multisport', idempotencyKey: 'k-b', now: NOW });
       expect(second.ok).toBe(true);
     });
 
