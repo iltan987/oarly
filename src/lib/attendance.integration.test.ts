@@ -282,5 +282,28 @@ describe.skipIf(!url)('markNoShow', () => {
       await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
       expect(await undoNoShow(db, { clubId: other.club.id, bookingId: ctx.booking.id })).toEqual({ ok: false, error: 'not_found' });
     });
+
+    it('reports a restore conflict when a multisport seat was taken on the freed day', async () => {
+      const ctx = await seed('1w');
+      // The missed booking must be a MultiSport seat: only `multisport` rows are
+      // covered by `bookings_multisport_day_uq`.
+      await db.update(schema.bookings).set({ paymentType: 'multisport' }).where(eq(schema.bookings.id, ctx.booking.id));
+
+      // Marking it absent flips status to `no_show`, which falls outside the
+      // index's `status in ('booked', 'waitlisted')` predicate — the day is now
+      // free again as far as the unique index is concerned.
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+
+      // The member legitimately takes another MultiSport seat the SAME
+      // club-local day, on a different session, while the first sits marked absent.
+      const [slot2] = await db.insert(schema.slots).values({ clubId: ctx.club.id, date: MISSED_DAY, startAt: zonedWallClockToUtc(MISSED_DAY, '09:00', TZ), endAt: zonedWallClockToUtc(MISSED_DAY, '10:00', TZ) }).returning();
+      const [session2] = await db.insert(schema.sessions).values({ slotId: slot2.id, clubId: ctx.club.id, boatTypeId: ctx.boat.id, capacity: 2 }).returning();
+      await db.insert(schema.bookings).values({ sessionId: session2.id, clubId: ctx.club.id, userId: ctx.uid, paymentType: 'multisport', status: 'booked', effectiveAt: NOW, bookingDate: MISSED_DAY });
+
+      // Undo tries to put the first booking back into the predicate — colliding
+      // with the second, which now legitimately occupies that (user, day) key.
+      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      expect(result).toEqual({ ok: false, error: 'restore_conflict' });
+    });
   });
 });
