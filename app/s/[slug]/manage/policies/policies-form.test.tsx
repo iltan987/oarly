@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -43,33 +43,68 @@ function submit() {
 }
 
 describe('PoliciesForm', () => {
-  it('survives the inner form remounting after a save without losing or duplicating the toast', async () => {
-    vi.mocked(savePoliciesAction).mockResolvedValue({ status: 'ok' });
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * The remount hazard, reproduced with its real timing: `page.tsx` keys the form on
+   * `club.updatedAt`, which `$onUpdate` bumps on every write, so the new key arrives
+   * WHILE the save is still in flight — the RSC payload and the action's resolution
+   * land together. Bumping the `updatedAt` prop after the toast has already fired
+   * proves nothing; the whole hazard is that the remount happens first.
+   *
+   * So: hold the action unresolved, remount the keyed fields, and only then resolve.
+   * Move `useActionState` and this toast effect back inside `PoliciesFields` (the
+   * original bug) and the remount destroys the hook that is awaiting the result —
+   * `toast.success` never fires and this test fails.
+   */
+  it('reports a save whose revalidation remounts the fields mid-flight', async () => {
+    let resolve: ((r: { status: 'ok' }) => void) | undefined;
+    vi.mocked(savePoliciesAction).mockImplementation(
+      () => new Promise((r) => { resolve = r; }),
+    );
 
     const { rerender } = render(
       <PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />,
     );
 
     submit();
+    await waitFor(() => expect(savePoliciesAction).toHaveBeenCalledTimes(1));
+
+    // The revalidated server render arrives before the action settles: new `updatedAt`,
+    // new `key`, inner fields unmounted and remounted — mid-flight.
+    rerender(<PoliciesForm slug="test-club" updatedAt={2} settings={settings} labels={labels} />);
+
+    resolve?.({ status: 'ok' });
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
     expect(toast.success).toHaveBeenCalledWith(labels.saved);
 
-    // Simulate what page.tsx does on the next server render after revalidatePath:
-    // `club.updatedAt` bumps, which changes the `key` on the inner fields and
-    // remounts them. The toast must NOT fire again — it lives in the stable
-    // outer component, which this rerender does not remount.
-    rerender(<PoliciesForm slug="test-club" updatedAt={2} settings={settings} labels={labels} />);
-
+    // …and a further remount must not replay it.
+    rerender(<PoliciesForm slug="test-club" updatedAt={3} settings={settings} labels={labels} />);
     expect(toast.success).toHaveBeenCalledTimes(1);
   });
 
   it('shows the field-level error for a Zod failure and the lead-day error for the domain failure', async () => {
     vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'error', cause: 'invalid_input' });
 
-    render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
+    const { unmount } = render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
     submit();
 
     await waitFor(() => expect(screen.getByText(labels.errorInvalidInput)).toBeInTheDocument());
     expect(toast.error).toHaveBeenCalledWith(labels.errorInvalidInput);
+    unmount();
+
+    // The other cause must produce the OTHER message. Without this case the test
+    // passes with both branches hardcoded to errorInvalidInput — which is the
+    // "one message for both causes" defect spec 5.1 exists to correct.
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'error', cause: 'invalid_lead' });
+
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
+    submit();
+
+    await waitFor(() => expect(screen.getByText(labels.errorInvalidLead)).toBeInTheDocument());
+    expect(toast.error).toHaveBeenCalledWith(labels.errorInvalidLead);
+    expect(screen.queryByText(labels.errorInvalidInput)).not.toBeInTheDocument();
   });
 });
