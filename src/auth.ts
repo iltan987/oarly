@@ -6,6 +6,7 @@ import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { renderResetEmail, renderVerifyEmail } from '@/emails';
 import { env, trustedOrigins } from '@/env';
+import { authRateLimitRules, authRateLimitStorage } from '@/lib/auth-rate-limit';
 import { recordSignupConsent } from '@/lib/consent';
 import { sendEmail } from '@/lib/email';
 
@@ -95,8 +96,16 @@ export const auth = betterAuth({
 
   trustedOrigins,
 
-  // Built-in per-endpoint limiter (our own limiter — Task 15 — covers app routes).
-  rateLimit: { enabled: true, window: 60, max: 100 },
+  rateLimit: {
+    enabled: true,
+    // Fallback for every auth endpoint not named in authRateLimitRules.
+    window: 60,
+    max: 100,
+    customRules: authRateLimitRules,
+    // Shared across lambda instances when KV is configured; better-auth's own in-memory
+    // storage otherwise, which is correct for dev and test.
+    ...(authRateLimitStorage ? { customStorage: authRateLimitStorage } : {}),
+  },
 
   // KVKK acknowledgment may only be recorded when the user actually affirmed
   // the KVKK checkbox, which exists solely on the email/password sign-up form
