@@ -236,12 +236,20 @@ async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string }
     // make room, so restoring unconditionally would either over-seat the
     // session or collide with `bookings_active_uq` — the latter is also
     // guarded as a backstop in the catch below.
+    //
+    // Two different counts, deliberately: the duplicate-row check considers
+    // 'booked' AND 'waitlisted' together, because either would collide with
+    // `bookings_active_uq` on restore. The capacity check counts 'booked'
+    // ONLY — `capacity` bounds seated rows, not the queue behind them (that is
+    // `resolveSeating`'s job), so a waitlisted row sitting alongside the freed
+    // seat is not a reason to refuse the restore.
     const activeInSession = await tx
-      .select({ id: bookings.id, userId: bookings.userId })
+      .select({ id: bookings.id, userId: bookings.userId, status: bookings.status })
       .from(bookings)
       .where(and(eq(bookings.sessionId, row.sessionId), inArray(bookings.status, [...ACTIVE])));
     const memberHasOtherActiveRow = activeInSession.some((a) => a.userId === row.userId && a.id !== row.id);
-    if (memberHasOtherActiveRow || activeInSession.length >= row.capacity) {
+    const bookedCount = activeInSession.filter((a) => a.status === 'booked').length;
+    if (memberHasOtherActiveRow || bookedCount >= row.capacity) {
       return { ok: false, error: 'restore_conflict' };
     }
 

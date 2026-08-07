@@ -379,5 +379,31 @@ describe.skipIf(!url)('markNoShow', () => {
       const [booking] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, ctx.booking.id));
       expect(booking.status).toBe('booked');
     });
+
+    it('restores a freed seat even when the session has a waitlist — capacity counts booked rows only', async () => {
+      // Capacity 2, A + B booked, D waitlisted behind them.
+      const ctx = await seed('1w');
+      const bUid = await seedMember(ctx, 'att-b');
+      await db.insert(schema.bookings).values({ sessionId: ctx.session.id, clubId: ctx.club.id, userId: bUid, paymentType: 'regular', status: 'booked', effectiveAt: MISSED_START, bookingDate: MISSED_DAY });
+      const dUid = await seedMember(ctx, 'att-d');
+      const [dBooking] = await db.insert(schema.bookings).values({ sessionId: ctx.session.id, clubId: ctx.club.id, userId: dUid, paymentType: 'regular', status: 'waitlisted', queuePosition: 1, effectiveAt: MISSED_START, bookingDate: MISSED_DAY }).returning();
+
+      // Mark A absent. `markNoShow` never calls `applySeating` on the missed
+      // session itself (only on the future sessions its cascade touches), so D
+      // is NOT auto-promoted here — booked = {B}, waitlisted = {D}.
+      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+
+      // The freed seat is genuinely open: `capacity` bounds booked rows only,
+      // and D's waitlisted row is additional to capacity, not counted against
+      // it. Undo must succeed.
+      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      expect(result).toEqual({ ok: true, bannedUntil: null, permanent: false });
+
+      const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.sessionId, ctx.session.id));
+      expect(rows.filter((r) => r.status === 'booked')).toHaveLength(2);
+      const [d] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, dBooking.id));
+      expect(d.status).toBe('waitlisted');
+      expect(d.queuePosition).toBe(1);
+    });
   });
 });
