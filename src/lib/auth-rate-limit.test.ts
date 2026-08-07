@@ -189,14 +189,30 @@ describe('accountKeyFor', () => {
       .toBe('login:acct:ali@example.com');
   });
 
-  it('escapes glob metacharacters so a SCAN MATCH reset cannot fan out across accounts', () => {
+  it('escapes ALL FIVE glob metacharacters so a SCAN MATCH reset cannot fan out across accounts', () => {
     // `rateLimitReset` -> `@upstash/ratelimit`'s `resetTokens` builds `<identifier>:*` and
     // feeds it to a Redis `SCAN ... MATCH` Lua script. `*`, `?`, `[`, `]`, and `\` are all
-    // valid RFC 5322 local-part characters; an unescaped `*` here would let a successful
+    // valid RFC 5322 local-part characters; an unescaped one here would let a successful
     // sign-in from `*@evil.com` clear every OTHER `…@evil.com` account's login bucket.
-    const key = accountKeyFor('/sign-in/email', { email: '*@evil.com' })?.key;
+    //
+    // The probe carries all five, not just `*`: the escape class is a security control, and
+    // an earlier version of this test probed `*` alone, so narrowing `globSafe`'s class from
+    // `[*?[\]\\]` to `[*]` — leaking four of the five — left the whole suite green.
+    // Mutation-tested at each of the five in turn; every narrowing now fails here.
+    const key = accountKeyFor('/sign-in/email', { email: 'a*?[]\\b@x.com' })?.key;
     expect(key).toBeDefined();
     expect(key).not.toMatch(/[*?[\]\\]/);
+  });
+
+  it('escapes the same metacharacters on every path it governs, not just sign-in', () => {
+    // The escaping lives in one helper, but all three paths build a key from the same
+    // user-controlled text, so all three inherit the exposure. Pinned so a future path
+    // added to `accountKeyFor` that forgets `globSafe` is caught here.
+    const probe = 'a*?[]\\b@x.com';
+    const paths = ['/sign-in/email', '/request-password-reset', '/send-verification-email'];
+    const keys = paths.map((path) => accountKeyFor(path, { email: probe })?.key);
+    expect(keys.filter(Boolean)).toHaveLength(paths.length);
+    expect(keys.filter((key) => key && /[*?[\]\\]/.test(key))).toEqual([]);
   });
 
   it('keeps a percent-encoded look-alike distinct from the email it could be confused with', () => {

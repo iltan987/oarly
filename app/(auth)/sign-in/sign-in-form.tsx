@@ -68,8 +68,11 @@ export function SignInForm({
       // The per-account rate limit (src/lib/auth-rate-limit.ts) throws a plain
       // TOO_MANY_REQUESTS APIError with no machine-readable `code`, so it must be told
       // apart by HTTP status, not `error.code`. Falling through to errorCredentials here
-      // would tell a locked-out member their password is wrong, which only invites more
-      // retries — each one burning another token and extending the lockout.
+      // would tell a locked-out member their password is wrong, sending them off to reset
+      // a password that was never the problem — and leaving them with no idea that simply
+      // waiting is the remedy. (Retrying does NOT deepen the lockout: both backends use a
+      // FIXED window whose TTL is set on the first increment, so a rejected retry extends
+      // nothing. The harm is the wrong diagnosis, not a growing penalty.)
       // `@better-fetch/fetch` discards the Response object and flattens `status` onto the
       // parsed error body, so `error.status` (not a header) is what's readable here.
       if (error.status === 429) {
