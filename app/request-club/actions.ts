@@ -4,6 +4,8 @@ import { getTranslations } from 'next-intl/server';
 
 import { db } from '@/db';
 import { requestClub } from '@/lib/club-request';
+import { RATE_LIMITS } from '@/lib/rate-limit-config';
+import { enforceRateLimit } from '@/lib/rate-limit-guard';
 import { clubRequestSchema } from '@/lib/schemas';
 import { requireUser } from '@/lib/session';
 
@@ -12,6 +14,11 @@ export type RequestClubState = { errors?: Record<string, string> };
 export async function requestClubAction(_prev: RequestClubState, formData: FormData): Promise<RequestClubState> {
   const owner = await requireUser('/request-club');
   const t = await getTranslations('admin');
+
+  const verdict = await enforceRateLimit([
+    { key: `clubreq:acct:${owner.id}`, rule: RATE_LIMITS.clubRequestPerAccount },
+  ]);
+  if (verdict.limited) return { errors: { form: t('errorTooManyRequests') } };
 
   const parsed = clubRequestSchema.safeParse({
     name: String(formData.get('name') ?? '').trim(),

@@ -25,6 +25,7 @@ export function RequestClubForm() {
           <Input id="slug" name="slug" aria-invalid={!!e.slug} required />
           {e.slug && <FieldError>{e.slug}</FieldError>}
         </Field>
+        {e.form && <FieldError>{e.form}</FieldError>}
         <Button type="submit" disabled={pending}>{t('submit')}</Button>
       </FieldGroup>
     </form>

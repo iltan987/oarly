@@ -14,8 +14,15 @@ import { joinAction } from './actions';
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
-export default async function JoinPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function JoinPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ error?: string }>;
+}) {
   const { slug } = await params;
+  const { error } = await searchParams;
   const club = await requireClub(slug);
   const t = await getTranslations('club');
   const tj = await getTranslations('join');
@@ -43,6 +50,7 @@ export default async function JoinPage({ params }: { params: Promise<{ slug: str
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 p-8 text-center">
       <h1 className="font-heading text-2xl font-bold text-brand">{t('joinTitle', { name: club.name })}</h1>
+      {error === 'rate_limited' && <p className="text-sm text-destructive">{tj('rateLimited')}</p>}
       {membership ? (
         <p className="text-muted-foreground">{statusMsg}</p>
       ) : (

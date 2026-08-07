@@ -28,7 +28,16 @@ export function ResetPasswordForm({ title, token }: { title: string; token: stri
     setPending(true);
     const { error } = await authClient.resetPassword({ newPassword: values.newPassword, token });
     setPending(false);
-    if (error) { toast.error(t('errorGeneric')); return; }
+    if (error) {
+      // `/reset-password` is capped per IP (RATE_LIMITS.passwordResetPerIp). Reaching it
+      // here means the user is holding a valid, time-limited reset token and cannot use
+      // it — "something went wrong" would push them into requesting another mail, which is
+      // itself rate limited and would deepen the dead end. `@better-fetch/fetch` discards
+      // the Response, so branch on `error.status`.
+      if (error.status === 429) { toast.error(t('errorTooManyRequests')); return; }
+      toast.error(t('errorGeneric'));
+      return;
+    }
     toast.success(t('resetDone'));
     router.push('/sign-in');
   }

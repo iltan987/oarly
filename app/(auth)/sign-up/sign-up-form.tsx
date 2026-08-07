@@ -48,7 +48,17 @@ export function SignUpForm({ title }: { title: string }) {
       locale,
     });
     setPending(false);
-    if (error) { toast.error(t('errorGeneric')); return; }
+    if (error) {
+      // `/sign-up/email` is capped per IP (RATE_LIMITS.signupPerIp, 30/hour). A club's
+      // members all sign up from one clubhouse Wi-Fi, so a single onboarding session
+      // genuinely reaches it — and "something went wrong" would send an admin debugging a
+      // problem whose only remedy is to wait. better-auth's 429 carries no machine-readable
+      // `code`, and `@better-fetch/fetch` discards the Response object (flattening `status`
+      // onto the parsed error body), so HTTP status is the only thing to branch on.
+      if (error.status === 429) { toast.error(t('errorTooManyRequests')); return; }
+      toast.error(t('errorGeneric'));
+      return;
+    }
     router.push('/verify-email');
   }
 

@@ -1,0 +1,316 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+type RateLimitResult = { success: boolean; remaining: number; resetAt: number };
+type RateLimitImpl = (
+  key: string,
+  rule: { name: string; limit: number; windowSec: number },
+  now?: number,
+) => Promise<RateLimitResult>;
+
+// `authConsume` is a thin wrapper around `@/lib/rate-limit`'s `rateLimit()`, which already
+// has its own exhaustive unit and fail-open coverage (rate-limit.test.ts). Mocking it here
+// lets these tests drive `authConsume`'s MAPPING logic — success -> allowed, resetAt ->
+// retryAfter, fail-open passthrough — with exact, arbitrary `RateResult`s, rather than
+// re-deriving those same result shapes through the real in-memory or Upstash backends.
+//
+// `rateLimit` is the only export overridden; `resetRateLimitState` and `rateLimitReset`
+// are passed through to the real module via `importOriginal` so the
+// `authRateLimitBefore`/`authRateLimitAfter` tests below can exercise the actual in-memory
+// bucket (multi-attempt counting, reset-on-success) rather than a canned response.
+// `mockState.realRateLimit` captures the unmocked implementation so those tests can point
+// `mockState.rateLimitImpl` at real bucket semantics instead of a fixed `RateLimitResult`.
+// Held in a `vi.hoisted` object (rather than plain top-level `let`s) because the
+// `vi.mock` factory below is itself hoisted above ordinary statements and may not
+// reference top-level variables that aren't declared through `vi.hoisted`.
+const mockState = vi.hoisted(() => ({
+  rateLimitImpl: undefined as unknown as RateLimitImpl,
+  realRateLimit: undefined as unknown as RateLimitImpl,
+}));
+
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<{ rateLimit: RateLimitImpl }>();
+  mockState.realRateLimit = actual.rateLimit;
+  return {
+    ...actual,
+    rateLimit: (...args: Parameters<RateLimitImpl>) => mockState.rateLimitImpl(...args),
+  };
+});
+
+import { APIError } from 'better-auth/api';
+
+import {
+  accountKeyFor,
+  authConsume,
+  authRateLimitAfter,
+  authRateLimitBefore,
+  authRateLimitRules,
+} from '@/lib/auth-rate-limit';
+import { resetRateLimitState } from '@/lib/rate-limit';
+import { RATE_LIMITS } from '@/lib/rate-limit-config';
+
+describe('authRateLimitRules', () => {
+  it('covers exactly the auth endpoints this app calls', () => {
+    expect(Object.keys(authRateLimitRules).sort()).toEqual([
+      '/request-password-reset',
+      '/reset-password',
+      '/send-verification-email',
+      '/sign-in/email',
+      '/sign-up/email',
+    ]);
+  });
+
+  it('derives every threshold from RATE_LIMITS rather than hardcoding it', () => {
+    // All FIVE paths are asserted against their RATE_LIMITS source, not just three:
+    // mutation-tested by swapping '/reset-password' to RATE_LIMITS.bookingPerIp
+    // (60/60s instead of 10/3600s — a 600x hourly loosening on a password-reset
+    // endpoint) and confirming this test then fails.
+    expect(authRateLimitRules['/sign-in/email']).toEqual({
+      window: RATE_LIMITS.loginPerIp.windowSec,
+      max: RATE_LIMITS.loginPerIp.limit,
+    });
+    expect(authRateLimitRules['/sign-up/email']).toEqual({
+      window: RATE_LIMITS.signupPerIp.windowSec,
+      max: RATE_LIMITS.signupPerIp.limit,
+    });
+    expect(authRateLimitRules['/request-password-reset']).toEqual({
+      window: RATE_LIMITS.passwordResetPerIp.windowSec,
+      max: RATE_LIMITS.passwordResetPerIp.limit,
+    });
+    expect(authRateLimitRules['/reset-password']).toEqual({
+      window: RATE_LIMITS.passwordResetPerIp.windowSec,
+      max: RATE_LIMITS.passwordResetPerIp.limit,
+    });
+    expect(authRateLimitRules['/send-verification-email']).toEqual({
+      window: RATE_LIMITS.passwordResetPerIp.windowSec,
+      max: RATE_LIMITS.passwordResetPerIp.limit,
+    });
+  });
+
+  it('uses the tuned §17 values', () => {
+    // §17 calls its numbers "default thresholds (tunable in one config)". The per-IP auth
+    // rules were tuned upward from those defaults (sign-up 5 -> 30/hour, password reset
+    // 10 -> 60/hour) because a club onboarding from one clubhouse Wi-Fi shares a single
+    // egress IP; the untouched per-EMAIL rule below is the control that actually bounds
+    // mail volume. Pinned literally so a future edit to rate-limit-config.ts has to come
+    // here and restate the intent.
+    expect(authRateLimitRules['/sign-in/email']).toEqual({ window: 60, max: 20 });
+    expect(authRateLimitRules['/sign-up/email']).toEqual({ window: 3600, max: 30 });
+    expect(authRateLimitRules['/request-password-reset']).toEqual({ window: 3600, max: 60 });
+    expect(RATE_LIMITS.passwordResetPerEmail).toEqual({
+      name: 'passwordResetPerEmail', limit: 3, windowSec: 3600,
+    });
+  });
+});
+
+describe('authConsume', () => {
+  const RULE = { window: 60, max: 5 };
+  const NOW = 1_000_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('allows while the backend reports success', async () => {
+    mockState.rateLimitImpl = async () => ({ success: true, remaining: 4, resetAt: NOW + 60_000 });
+    expect(await authConsume('k', RULE)).toEqual({ allowed: true, retryAfter: null });
+  });
+
+  it('reports allowed:false with a positive integer retryAfter once exhausted', async () => {
+    mockState.rateLimitImpl = async () => ({ success: false, remaining: 0, resetAt: NOW + 45_000 });
+    const result = await authConsume('k', RULE);
+    expect(result.allowed).toBe(false);
+    expect(result.retryAfter).toBe(45);
+  });
+
+  it('never reports a retryAfter of 0 or negative, even when resetAt is at or before now', async () => {
+    // Exercises the clock-skew floor `retryAfterSeconds` exists for: a rejected request
+    // whose `resetAt` has already elapsed by the time this runs must still tell the
+    // caller to wait at least 1 second — `0` (or negative) invites an immediate retry
+    // that is still refused.
+    //
+    // Mutation-tested: reverting authConsume to inline `Math.max(0, Math.ceil(...))`
+    // (the exact regression this test guards against) makes this assertion fail, since
+    // Math.ceil((NOW - NOW) / 1000) is 0, not 1. Confirmed by hand.
+    mockState.rateLimitImpl = async () => ({ success: false, remaining: 0, resetAt: NOW });
+    const result = await authConsume('k', RULE);
+    expect(result.allowed).toBe(false);
+    expect(result.retryAfter).toBe(1);
+  });
+
+  it('fails open: forwards a fail-open success as allowed:true', async () => {
+    // `rateLimit()` itself guarantees it never rejects and never throws — a KV outage
+    // resolves `{ success: true, ... }` (see rate-limit.ts's own catch block and its
+    // dedicated fail-open tests). This proves `authConsume` forwards that result as
+    // `allowed: true` rather than, say, misreading `remaining === limit` as a rejection.
+    mockState.rateLimitImpl = async () => ({ success: true, remaining: RULE.max, resetAt: NOW + RULE.window * 1000 });
+    expect(await authConsume('k', RULE)).toEqual({ allowed: true, retryAfter: null });
+  });
+});
+
+describe('accountKeyFor', () => {
+  it('keys a sign-in by lowercased email and clears on success', () => {
+    expect(accountKeyFor('/sign-in/email', { email: 'Ali@Example.COM', password: 'x' })).toEqual({
+      key: 'login:acct:ali@example.com',
+      rule: RATE_LIMITS.loginPerAccount,
+      clearOnSuccess: true,
+    });
+  });
+
+  it('keys a password-reset request by email and does NOT clear on success', () => {
+    // Succeeding at "please email me a reset link" repeatedly IS the abuse, so a
+    // successful request must still count against the mailbox's budget.
+    expect(accountKeyFor('/request-password-reset', { email: 'bob@example.com' })).toEqual({
+      key: 'pwreset:email:bob@example.com',
+      rule: RATE_LIMITS.passwordResetPerEmail,
+      clearOnSuccess: false,
+    });
+  });
+
+  it('returns null for paths it does not govern', () => {
+    expect(accountKeyFor('/sign-up/email', { email: 'a@b.com' })).toBeNull();
+    expect(accountKeyFor('/get-session', {})).toBeNull();
+  });
+
+  it('returns null when the body carries no usable email', () => {
+    expect(accountKeyFor('/sign-in/email', {})).toBeNull();
+    expect(accountKeyFor('/sign-in/email', { email: '' })).toBeNull();
+    expect(accountKeyFor('/sign-in/email', { email: 42 })).toBeNull();
+    expect(accountKeyFor('/sign-in/email', null)).toBeNull();
+    expect(accountKeyFor('/sign-in/email', undefined)).toBeNull();
+  });
+
+  it('trims surrounding whitespace before keying', () => {
+    expect(accountKeyFor('/sign-in/email', { email: '  ali@example.com  ' })?.key)
+      .toBe('login:acct:ali@example.com');
+  });
+
+  it('escapes ALL FIVE glob metacharacters so a SCAN MATCH reset cannot fan out across accounts', () => {
+    // `rateLimitReset` -> `@upstash/ratelimit`'s `resetTokens` builds `<identifier>:*` and
+    // feeds it to a Redis `SCAN ... MATCH` Lua script. `*`, `?`, `[`, `]`, and `\` are all
+    // valid RFC 5322 local-part characters; an unescaped one here would let a successful
+    // sign-in from `*@evil.com` clear every OTHER `…@evil.com` account's login bucket.
+    //
+    // The probe carries all five, not just `*`: the escape class is a security control, and
+    // an earlier version of this test probed `*` alone, so narrowing `globSafe`'s class from
+    // `[*?[\]\\]` to `[*]` — leaking four of the five — left the whole suite green.
+    // Mutation-tested at each of the five in turn; every narrowing now fails here.
+    const key = accountKeyFor('/sign-in/email', { email: 'a*?[]\\b@x.com' })?.key;
+    expect(key).toBeDefined();
+    expect(key).not.toMatch(/[*?[\]\\]/);
+  });
+
+  it('escapes the same metacharacters on every path it governs, not just sign-in', () => {
+    // The escaping lives in one helper, but all three paths build a key from the same
+    // user-controlled text, so all three inherit the exposure. Pinned so a future path
+    // added to `accountKeyFor` that forgets `globSafe` is caught here.
+    const probe = 'a*?[]\\b@x.com';
+    const paths = ['/sign-in/email', '/request-password-reset', '/send-verification-email'];
+    const keys = paths.map((path) => accountKeyFor(path, { email: probe })?.key);
+    expect(keys.filter(Boolean)).toHaveLength(paths.length);
+    expect(keys.filter((key) => key && /[*?[\]\\]/.test(key))).toEqual([]);
+  });
+
+  it('keeps a percent-encoded look-alike distinct from the email it could be confused with', () => {
+    // The encoding must be injective: escaping '%' FIRST is what prevents a user-typed
+    // literal '%2a' from becoming indistinguishable from an escaped '*' (also '%2a').
+    // If these two ever produced the same key, resetting one account's bucket would also
+    // reset the other's.
+    const star = accountKeyFor('/sign-in/email', { email: 'a*b@example.com' })?.key;
+    const percent = accountKeyFor('/sign-in/email', { email: 'a%2ab@example.com' })?.key;
+    expect(star).toBeDefined();
+    expect(percent).toBeDefined();
+    expect(star).not.toBe(percent);
+  });
+});
+
+describe('authRateLimitBefore / authRateLimitAfter', () => {
+  beforeEach(() => {
+    // Point the mocked `rateLimit` at the real in-memory implementation so these tests
+    // exercise actual bucket accumulation instead of a canned `authConsume`-style stub.
+    mockState.rateLimitImpl = mockState.realRateLimit;
+    resetRateLimitState();
+  });
+
+  const ctxFor = (path: string, body: unknown, returned?: unknown) =>
+    ({ path, body, context: { returned } }) as never;
+
+  it('rejects the sixth sign-in attempt for one account', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await expect(authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }))).resolves.toBeUndefined();
+    }
+    await expect(authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }))).rejects.toThrow();
+  });
+
+  it('a successful attempt clears the count', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }));
+    }
+    await authRateLimitAfter(ctxFor('/sign-in/email', { email: 'a@b.com' }, { user: { id: 'u1' } }));
+    await expect(authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }))).resolves.toBeUndefined();
+  });
+
+  it('a failed attempt does not clear the count', async () => {
+    const failure = new APIError('UNAUTHORIZED', { message: 'bad password' });
+    for (let i = 0; i < 5; i += 1) {
+      await authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }));
+      await authRateLimitAfter(ctxFor('/sign-in/email', { email: 'a@b.com' }, failure));
+    }
+    await expect(authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }))).rejects.toThrow();
+  });
+
+  it('a SUCCESSFUL password-reset request does NOT clear the count (mail-bomb protection)', async () => {
+    // Unlike sign-in, succeeding at "email me a reset link" repeatedly IS the abuse — a
+    // mail-bomb against a known member's inbox — so `authRateLimitAfter` must NOT clear
+    // this bucket even when the endpoint reported success. This guards the after-hook's
+    // `clearOnSuccess` check specifically: changing it from
+    // `if (!match?.clearOnSuccess) return;` to `if (!match) return;` reads as a harmless
+    // null-check simplification but would clear every successful reset request, making
+    // this rule unenforceable. All RATE_LIMITS.passwordResetPerEmail.limit (3) requests
+    // succeed here, and the NEXT (4th) before-check must still reject.
+    for (let i = 0; i < RATE_LIMITS.passwordResetPerEmail.limit; i += 1) {
+      await authRateLimitBefore(ctxFor('/request-password-reset', { email: 'a@b.com' }));
+      await authRateLimitAfter(ctxFor('/request-password-reset', { email: 'a@b.com' }, { status: true }));
+    }
+    await expect(authRateLimitBefore(ctxFor('/request-password-reset', { email: 'a@b.com' }))).rejects.toThrow();
+  });
+
+  it('bounds SUCCESSFUL verification-resend requests per target email too', async () => {
+    // The asymmetry this closes: `/send-verification-email` also takes an arbitrary email
+    // out of the request body and mails whoever owns it, but it had only the per-IP rule —
+    // so one address could mail a chosen unverified member 60 times an hour indefinitely,
+    // and rotating IPs lifts even that.
+    //
+    // Behavioural on purpose, exactly like the password-reset case above: it drives BOTH
+    // hooks with a SUCCESSFUL outcome rather than asserting on `accountKeyFor`'s return
+    // value, so it pins the consumer (`if (!match?.clearOnSuccess) return;`) and not just
+    // the routing table. Mutation-tested two ways: deleting the `/send-verification-email`
+    // branch from `accountKeyFor`, and flipping its `clearOnSuccess` to `true` — both make
+    // this fail.
+    for (let i = 0; i < RATE_LIMITS.passwordResetPerEmail.limit; i += 1) {
+      await authRateLimitBefore(ctxFor('/send-verification-email', { email: 'victim@b.com' }));
+      await authRateLimitAfter(ctxFor('/send-verification-email', { email: 'victim@b.com' }, { status: true }));
+    }
+    await expect(authRateLimitBefore(ctxFor('/send-verification-email', { email: 'victim@b.com' })))
+      .rejects.toThrow();
+  });
+
+  it('keeps the verification-resend bucket separate from the password-reset one', async () => {
+    // The deliberate trade recorded on `accountKeyFor`: both flows are what a locked-out
+    // member reaches for, so exhausting password reset must NOT consume the verification
+    // resend that is their only remaining way back in. If the two ever collapse onto one
+    // key this fails, which is the point — the choice is a judgement call and should not be
+    // reversed silently.
+    for (let i = 0; i < RATE_LIMITS.passwordResetPerEmail.limit; i += 1) {
+      await authRateLimitBefore(ctxFor('/request-password-reset', { email: 'locked@b.com' }));
+      await authRateLimitAfter(ctxFor('/request-password-reset', { email: 'locked@b.com' }, { status: true }));
+    }
+    await expect(authRateLimitBefore(ctxFor('/request-password-reset', { email: 'locked@b.com' }))).rejects.toThrow();
+    await expect(authRateLimitBefore(ctxFor('/send-verification-email', { email: 'locked@b.com' })))
+      .resolves.toBeUndefined();
+  });
+});

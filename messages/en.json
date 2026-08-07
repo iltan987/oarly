@@ -42,7 +42,8 @@
     "pending": "Your request to join is pending approval.",
     "approved": "You're a member of this club.",
     "rejected": "Your request to join was rejected.",
-    "banned": "You can't book sessions at this club right now."
+    "banned": "You can't book sessions at this club right now.",
+    "rateLimited": "Too many requests. Please try again later."
   },
   "emails": {
     "verify": {
@@ -131,6 +132,7 @@
     "errorPassword": "Password must be at least 8 characters.",
     "errorRequired": "This field is required.",
     "errorCredentials": "Wrong email or password.",
+    "errorTooManyRequests": "Too many attempts. Please wait a few minutes and try again.",
     "errorEmailNotVerified": "Verify your email address first — we've sent you a new link.",
     "errorConsent": "You must accept the KVKK text to continue.",
     "errorGeneric": "Something went wrong. Please try again.",
@@ -168,7 +170,8 @@
     "errorOwnerNotFound": "No user with that email. The account must be created first.",
     "errorNameInvalid": "Club name must be at least 2 characters.",
     "errorOwnerEmailInvalid": "Enter a valid email.",
-    "actionError": "Couldn't update the club. Try again."
+    "actionError": "Couldn't update the club. Try again.",
+    "errorTooManyRequests": "Too many requests. Please try again later."
   },
   "requestClub": {
     "title": "Club request",
@@ -446,7 +449,8 @@
       "no_session": "That session is no longer available.",
       "multisport_day_taken": "Your MultiSport card is already used for another session that day.",
       "waitlist_full": "This session and its waitlist are both full.",
-      "generic": "Something went wrong. Please try again."
+      "generic": "Something went wrong. Please try again.",
+      "rate_limited": "Too many requests. Please wait a moment and try again."
     },
     "myTitle": "My bookings",
     "upcoming": "Upcoming",
@@ -459,7 +463,8 @@
       "not_active": "This booking is no longer active.",
       "cancel_disabled": "Self-cancellation is turned off for this club.",
       "cutoff_passed": "Too late to cancel this booking.",
-      "generic": "Could not cancel. Please try again."
+      "generic": "Could not cancel. Please try again.",
+      "rate_limited": "Too many requests. Please wait a moment and try again."
     },
     "cancelled": "Cancelled",
     "noShow": "No-show",

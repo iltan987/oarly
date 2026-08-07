@@ -27,7 +27,16 @@ export function VerifyEmailNotice({ title, body }: { title: string; body: string
     setPending(true);
     const { error } = await authClient.sendVerificationEmail({ email: values.email, callbackURL: '/sign-in' });
     setPending(false);
-    if (error) { toast.error(t('errorGeneric')); return; }
+    if (error) {
+      // `/send-verification-email` is capped per IP (RATE_LIMITS.passwordResetPerIp) and
+      // per target EMAIL (RATE_LIMITS.passwordResetPerEmail, 3/hour). This form is the one
+      // a user lands on when they cannot sign in at all, so a generic error here is a dead
+      // end with no next step; the 429 message at least names waiting as the remedy.
+      // `@better-fetch/fetch` discards the Response, so branch on `error.status`.
+      if (error.status === 429) { toast.error(t('errorTooManyRequests')); return; }
+      toast.error(t('errorGeneric'));
+      return;
+    }
     toast.success(t('verifySent'));
   }
 

@@ -32,7 +32,17 @@ export function ForgotPasswordForm({ title, body }: { title: string; body: strin
       redirectTo: `${origin}/reset-password`,
     });
     setPending(false);
-    if (error) { toast.error(t('errorGeneric')); return; }
+    if (error) {
+      // Two rules can produce this 429: the per-IP cap on `/request-password-reset`
+      // (RATE_LIMITS.passwordResetPerIp) and the per-EMAIL mail-bomb cap
+      // (RATE_LIMITS.passwordResetPerEmail, 3/hour — the tightest limit in the app). The
+      // per-email one is reachable by an ordinary user who did not spot the first mail, so
+      // telling them to wait is the whole point. `@better-fetch/fetch` discards the
+      // Response, so branch on `error.status`, never on a Retry-After header.
+      if (error.status === 429) { toast.error(t('errorTooManyRequests')); return; }
+      toast.error(t('errorGeneric'));
+      return;
+    }
     toast.success(t('forgotSent'));
   }
 

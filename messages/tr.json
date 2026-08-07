@@ -42,7 +42,8 @@
     "pending": "Katılma isteğin onay bekliyor.",
     "approved": "Bu kulübün üyesisin.",
     "rejected": "Katılma isteğin reddedildi.",
-    "banned": "Şu anda bu kulüpte rezervasyon yapamazsın."
+    "banned": "Şu anda bu kulüpte rezervasyon yapamazsın.",
+    "rateLimited": "Çok fazla istek. Lütfen daha sonra tekrar deneyin."
   },
   "emails": {
     "verify": {
@@ -131,6 +132,7 @@
     "errorPassword": "Şifre en az 8 karakter olmalı.",
     "errorRequired": "Bu alan zorunlu.",
     "errorCredentials": "E-posta veya şifre hatalı.",
+    "errorTooManyRequests": "Çok fazla deneme yaptınız. Lütfen birkaç dakika bekleyip tekrar deneyin.",
     "errorEmailNotVerified": "Önce e-posta adresinizi doğrulayın — size yeni bir bağlantı gönderdik.",
     "errorConsent": "Devam etmek için KVKK metnini kabul etmelisin.",
     "errorGeneric": "Bir şeyler ters gitti. Lütfen tekrar dene.",
@@ -168,7 +170,8 @@
     "errorOwnerNotFound": "Bu e-postayla bir kullanıcı bulunamadı. Önce hesabı oluşturulmalı.",
     "errorNameInvalid": "Kulüp adı en az 2 karakter olmalı.",
     "errorOwnerEmailInvalid": "Geçerli bir e-posta gir.",
-    "actionError": "Kulüp güncellenemedi. Tekrar dene."
+    "actionError": "Kulüp güncellenemedi. Tekrar dene.",
+    "errorTooManyRequests": "Çok fazla istek. Lütfen daha sonra tekrar deneyin."
   },
   "requestClub": {
     "title": "Kulüp başvurusu",
@@ -446,7 +449,8 @@
       "no_session": "Bu seans artık mevcut değil.",
       "multisport_day_taken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
       "waitlist_full": "Bu seans ve bekleme listesi dolu.",
-      "generic": "Bir şeyler ters gitti. Lütfen tekrar deneyin."
+      "generic": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+      "rate_limited": "Çok fazla istek. Lütfen biraz bekleyip tekrar deneyin."
     },
     "myTitle": "Rezervasyonlarım",
     "upcoming": "Yaklaşan",
@@ -459,7 +463,8 @@
       "not_active": "Bu rezervasyon artık aktif değil.",
       "cancel_disabled": "Bu kulüpte kendi rezervasyonunu iptal kapalı.",
       "cutoff_passed": "Bu rezervasyonu iptal etmek için çok geç.",
-      "generic": "İptal edilemedi. Lütfen tekrar deneyin."
+      "generic": "İptal edilemedi. Lütfen tekrar deneyin.",
+      "rate_limited": "Çok fazla istek. Lütfen biraz bekleyip tekrar deneyin."
     },
     "cancelled": "İptal edildi",
     "noShow": "Gelmedi",

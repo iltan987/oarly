@@ -7,6 +7,9 @@ import { db } from '@/db';
 import { bookSeat } from '@/lib/booking';
 import { requireMember } from '@/lib/membership';
 import { notifyBookingConfirmation } from '@/lib/notify';
+import { RATE_LIMITS } from '@/lib/rate-limit-config';
+import { enforceRateLimit } from '@/lib/rate-limit-guard';
+import { getClientIp } from '@/lib/request-ip';
 
 export type BookFormState = { status: 'idle' | 'ok' | 'error'; error: string | null; outcome?: 'seated' | 'waitlisted' | null };
 
@@ -20,6 +23,15 @@ const bookInputSchema = z.object({
 
 export async function bookSeatAction(slug: string, _prev: BookFormState, formData: FormData): Promise<BookFormState> {
   const { club, user } = await requireMember(slug, '/book');
+
+  // Narrowest bucket first: see enforceRateLimit's short-circuit contract.
+  const ip = await getClientIp();
+  const verdict = await enforceRateLimit([
+    { key: `book:acct:${user.id}`, rule: RATE_LIMITS.bookingPerAccount },
+    { key: `book:ip:${ip}`, rule: RATE_LIMITS.bookingPerIp },
+  ]);
+  if (verdict.limited) return { status: 'error', error: 'rate_limited' };
+
   const parsed = bookInputSchema.safeParse({
     windowId: formData.get('windowId'),
     boatTypeId: formData.get('boatTypeId'),
