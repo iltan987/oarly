@@ -45,6 +45,7 @@ export type BookResult =
   | { ok: false; error: 'ineligible'; reason: EligibilityReason }
   | { ok: false; error: 'already_booked_this_slot' }
   | { ok: false; error: 'multisport_day_taken' }
+  | { ok: false; error: 'waitlist_full' }
   | { ok: false; error: 'no_session' };
 
 /**
@@ -78,7 +79,7 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
     return await db.transaction(async (tx) => {
       // 1. Club + window, scoped to clubId.
       const [club] = await tx
-        .select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode, openOnHolidays: clubs.openOnHolidays, bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays })
+        .select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode, openOnHolidays: clubs.openOnHolidays, bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays, waitlistCapacity: clubs.waitlistCapacity })
         .from(clubs)
         .where(eq(clubs.id, input.clubId));
       if (!club) return { ok: false, error: 'no_session' };
@@ -152,19 +153,31 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
         return { ok: false, error: 'multisport_day_taken' };
       }
 
-      // 8. Choose the target session of the chosen boat: pack a boat (first free seat by id),
-      //    else the one with the fewest active bookings (shortest waitlist), tie-break by id.
-      //    Only `open` sessions can take a new booking — a closed/cancelled one keeps the
-      //    bookings it already has (step 7 still counts them) but accepts no more.
+      // 8. Choose the target session of the chosen boat: pack a boat (first free seat
+      //    by id), else the shortest queue among those still accepting.
+      //
+      //    `waitlistCapacity` bounds how many may queue behind a full session; null
+      //    means unlimited, which is what every club had before the column existed.
+      //    No unique index is needed for this one — unlike the MultiSport daily
+      //    limit, the invariant lives entirely inside a single session, and the
+      //    per-slot advisory lock taken in step 4 already serializes every booking
+      //    for this slot. That is what makes the count reliable between here and
+      //    the insert: of 15 concurrent bookers, the first `capacity + waitlist`
+      //    are admitted in arrival order and the rest each read a full count.
       const boatSessions = foc.sessions.filter((s) => s.boatTypeId === input.boatTypeId && s.status === 'open').sort((a, b) => (a.id < b.id ? -1 : 1));
       if (boatSessions.length === 0) return { ok: false, error: 'no_session' };
       const activeRows = await tx.select({ sessionId: bookings.sessionId }).from(bookings).where(and(inArray(bookings.sessionId, boatSessions.map((s) => s.id)), inArray(bookings.status, [...ACTIVE])));
       const activeCount = new Map<string, number>();
       for (const r of activeRows) activeCount.set(r.sessionId, (activeCount.get(r.sessionId) ?? 0) + 1);
-      const withFree = boatSessions.filter((s) => (activeCount.get(s.id) ?? 0) < s.capacity);
+
+      const limitFor = (capacity: number) => (club.waitlistCapacity == null ? Infinity : capacity + club.waitlistCapacity);
+      const accepting = boatSessions.filter((s) => (activeCount.get(s.id) ?? 0) < limitFor(s.capacity));
+      if (accepting.length === 0) return { ok: false, error: 'waitlist_full' };
+
+      const withFree = accepting.filter((s) => (activeCount.get(s.id) ?? 0) < s.capacity);
       const target = withFree.length > 0
         ? withFree[0]
-        : [...boatSessions].sort((a, b) => (activeCount.get(a.id) ?? 0) - (activeCount.get(b.id) ?? 0) || (a.id < b.id ? -1 : 1))[0];
+        : [...accepting].sort((a, b) => (activeCount.get(a.id) ?? 0) - (activeCount.get(b.id) ?? 0) || (a.id < b.id ? -1 : 1))[0];
 
       // 9. Insert the booking as waitlisted, then resolve seating for the target session.
       //    Sticky rule (resolveSeating): existing seated bookings are never demoted;

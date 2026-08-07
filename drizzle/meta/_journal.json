@@ -50,6 +50,13 @@
       "when": 1786116006941,
       "tag": "0006_curious_jimmy_woo",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786123626733,
+      "tag": "0007_rare_wolfsbane",
+      "breakpoints": true
     }
   ]
 }

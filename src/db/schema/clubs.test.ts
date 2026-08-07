@@ -24,4 +24,13 @@ describe('clubs schema', () => {
     const cols = getTableConfig(skillLevels).columns.map((c) => c.name);
     expect(cols).toEqual(expect.arrayContaining(['club_id', 'name', 'rank']));
   });
+
+  it('carries an optional waitlist capacity', () => {
+    const cols = Object.fromEntries(getTableConfig(clubs).columns.map((c) => [c.name, c]));
+    expect(cols['waitlist_capacity']).toBeDefined();
+    // Nullable on purpose: null means "unlimited", which is exactly the behaviour
+    // every existing club has today, so the column changes nothing until an owner
+    // sets a number.
+    expect(cols['waitlist_capacity'].notNull).toBe(false);
+  });
 });

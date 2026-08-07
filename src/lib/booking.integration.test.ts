@@ -412,4 +412,93 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
       expect(loser).toEqual({ ok: false, error: 'multisport_day_taken' });
     });
   });
+
+  describe('waitlist capacity', () => {
+    async function seedClubWithCapacity(opts: { seats: number; waitlistCapacity: number | null }) {
+      const tag = `wl-${Date.now()}-${seq++}`;
+      const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, multisportMode: 'equal', selfCancelEnabled: true, cancelCutoffHours: null, bookingOpenMode: 'always', bookingOpenLeadDays: null, waitlistCapacity: opts.waitlistCapacity }).returning();
+      const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: opts.seats, allowedPayment: 'both' }).returning();
+      const [w] = await db.insert(schema.scheduleWindows).values({ clubId: club.id, weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60 }).returning();
+      await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: boat.id, quantity: 1 });
+      return { clubId: club.id, windowId: w.id, boatTypeId: boat.id, startAt: START };
+    }
+    async function seedMembers(c: { clubId: string }, n: number) {
+      const ids: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const uid = `wlu-${Date.now()}-${seq++}`;
+        await db.insert(schema.user).values({ id: uid, name: uid, email: `${uid}@t.co` });
+        await db.insert(schema.memberships).values({ userId: uid, clubId: c.clubId, role: 'member', status: 'approved' });
+        ids.push(uid);
+      }
+      return ids;
+    }
+
+    it('turns away bookers once the seats and the queue are both full', async () => {
+      // The brief: 4 seats, 4 queue slots, 15 hopefuls. 8 get in, 7 are told no.
+      const c = await seedClubWithCapacity({ seats: 4, waitlistCapacity: 4 });
+      const users = await seedMembers(c, 15);
+
+      const results = [];
+      // Strictly increasing `now` per booker (still frozen, still deterministic —
+      // never the real clock) to model that these 15 arrive one after another.
+      // resolveSeating's waitlist tie-break is (effectiveAt, id); with a single
+      // bit-identical NOW for every caller, ties fall to a random-per-row UUID,
+      // so the position handed back to an EARLIER caller can collide with one
+      // handed back to a LATER caller before the session's queue settles — an
+      // id-ordering artifact orthogonal to the cap being tested here.
+      for (let i = 0; i < users.length; i++) {
+        results.push(await bookSeat(db, { clubId: c.clubId, userId: users[i], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: `w-${users[i]}`, now: new Date(NOW.getTime() + i) }));
+      }
+
+      expect(results.filter((r) => r.ok && r.outcome === 'seated')).toHaveLength(4);
+      expect(results.filter((r) => r.ok && r.outcome === 'waitlisted')).toHaveLength(4);
+      expect(results.filter((r) => !r.ok && r.error === 'waitlist_full')).toHaveLength(7);
+
+      const queued = results.filter((r) => r.ok && r.outcome === 'waitlisted').map((r) => (r.ok ? r.queuePosition : null));
+      expect([...queued].sort()).toEqual([1, 2, 3, 4]);
+    });
+
+    it('holds the line under a concurrent rush', async () => {
+      // Same shape, but all 15 at once — the per-slot advisory lock is what makes
+      // the count reliable between the check and the insert.
+      const c = await seedClubWithCapacity({ seats: 4, waitlistCapacity: 4 });
+      const users = await seedMembers(c, 15);
+
+      const results = await Promise.all(users.map((uid) =>
+        bookSeat(db, { clubId: c.clubId, userId: uid, windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: `r-${uid}`, now: NOW })));
+
+      expect(results.filter((r) => r.ok)).toHaveLength(8);
+      expect(results.filter((r) => !r.ok && r.error === 'waitlist_full')).toHaveLength(7);
+
+      const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, c.clubId));
+      expect(rows.filter((r) => r.status === 'booked')).toHaveLength(4);
+      expect(rows.filter((r) => r.status === 'waitlisted')).toHaveLength(4);
+    });
+
+    it('admits everyone when no cap is set', async () => {
+      const c = await seedClubWithCapacity({ seats: 2, waitlistCapacity: null });
+      const users = await seedMembers(c, 9);
+      const results = [];
+      for (const uid of users) {
+        results.push(await bookSeat(db, { clubId: c.clubId, userId: uid, windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: `u-${uid}`, now: NOW }));
+      }
+      expect(results.every((r) => r.ok)).toBe(true);
+      expect(results.filter((r) => r.ok && r.outcome === 'waitlisted')).toHaveLength(7);
+    });
+
+    it('reopens a queue slot when someone cancels', async () => {
+      const c = await seedClubWithCapacity({ seats: 1, waitlistCapacity: 1 });
+      const users = await seedMembers(c, 3);
+      const first = await bookSeat(db, { clubId: c.clubId, userId: users[0], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: 'q-1', now: NOW });
+      const second = await bookSeat(db, { clubId: c.clubId, userId: users[1], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: 'q-2', now: NOW });
+      const third = await bookSeat(db, { clubId: c.clubId, userId: users[2], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: 'q-3', now: NOW });
+      expect(third).toEqual({ ok: false, error: 'waitlist_full' });
+      if (!second.ok) throw new Error('setup failed');
+
+      await cancelBooking(db, { clubId: c.clubId, userId: users[1], bookingId: second.bookingId, now: NOW });
+      const retry = await bookSeat(db, { clubId: c.clubId, userId: users[2], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: 'q-4', now: NOW });
+      expect(retry.ok).toBe(true);
+      if (!first.ok) throw new Error('setup failed');
+    });
+  });
 });
