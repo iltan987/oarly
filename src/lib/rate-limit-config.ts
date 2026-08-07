@@ -16,6 +16,12 @@ export type RateRule = { name: string; limit: number; windowSec: number };
  */
 export const RATE_LIMITS = {
   loginPerAccount: { name: 'loginPerAccount', limit: 5, windowSec: 15 * 60 },
+  // Left at §17's value, and the only *PerIp rule not raised for the shared-NAT reason
+  // above — deliberately. Sign-in has no synchronized rush the way slot-open does: a club
+  // does not all sign in at once, and sessions are long-lived, so 20/min per egress IP is
+  // not a plausible legitimate load even for a large club. It is also enforced by
+  // better-auth rather than by us (see `authRateLimitRules`), and a member who does hit it
+  // now gets a "too many requests" message rather than a wrong-password one.
   loginPerIp: { name: 'loginPerIp', limit: 20, windowSec: 60 },
   // §17 said 5/hour. Raised 6x: an admin onboarding a 20-30 member club from the
   // clubhouse Wi-Fi is one IP, and at 5/hour members 6+ are locked out for an hour with
