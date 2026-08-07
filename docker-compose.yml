@@ -5,9 +5,6 @@
 # /var/lib/postgresql/data, so mounting the legacy path would persist nothing:
 #   environment: { PGDATA: /var/lib/postgresql/data }
 #   volumes: [ oarly_pgdata:/var/lib/postgresql/data ]
-# A Redis container is deferred to Plan 6 (rate-limiter wiring); note @upstash/redis
-# needs the Upstash REST API, so local testing needs a serverless-redis-http proxy,
-# not a vanilla redis container.
 services:
   postgres:
     image: postgres:18
@@ -29,6 +26,26 @@ services:
       - '5434:5432'
     volumes:
       - oarly_dev_pgdata:/var/lib/postgresql/data
+
+  # Rate-limiter development/testing only, hence the profile: `docker compose up -d`
+  # still starts just Postgres. @upstash/redis speaks Upstash's REST protocol, so a
+  # vanilla redis container is not enough — srh is the REST shim in front of it.
+  #   docker compose --profile redis up -d
+  redis:
+    image: redis:8-alpine
+    profiles: [redis]
+
+  redis-http:
+    image: hiett/serverless-redis-http:latest
+    profiles: [redis]
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: local-dev-token
+      SRH_CONNECTION_STRING: redis://redis:6379
+    ports:
+      - '8079:80'
+    depends_on:
+      - redis
 
 volumes:
   oarly_dev_pgdata:
