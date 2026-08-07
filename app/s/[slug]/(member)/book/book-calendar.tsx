@@ -17,13 +17,20 @@ import { type BookFormState, bookSeatAction } from './actions';
 
 const initial: BookFormState = { status: 'idle', error: null };
 
-type UiState = 'booked' | 'waitlisted' | 'ineligible' | 'notopen' | 'full' | 'open';
+type UiState = 'booked' | 'waitlisted' | 'ineligible' | 'notopen' | 'full' | 'open' | 'unavailable';
 
 type Confirm = { key: string; dayISO: string; slot: MemberVirtualSlot; session: MemberVirtualSession };
 
-function uiStateOf(s: MemberVirtualSession): UiState {
+function uiStateOf(s: MemberVirtualSession, slot: MemberVirtualSlot): UiState {
   if (s.myStatus === 'booked') return 'booked';
   if (s.myStatus === 'waitlisted') return 'waitlisted';
+  // A slot surfaced from a since-deleted schedule window carries no windowId, and
+  // bookSeat needs one to re-derive the block server-side. Offering a Book button here
+  // would post an empty windowId and fail validation every time — show it as closed.
+  if (!slot.windowId) return 'unavailable';
+  // A session the club closed or cancelled keeps its existing bookings (handled above)
+  // but takes no new ones — bookSeat rejects them too.
+  if (s.status !== 'open') return 'unavailable';
   if (!s.eligibility.ok) return 'ineligible';
   if (!s.bookingOpen) return 'notopen';
   return s.seatsLeft <= 0 ? 'full' : 'open';
@@ -36,6 +43,7 @@ const toneOf: Record<UiState, BadgeTone> = {
   notopen: 'info',
   full: 'neutral',
   open: 'ok',
+  unavailable: 'neutral',
 };
 
 function dayLabel(f: ReturnType<typeof useFormatter>, dateISO: string): string {
@@ -141,7 +149,7 @@ function ConfirmBooking({
   const [state, formAction, pending] = useActionState(bookSeatAction.bind(null, slug), initial);
   const [idempotencyKey] = useState(() => (globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(36).slice(2)}`));
   const [payment, setPayment] = useState(session.defaultPayment);
-  const isWaitlist = uiStateOf(session) === 'full';
+  const isWaitlist = uiStateOf(session, slot) === 'full';
 
   useEffect(() => {
     if (state.status === 'ok') {
@@ -181,21 +189,26 @@ function ConfirmBooking({
           {/* Explicit hidden field is the source of truth for FormData; RadioGroup is controlled UI only. */}
           <input type="hidden" name="paymentType" value={payment} />
           <RadioGroup value={payment} onValueChange={(v) => setPayment(v as typeof payment)} className="grid grid-cols-2 gap-2">
+            {/*
+              A <label> around the radio, not a <div onClick> around an sr-only one:
+              the whole card stays clickable, the radio keeps its native focus ring and
+              arrow-key navigation, and the selected state is visible rather than
+              inferred from the border colour alone.
+            */}
             {session.paymentChoices.map((p) => {
               const label = p === 'multisport' ? t('paymentMultisport') : t('paymentRegular');
               const checked = payment === p;
               return (
-                <div
+                <label
                   key={p}
-                  onClick={() => setPayment(p)}
                   className={cn(
-                    'flex cursor-pointer items-center justify-center rounded-field border p-2.5 text-sm font-medium transition-colors',
+                    'flex cursor-pointer items-center justify-center gap-2 rounded-field border p-2.5 text-sm font-medium transition-colors',
                     checked ? 'border-brand bg-brand-tint text-brand-ink' : 'border-border text-foreground hover:bg-muted',
                   )}
                 >
-                  <RadioGroupItem value={p} aria-label={label} className="sr-only" />
+                  <RadioGroupItem value={p} />
                   {label}
-                </div>
+                </label>
               );
             })}
           </RadioGroup>
@@ -228,7 +241,7 @@ function SessionCard({
 }) {
   const t = useTranslations('booking');
   const f = useFormatter();
-  const ui = uiStateOf(session);
+  const ui = uiStateOf(session, slot);
   // A "notopen" session with no future open date has already started/closed
   // (always-open mode past its start) — show a neutral "Closed", not "Soon".
   const notOpenClosed = ui === 'notopen' && !session.bookingOpensAt;
@@ -239,6 +252,7 @@ function SessionCard({
     : ui === 'full' ? t('full')
     : ui === 'booked' ? t('booked')
     : ui === 'waitlisted' ? t('waitlisted', { position: session.myQueuePosition ?? 0 })
+    : ui === 'unavailable' ? t('closedByClub')
     : ui === 'notopen' ? (notOpenClosed ? t('closedByClub') : t('soon'))
     : t('locked');
 

@@ -27,6 +27,13 @@ function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Lev
   const [minSkillLevelId, setMinSkillLevelId] = useState(boat?.minSkillLevelId ?? NONE_VALUE);
   const [allowedPayment, setAllowedPayment] = useState(boat?.allowedPayment ?? 'both');
 
+  // Base UI's <Select.Value> renders the raw item VALUE unless the root is given
+  // an `items` map — without it the trigger shows a uuid / "both" instead of the label.
+  const skillItems = { [NONE_VALUE]: labels.noMinSkill, ...Object.fromEntries(levels.map((l) => [l.id, l.name])) };
+  const paymentItems = {
+    both: labels.paymentBoth, regular_only: labels.paymentRegular, multisport_only: labels.paymentMultisport,
+  };
+
   return (
     <div className="grid grid-cols-2 gap-3">
       {/*
@@ -48,7 +55,7 @@ function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Lev
       </Field>
       <Field>
         <FieldLabel htmlFor={`minSkillLevelId-${formId}`}>{labels.minSkill}</FieldLabel>
-        <Select value={minSkillLevelId} onValueChange={(v) => setMinSkillLevelId(v as string)}>
+        <Select items={skillItems} value={minSkillLevelId} onValueChange={(v) => setMinSkillLevelId(v as string)}>
           <SelectTrigger id={`minSkillLevelId-${formId}`}>
             <SelectValue />
           </SelectTrigger>
@@ -60,7 +67,7 @@ function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Lev
       </Field>
       <Field>
         <FieldLabel htmlFor={`allowedPayment-${formId}`}>{labels.payment}</FieldLabel>
-        <Select value={allowedPayment} onValueChange={(v) => setAllowedPayment(v as Boat['allowedPayment'])}>
+        <Select items={paymentItems} value={allowedPayment} onValueChange={(v) => setAllowedPayment(v as Boat['allowedPayment'])}>
           <SelectTrigger id={`allowedPayment-${formId}`}>
             <SelectValue />
           </SelectTrigger>

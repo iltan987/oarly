@@ -26,14 +26,24 @@ export async function getMembership(db: DB, userId: string, clubId: string): Pro
   return row ?? null;
 }
 
-/** Require the signed-in user to be an approved owner of `slug`. */
+/**
+ * Both guards below treat a non-`active` club as a 404, mirroring the render gate in
+ * `app/s/[slug]/layout.tsx`. That layout only governs PAGES — server actions and route
+ * handlers bypass layouts entirely, so without this check a suspended (or not-yet-approved)
+ * club's owner and members could keep driving every mutation by POSTing an action directly.
+ */
+function requireActiveClub(club: Club | null): asserts club is Club {
+  if (!club || club.status !== 'active') notFound();
+}
+
+/** Require the signed-in user to be an approved owner of an active `slug`. */
 export async function requireOwner(
   slug: string,
   returnPath = '/manage/members',
 ): Promise<{ club: Club; user: CurrentUser; membership: Membership }> {
   const origin = parseAppOrigin(env.APP_URL);
   const club = await getClubBySlug(slug);
-  if (!club) notFound();
+  requireActiveClub(club);
   const user = await getCurrentUser();
   if (!user) {
     const back = `${clubUrl(slug, origin)}${returnPath}`;
@@ -44,14 +54,14 @@ export async function requireOwner(
   return { club, user, membership };
 }
 
-/** Require the signed-in user to be an approved, non-banned member of `slug` (any role). */
+/** Require the signed-in user to be an approved, non-banned member of an active `slug` (any role). */
 export async function requireMember(
   slug: string,
   returnPath = '/book',
 ): Promise<{ club: Club; user: CurrentUser; membership: Membership }> {
   const origin = parseAppOrigin(env.APP_URL);
   const club = await getClubBySlug(slug);
-  if (!club) notFound();
+  requireActiveClub(club);
   const user = await getCurrentUser();
   if (!user) {
     const back = `${clubUrl(slug, origin)}${returnPath}`;

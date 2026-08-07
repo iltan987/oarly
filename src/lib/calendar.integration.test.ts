@@ -151,4 +151,22 @@ describe.skipIf(!url)('computeCalendar', () => {
     expect(days[0].slots[0].persisted).toBe(true);
     expect(days[0].slots[0].sessions[0].sessionId).not.toBeNull();
   });
+
+  // Blocks are tiled in wall clock, so on a spring-forward day two wall-clock times can
+  // resolve to one UTC instant. Slot identity is (clubId, startAt), so emitting both
+  // would show the member a duplicate block that can only ever materialize once.
+  // Europe/Istanbul has had no DST since 2016, but clubs.timezone is a per-club column.
+  it('emits one block per UTC instant across a spring-forward gap', async () => {
+    const [c] = await db.insert(schema.clubs).values({
+      slug: `cal-dst-${Date.now()}-${Math.round(performance.now())}`, name: 'dst', status: 'active', timezone: 'America/New_York',
+    }).returning();
+    const boat = await newBoat(c.id, 'Single', 1);
+    // 2026-03-08 is a Sunday (weekday 0); the US clocks jump 02:00 -> 03:00 local.
+    const [w] = await db.insert(schema.scheduleWindows).values({ clubId: c.id, weekday: 0, startTime: '01:00', endTime: '04:00', defaultSessionMinutes: 60 }).returning();
+    await db.insert(schema.windowBoats).values({ windowId: w.id, boatTypeId: boat.id, quantity: 1 });
+
+    const days = await computeCalendar(db, c.id, { fromDateISO: '2026-03-08', days: 1 });
+    const starts = days[0].slots.map((s) => s.startAt.toISOString());
+    expect(new Set(starts).size).toBe(starts.length);
+  });
 });

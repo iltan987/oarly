@@ -38,6 +38,10 @@ export function MemberCombobox({ slug, selected, onSelect }: {
       try {
         const hits = await searchClubMembersAction(slug, q);
         if (id === reqId.current) setResults(hits);
+      } catch {
+        // A failed search must not become an unhandled rejection; show "no results"
+        // and let the owner retry by typing.
+        if (id === reqId.current) setResults([]);
       } finally {
         if (id === reqId.current) setLoading(false);
       }

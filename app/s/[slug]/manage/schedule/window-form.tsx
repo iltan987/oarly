@@ -26,6 +26,7 @@ export function WindowForm({ slug, weekday, window, boats, labels, onClose }: {
     window?.boats.map((b) => ({ boatTypeId: b.boatTypeId, quantity: b.quantity })) ?? [{ boatTypeId: boats[0].id, quantity: 1 }],
   );
   useEffect(() => { if (state.status === 'ok') onClose(); }, [state, onClose]);
+  const boatItems = Object.fromEntries(boats.map((b) => [b.id, b.name]));
 
   return (
     <form action={formAction} className="flex flex-col gap-3 rounded-lg border p-3">
@@ -55,7 +56,9 @@ export function WindowForm({ slug, weekday, window, boats, labels, onClose }: {
               for the submitted value, read positionally alongside `quantity`.
             */}
             <input type="hidden" name="boatTypeId" value={row.boatTypeId} />
+            {/* `items` is what makes <SelectValue /> render the boat name, not its uuid. */}
             <Select
+              items={boatItems}
               value={row.boatTypeId}
               onValueChange={(v) => setRows(rows.map((r, j) => (j === i ? { ...r, boatTypeId: v as string } : r)))}
             >

@@ -38,4 +38,22 @@ describe.skipIf(!url)('auth sign-up', () => {
     expect(consentRows).toHaveLength(CONSENT_DOCUMENTS.length);
     expect(consentRows.every(row => row.version === CONSENT_VERSION)).toBe(true);
   });
+
+  // The sign-up form now sends the negotiated locale; if `locale` were not an accepted
+  // input field this would silently fall back to 'tr' and every email to an English
+  // user would be Turkish again.
+  it('persists a locale supplied at sign-up', async () => {
+    process.env.DATABASE_URL = url;
+    process.env.BETTER_AUTH_SECRET ??= 'test-secret';
+    process.env.BETTER_AUTH_URL ??= 'http://localhost:3000';
+    process.env.APP_URL ??= 'http://localhost:3000';
+    const { auth } = await import('@/auth');
+    const email = `signup-en-${Date.now()}@test.co`;
+    await auth.api.signUpEmail({
+      body: { email, password: 'Passw0rd!123', name: 'Test User', locale: 'en' },
+    });
+    const db = drizzle(pool, { schema });
+    const rows = await db.select().from(schema.user).where(eq(schema.user.email, email));
+    expect(rows[0].locale).toBe('en');
+  });
 });

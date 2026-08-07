@@ -38,11 +38,16 @@ export default async function ManageBookingsPage({ params, searchParams }: { par
           <ChevronRightIcon />
         </Link>
       </div>
-      {roster.closed ? (
-        <p className="text-sm text-muted-foreground">{t('closed')}</p>
-      ) : (
-        <BookingsRoster slug={slug} sessions={roster.sessions} timezone={club.timezone} />
-      )}
+      {/*
+        A closed day can still hold bookings made before it was closed —
+        computeCalendar surfaces those persisted slots read-only rather than dropping
+        them, so the roster must still render or the owner would have no way to see or
+        remove the members who are holding those seats. Seating a NEW member stays
+        blocked on a closed day (BookingsRoster hides the add form), which is the
+        invariant ownerAddBooking's override comment relies on.
+      */}
+      {roster.closed && <p className="text-sm text-muted-foreground">{t('closed')}</p>}
+      <BookingsRoster slug={slug} sessions={roster.sessions} timezone={club.timezone} closed={roster.closed} />
     </div>
   );
 }

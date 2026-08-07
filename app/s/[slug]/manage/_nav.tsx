@@ -31,12 +31,15 @@ export function ManageNav() {
     <nav className="mb-6 flex flex-wrap gap-1 border-b">
       {items.map((it) => {
         const href = `${base}${it.href}`;
-        const active = pathname === href;
+        // Prefix match so nested routes (e.g. /manage/schedule/preview) still light up
+        // their section; the empty-href Overview tab must stay an exact match or it
+        // would claim every page.
+        const active = it.href === '' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
         const label = it.key === 'overviewNav' ? t('overviewNav')
           : it.key === 'members' ? t('members')
           : t(`${it.key}.navLabel`);
         return (
-          <Link key={it.href || 'overview'} href={href}
+          <Link key={it.href || 'overview'} href={href} aria-current={active ? 'page' : undefined}
             className={`border-b-2 px-3 py-2 text-sm ${active ? 'border-brand font-medium text-brand' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
             {label}
           </Link>

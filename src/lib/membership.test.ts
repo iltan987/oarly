@@ -30,4 +30,45 @@ describe('requireOwner', () => {
     vi.spyOn(mod, 'getMembership').mockResolvedValue(null);
     await expect(mod.requireOwner('demo')).rejects.toThrow('NOT_FOUND');
   });
+  it.each(['suspended', 'pending'] as const)(
+    'notFound()s for an approved owner when the club is %s — server actions must not outlive the layout gate',
+    async (status) => {
+      getClubBySlug.mockResolvedValue({ id: 'club1', slug: 'demo', status });
+      getCurrentUser.mockResolvedValue({ id: 'u1', isAdmin: false });
+      vi.spyOn(mod, 'getMembership').mockResolvedValue(
+        { id: 'm1', role: 'owner', status: 'approved', bannedUntil: null } as never,
+      );
+      await expect(mod.requireOwner('demo')).rejects.toThrow('NOT_FOUND');
+    },
+  );
+  it('returns the club for an approved owner of an active club', async () => {
+    getClubBySlug.mockResolvedValue({ id: 'club1', slug: 'demo', status: 'active' });
+    getCurrentUser.mockResolvedValue({ id: 'u1', isAdmin: false });
+    vi.spyOn(mod, 'getMembership').mockResolvedValue(
+      { id: 'm1', role: 'owner', status: 'approved', bannedUntil: null } as never,
+    );
+    await expect(mod.requireOwner('demo')).resolves.toMatchObject({ club: { id: 'club1' } });
+  });
+});
+
+describe('requireMember', () => {
+  it.each(['suspended', 'pending'] as const)(
+    'notFound()s for an approved member when the club is %s',
+    async (status) => {
+      getClubBySlug.mockResolvedValue({ id: 'club1', slug: 'demo', status });
+      getCurrentUser.mockResolvedValue({ id: 'u1', isAdmin: false });
+      vi.spyOn(mod, 'getMembership').mockResolvedValue(
+        { id: 'm1', role: 'member', status: 'approved', bannedUntil: null } as never,
+      );
+      await expect(mod.requireMember('demo')).rejects.toThrow('NOT_FOUND');
+    },
+  );
+  it('returns the club for an approved member of an active club', async () => {
+    getClubBySlug.mockResolvedValue({ id: 'club1', slug: 'demo', status: 'active' });
+    getCurrentUser.mockResolvedValue({ id: 'u1', isAdmin: false });
+    vi.spyOn(mod, 'getMembership').mockResolvedValue(
+      { id: 'm1', role: 'member', status: 'approved', bannedUntil: null } as never,
+    );
+    await expect(mod.requireMember('demo')).resolves.toMatchObject({ club: { id: 'club1' } });
+  });
 });

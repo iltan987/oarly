@@ -1,6 +1,7 @@
 'use client';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -28,6 +29,7 @@ export function SignInForm({
   errorCode?: string;
 }) {
   const t = useTranslations('auth');
+  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
   const { register, handleSubmit, formState: { errors } } = useForm<Values>({
@@ -53,7 +55,19 @@ export function SignInForm({
     setPending(true);
     const { error } = await authClient.signIn.email({ email: values.email, password: values.password });
     setPending(false);
-    if (error) { toast.error(t('errorCredentials')); return; }
+    if (error) {
+      // A correct password on an unverified account fails with EMAIL_NOT_VERIFIED, not
+      // INVALID_EMAIL_OR_PASSWORD — reporting it as bad credentials sends the user off
+      // hunting for a password problem that doesn't exist. `sendOnSignIn` (src/auth.ts)
+      // has already re-sent the link by the time we get here, so point them at it.
+      if (error.code === 'EMAIL_NOT_VERIFIED') {
+        toast.info(t('errorEmailNotVerified'));
+        router.push('/verify-email');
+        return;
+      }
+      toast.error(t('errorCredentials'));
+      return;
+    }
     window.location.assign(redirectTo); // validated on the server in the page
   }
 

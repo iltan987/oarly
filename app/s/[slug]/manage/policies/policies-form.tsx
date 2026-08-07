@@ -32,6 +32,16 @@ export function PoliciesForm({ slug, settings, labels }: { slug: string; setting
   const [noshowPenalty, setNoshowPenalty] = useState(settings.noshowPenalty);
   const [multisportMode, setMultisportMode] = useState(settings.multisportMode);
 
+  // Base UI's <Select.Value> renders the raw item VALUE unless the root is given
+  // an `items` map — without it the trigger reads "always" instead of the label,
+  // even though the popup items are labelled correctly.
+  const bookingOpenItems = { always: labels.bookingOpenAlways, lead: labels.bookingOpenLead };
+  const noshowItems = {
+    off: labels.noshowOff, '2d': labels.noshow2d, '1w': labels.noshow1w,
+    '2w': labels.noshow2w, '1m': labels.noshow1m, never: labels.noshowNever,
+  };
+  const multisportItems = { equal: labels.multisportEqual, priority: labels.multisportPriority };
+
   return (
     <form action={formAction} className="flex max-w-md flex-col gap-4">
       <input type="hidden" name="bookingOpenMode" value={bookingOpenMode} />
@@ -39,7 +49,7 @@ export function PoliciesForm({ slug, settings, labels }: { slug: string; setting
       <input type="hidden" name="multisportMode" value={multisportMode} />
       <Field>
         <FieldLabel htmlFor="bookingOpenMode">{labels.bookingOpen}</FieldLabel>
-        <Select value={bookingOpenMode} onValueChange={(v) => setBookingOpenMode(v as Settings['bookingOpenMode'])}>
+        <Select items={bookingOpenItems} value={bookingOpenMode} onValueChange={(v) => setBookingOpenMode(v as Settings['bookingOpenMode'])}>
           <SelectTrigger id="bookingOpenMode">
             <SelectValue />
           </SelectTrigger>
@@ -63,7 +73,7 @@ export function PoliciesForm({ slug, settings, labels }: { slug: string; setting
       </Field>
       <Field>
         <FieldLabel htmlFor="noshowPenalty">{labels.noshow}</FieldLabel>
-        <Select value={noshowPenalty} onValueChange={(v) => setNoshowPenalty(v as Settings['noshowPenalty'])}>
+        <Select items={noshowItems} value={noshowPenalty} onValueChange={(v) => setNoshowPenalty(v as Settings['noshowPenalty'])}>
           <SelectTrigger id="noshowPenalty">
             <SelectValue />
           </SelectTrigger>
@@ -79,7 +89,7 @@ export function PoliciesForm({ slug, settings, labels }: { slug: string; setting
       </Field>
       <Field>
         <FieldLabel htmlFor="multisportMode">{labels.multisport}</FieldLabel>
-        <Select value={multisportMode} onValueChange={(v) => setMultisportMode(v as Settings['multisportMode'])}>
+        <Select items={multisportItems} value={multisportMode} onValueChange={(v) => setMultisportMode(v as Settings['multisportMode'])}>
           <SelectTrigger id="multisportMode">
             <SelectValue />
           </SelectTrigger>

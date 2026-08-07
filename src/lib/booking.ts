@@ -127,7 +127,9 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
 
     // 8. Choose the target session of the chosen boat: pack a boat (first free seat by id),
     //    else the one with the fewest active bookings (shortest waitlist), tie-break by id.
-    const boatSessions = foc.sessions.filter((s) => s.boatTypeId === input.boatTypeId).sort((a, b) => (a.id < b.id ? -1 : 1));
+    //    Only `open` sessions can take a new booking — a closed/cancelled one keeps the
+    //    bookings it already has (step 7 still counts them) but accepts no more.
+    const boatSessions = foc.sessions.filter((s) => s.boatTypeId === input.boatTypeId && s.status === 'open').sort((a, b) => (a.id < b.id ? -1 : 1));
     if (boatSessions.length === 0) return { ok: false, error: 'no_session' };
     const activeRows = await tx.select({ sessionId: bookings.sessionId }).from(bookings).where(and(inArray(bookings.sessionId, boatSessions.map((s) => s.id)), inArray(bookings.status, [...ACTIVE])));
     const activeCount = new Map<string, number>();
@@ -266,7 +268,9 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
     }
 
     // Target the chosen boat's session that has a free seat (empty-seat-only).
-    const boatSessions = foc.sessions.filter((s) => s.boatTypeId === input.boatTypeId).sort((a, b) => (a.id < b.id ? -1 : 1));
+    // The owner override covers the member-facing gates, not a session the club has
+    // explicitly closed or cancelled — those take no new bookings from anyone.
+    const boatSessions = foc.sessions.filter((s) => s.boatTypeId === input.boatTypeId && s.status === 'open').sort((a, b) => (a.id < b.id ? -1 : 1));
     if (boatSessions.length === 0) return { ok: false, error: 'no_session' };
     const activeRows = await tx.select({ sessionId: bookings.sessionId }).from(bookings).where(and(inArray(bookings.sessionId, boatSessions.map((s) => s.id)), inArray(bookings.status, [...ACTIVE])));
     const activeCount = new Map<string, number>();

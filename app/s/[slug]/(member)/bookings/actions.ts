@@ -1,5 +1,6 @@
 'use server';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import * as z from 'zod';
 
 import { db } from '@/db';
@@ -19,7 +20,10 @@ export async function cancelBookingAction(slug: string, _prev: CancelFormState, 
   if (!result.ok) return { status: 'error', error: result.error };
   revalidatePath(`/s/${slug}/bookings`);
   revalidatePath(`/s/${slug}/book`);
-  await notifyBookingCancellation(db, { bookingId: parsed.data.bookingId });
-  if (result.promoted) await notifyWaitlistPromotion(db, result.promoted);
+  // Best-effort mail, off the critical path — the cancellation is already committed.
+  after(async () => {
+    await notifyBookingCancellation(db, { bookingId: parsed.data.bookingId });
+    if (result.promoted) await notifyWaitlistPromotion(db, result.promoted);
+  });
   return { status: 'ok', error: null };
 }

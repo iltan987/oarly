@@ -50,4 +50,15 @@ describe.skipIf(!url)('getDayRoster', () => {
     expect(sess!.waitlisted.map((m) => m.name)).toEqual(['bob']);
     expect(sess!.freeSeats).toBe(0);
   });
+
+  it('still returns the roster for a day the owner has force-closed, so existing bookings stay manageable', async () => {
+    const { club } = await seed();
+    await db.insert(schema.clubHolidayOverrides).values({ clubId: club.id, date: MON, isOpen: false });
+    const roster = await getDayRoster(db, { clubId: club.id, dateISO: MON });
+    expect(roster.closed).toBe(true);
+    const sess = roster.sessions.find((x) => x.startAt.getTime() === START.getTime());
+    expect(sess).toBeTruthy();
+    expect(sess!.seated.map((m) => m.name)).toEqual(['alice']);
+    expect(sess!.waitlisted.map((m) => m.name)).toEqual(['bob']);
+  });
 });

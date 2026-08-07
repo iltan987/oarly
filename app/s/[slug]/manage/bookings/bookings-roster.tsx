@@ -12,7 +12,7 @@ import type { ManageActionResult } from '../action-result';
 import { type MemberHit, ownerAddBookingAction, ownerRemoveBookingAction } from './actions';
 import { MemberCombobox } from './member-combobox';
 
-export function BookingsRoster({ slug, sessions, timezone }: { slug: string; sessions: RosterSession[]; timezone: string }) {
+export function BookingsRoster({ slug, sessions, timezone, closed = false }: { slug: string; sessions: RosterSession[]; timezone: string; closed?: boolean }) {
   const t = useTranslations('manage.bookings');
   const tm = useTranslations('manage');
 
@@ -36,7 +36,7 @@ export function BookingsRoster({ slug, sessions, timezone }: { slug: string; ses
     else toast.error(tm('actionError'));
   }, [addState, t, tm]);
 
-  if (sessions.length === 0) return <p className="text-sm text-muted-foreground">{t('empty')}</p>;
+  if (sessions.length === 0) return closed ? null : <p className="text-sm text-muted-foreground">{t('empty')}</p>;
 
   return (
     <div className="flex flex-col gap-3">
@@ -78,7 +78,7 @@ export function BookingsRoster({ slug, sessions, timezone }: { slug: string; ses
                 </ul>
               )}
 
-              {s.freeSeats > 0 && s.windowId && (
+              {!closed && s.freeSeats > 0 && s.windowId && (
                 <AddMemberForm session={s} slug={slug} addAction={addAction} addPending={addPending} />
               )}
             </CardContent>

@@ -1,6 +1,7 @@
 'use server';
 import { and, eq, ilike, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import * as z from 'zod';
 
 import { db } from '@/db';
@@ -60,8 +61,11 @@ export async function ownerRemoveBookingAction(slug: string, _prev: ManageAction
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);
   revalidatePath(`/s/${slug}/bookings`);
-  await notifyOwnerRemoval(db, { bookingId: parsed.data.bookingId });
-  if (result.promoted) await notifyWaitlistPromotion(db, result.promoted);
+  // Best-effort mail, off the critical path — the removal is already committed.
+  after(async () => {
+    await notifyOwnerRemoval(db, { bookingId: parsed.data.bookingId });
+    if (result.promoted) await notifyWaitlistPromotion(db, result.promoted);
+  });
   return { ok: true };
 }
 
@@ -80,6 +84,6 @@ export async function ownerAddBookingAction(slug: string, _prev: ManageActionRes
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);
   revalidatePath(`/s/${slug}/bookings`);
-  await notifyBookingConfirmation(db, { bookingId: result.bookingId });
+  after(() => notifyBookingConfirmation(db, { bookingId: result.bookingId }));
   return { ok: true };
 }
