@@ -446,7 +446,8 @@
       "no_session": "That session is no longer available.",
       "multisport_day_taken": "Your MultiSport card is already used for another session that day.",
       "waitlist_full": "This session and its waitlist are both full.",
-      "generic": "Something went wrong. Please try again."
+      "generic": "Something went wrong. Please try again.",
+      "rate_limited": "Too many requests. Please wait a moment and try again."
     },
     "myTitle": "My bookings",
     "upcoming": "Upcoming",
@@ -459,7 +460,8 @@
       "not_active": "This booking is no longer active.",
       "cancel_disabled": "Self-cancellation is turned off for this club.",
       "cutoff_passed": "Too late to cancel this booking.",
-      "generic": "Could not cancel. Please try again."
+      "generic": "Could not cancel. Please try again.",
+      "rate_limited": "Too many requests. Please wait a moment and try again."
     },
     "cancelled": "Cancelled",
     "noShow": "No-show",
