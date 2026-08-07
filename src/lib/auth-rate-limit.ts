@@ -132,6 +132,26 @@ function emailOf(body: unknown): string | null {
 }
 
 /**
+ * Escapes characters that are meaningful to Redis' glob-style key matching, so a key built
+ * from user-controlled email text can't widen what `rateLimitReset` clears.
+ *
+ * This is NOT cosmetic: `@upstash/ratelimit`'s `resetTokens` builds
+ * `pattern = [identifier, '*'].join(':')` and feeds it straight into a `SCAN ... MATCH
+ * pattern` Lua script (`@upstash/ratelimit@2.0.8` dist/index.mjs, the `fixedWindow`
+ * limiter's `resetTokens`). `*`, `?`, `[`, `]`, and `\` are all valid RFC 5322 email
+ * local-part characters. Left unescaped, a successful sign-in from `*@evil.com` would
+ * build the identifier `login:acct:*@evil.com`, and `resetTokens`'s own `:*` suffix plus
+ * Redis' glob rules would make that pattern match — and DELETE — every OTHER
+ * `login:acct:<anything>@evil.com` bucket, clearing accounts that never attempted, let
+ * alone won, a sign-in. `%` is escaped FIRST (to `%25`) so the encoding stays injective:
+ * without that ordering, a literal `%2a` a user typed and an escaped `*` (also `%2a`)
+ * would collide into the same key.
+ */
+function globSafe(s: string): string {
+  return s.replace(/%/g, '%25').replace(/[*?[\]\\]/g, (c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
+}
+
+/**
  * The identity-keyed rule governing `path`, or null.
  *
  * Pure and exported so the routing decision is testable without a request: the hooks
@@ -140,11 +160,12 @@ function emailOf(body: unknown): string | null {
 export function accountKeyFor(path: string, body: unknown): AccountRule | null {
   const email = emailOf(body);
   if (!email) return null;
+  const safeEmail = globSafe(email);
   if (path === '/sign-in/email') {
-    return { key: `login:acct:${email}`, rule: RATE_LIMITS.loginPerAccount, clearOnSuccess: true };
+    return { key: `login:acct:${safeEmail}`, rule: RATE_LIMITS.loginPerAccount, clearOnSuccess: true };
   }
   if (path === '/request-password-reset') {
-    return { key: `pwreset:email:${email}`, rule: RATE_LIMITS.passwordResetPerEmail, clearOnSuccess: false };
+    return { key: `pwreset:email:${safeEmail}`, rule: RATE_LIMITS.passwordResetPerEmail, clearOnSuccess: false };
   }
   return null;
 }

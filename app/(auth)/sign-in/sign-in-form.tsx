@@ -65,6 +65,17 @@ export function SignInForm({
         router.push('/verify-email');
         return;
       }
+      // The per-account rate limit (src/lib/auth-rate-limit.ts) throws a plain
+      // TOO_MANY_REQUESTS APIError with no machine-readable `code`, so it must be told
+      // apart by HTTP status, not `error.code`. Falling through to errorCredentials here
+      // would tell a locked-out member their password is wrong, which only invites more
+      // retries — each one burning another token and extending the lockout.
+      // `@better-fetch/fetch` discards the Response object and flattens `status` onto the
+      // parsed error body, so `error.status` (not a header) is what's readable here.
+      if (error.status === 429) {
+        toast.error(t('errorTooManyRequests'));
+        return;
+      }
       toast.error(t('errorCredentials'));
       return;
     }

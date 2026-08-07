@@ -132,6 +132,7 @@
     "errorPassword": "Password must be at least 8 characters.",
     "errorRequired": "This field is required.",
     "errorCredentials": "Wrong email or password.",
+    "errorTooManyRequests": "Too many attempts. Please wait a few minutes and try again.",
     "errorEmailNotVerified": "Verify your email address first — we've sent you a new link.",
     "errorConsent": "You must accept the KVKK text to continue.",
     "errorGeneric": "Something went wrong. Please try again.",

@@ -178,6 +178,28 @@ describe('accountKeyFor', () => {
     expect(accountKeyFor('/sign-in/email', { email: '  ali@example.com  ' })?.key)
       .toBe('login:acct:ali@example.com');
   });
+
+  it('escapes glob metacharacters so a SCAN MATCH reset cannot fan out across accounts', () => {
+    // `rateLimitReset` -> `@upstash/ratelimit`'s `resetTokens` builds `<identifier>:*` and
+    // feeds it to a Redis `SCAN ... MATCH` Lua script. `*`, `?`, `[`, `]`, and `\` are all
+    // valid RFC 5322 local-part characters; an unescaped `*` here would let a successful
+    // sign-in from `*@evil.com` clear every OTHER `…@evil.com` account's login bucket.
+    const key = accountKeyFor('/sign-in/email', { email: '*@evil.com' })?.key;
+    expect(key).toBeDefined();
+    expect(key).not.toMatch(/[*?[\]\\]/);
+  });
+
+  it('keeps a percent-encoded look-alike distinct from the email it could be confused with', () => {
+    // The encoding must be injective: escaping '%' FIRST is what prevents a user-typed
+    // literal '%2a' from becoming indistinguishable from an escaped '*' (also '%2a').
+    // If these two ever produced the same key, resetting one account's bucket would also
+    // reset the other's.
+    const star = accountKeyFor('/sign-in/email', { email: 'a*b@example.com' })?.key;
+    const percent = accountKeyFor('/sign-in/email', { email: 'a%2ab@example.com' })?.key;
+    expect(star).toBeDefined();
+    expect(percent).toBeDefined();
+    expect(star).not.toBe(percent);
+  });
 });
 
 describe('authRateLimitBefore / authRateLimitAfter', () => {
@@ -213,5 +235,21 @@ describe('authRateLimitBefore / authRateLimitAfter', () => {
       await authRateLimitAfter(ctxFor('/sign-in/email', { email: 'a@b.com' }, failure));
     }
     await expect(authRateLimitBefore(ctxFor('/sign-in/email', { email: 'a@b.com' }))).rejects.toThrow();
+  });
+
+  it('a SUCCESSFUL password-reset request does NOT clear the count (mail-bomb protection)', async () => {
+    // Unlike sign-in, succeeding at "email me a reset link" repeatedly IS the abuse — a
+    // mail-bomb against a known member's inbox — so `authRateLimitAfter` must NOT clear
+    // this bucket even when the endpoint reported success. This guards the after-hook's
+    // `clearOnSuccess` check specifically: changing it from
+    // `if (!match?.clearOnSuccess) return;` to `if (!match) return;` reads as a harmless
+    // null-check simplification but would clear every successful reset request, making
+    // this rule unenforceable. All RATE_LIMITS.passwordResetPerEmail.limit (3) requests
+    // succeed here, and the NEXT (4th) before-check must still reject.
+    for (let i = 0; i < RATE_LIMITS.passwordResetPerEmail.limit; i += 1) {
+      await authRateLimitBefore(ctxFor('/request-password-reset', { email: 'a@b.com' }));
+      await authRateLimitAfter(ctxFor('/request-password-reset', { email: 'a@b.com' }, { status: true }));
+    }
+    await expect(authRateLimitBefore(ctxFor('/request-password-reset', { email: 'a@b.com' }))).rejects.toThrow();
   });
 });
