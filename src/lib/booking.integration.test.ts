@@ -14,6 +14,11 @@ const TZ = 'Europe/Istanbul';
 // 2026-07-27 is a Monday; window is Monday 08:00–09:00 local ⇒ block start 05:00Z.
 const MON = '2026-07-27';
 const START = zonedWallClockToUtc(MON, '08:00', TZ);
+// Frozen clock, one day before START. Every `now`-sensitive gate here (isBookingOpen
+// rejects a past startAt; cancel rejects once the session has started) is relative to
+// START, so the suite must never read the real clock — a fixed past MON would otherwise
+// silently rot the whole file the moment that date slipped into the past.
+const NOW = new Date(START.getTime() - 24 * 60 * 60 * 1000);
 
 describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   let pool: Pool;
@@ -46,9 +51,9 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const u2 = await newMember(s.club.id, 'u2');
     const u3 = await newMember(s.club.id, 'u3');
     const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular' as const };
-    const r1 = await bookSeat(db, { ...common, userId: u1, idempotencyKey: key() });
-    const r2 = await bookSeat(db, { ...common, userId: u2, idempotencyKey: key() });
-    const r3 = await bookSeat(db, { ...common, userId: u3, idempotencyKey: key() });
+    const r1 = await bookSeat(db, { ...common, userId: u1, idempotencyKey: key(), now: NOW });
+    const r2 = await bookSeat(db, { ...common, userId: u2, idempotencyKey: key(), now: NOW });
+    const r3 = await bookSeat(db, { ...common, userId: u3, idempotencyKey: key(), now: NOW });
     expect(r1).toMatchObject({ ok: true, outcome: 'seated' });
     expect(r2).toMatchObject({ ok: true, outcome: 'seated' });
     expect(r3).toMatchObject({ ok: true, outcome: 'waitlisted', queuePosition: 1 });
@@ -60,8 +65,8 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const s = await scenario({ seats: 2 });
     const u = await newMember(s.club.id, 'u');
     const k = key();
-    const first = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: k });
-    const again = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: k });
+    const first = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: k, now: NOW });
+    const again = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: k, now: NOW });
     expect(first.ok && again.ok && first.bookingId === again.bookingId).toBe(true);
     const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u));
     expect(rows).toHaveLength(1);
@@ -70,7 +75,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   it('guarantees exactly capacity under a concurrent rush', async () => {
     const s = await scenario({ seats: 3 });
     const uids = await Promise.all(Array.from({ length: 12 }, (_v, i) => newMember(s.club.id, `rush${i}`)));
-    const results = await Promise.all(uids.map((uid) => bookSeat(db, { clubId: s.club.id, userId: uid, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() })));
+    const results = await Promise.all(uids.map((uid) => bookSeat(db, { clubId: s.club.id, userId: uid, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW })));
     expect(results.every((r) => r.ok)).toBe(true);
     const sessionRows = await db.select().from(schema.sessions).where(eq(schema.sessions.clubId, s.club.id));
     const seated = await db.select().from(schema.bookings).where(and(inArray(schema.bookings.sessionId, sessionRows.map((x) => x.id)), eq(schema.bookings.status, 'booked')));
@@ -80,7 +85,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   it('rejects an ineligible member (skill too low) with no booking written', async () => {
     const s = await scenario({ seats: 2, minSkillRank: 5 });
     const u = await newMember(s.club.id, 'low', null);
-    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
+    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
     expect(r).toEqual({ ok: false, error: 'ineligible', reason: 'skill_too_low' });
     const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u));
     expect(rows).toHaveLength(0);
@@ -89,8 +94,8 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   it('rejects a second boat in the same slot', async () => {
     const s = await scenario({ seats: 2, quantity: 2 });
     const u = await newMember(s.club.id, 'dbl');
-    const first = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
-    const second = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
+    const first = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
+    const second = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
     expect(first.ok).toBe(true);
     expect(second).toEqual({ ok: false, error: 'already_booked_this_slot' });
   });
@@ -99,8 +104,8 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const s = await scenario({ seats: 1, mode: 'priority' });
     const um = await newMember(s.club.id, 'ms');
     const ur = await newMember(s.club.id, 'reg');
-    const rm = await bookSeat(db, { clubId: s.club.id, userId: um, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'multisport', idempotencyKey: key() });
-    const rr = await bookSeat(db, { clubId: s.club.id, userId: ur, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
+    const rm = await bookSeat(db, { clubId: s.club.id, userId: um, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'multisport', idempotencyKey: key(), now: NOW });
+    const rr = await bookSeat(db, { clubId: s.club.id, userId: ur, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
     expect(rm).toMatchObject({ ok: true, outcome: 'seated' });
     expect(rr).toMatchObject({ ok: true, outcome: 'waitlisted' });
     const msBooking = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, um));
@@ -111,10 +116,10 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const s = await scenario({ seats: 1 });
     const u1 = await newMember(s.club.id, 'c1');
     const u2 = await newMember(s.club.id, 'c2');
-    const r1 = await bookSeat(db, { clubId: s.club.id, userId: u1, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
-    await bookSeat(db, { clubId: s.club.id, userId: u2, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
+    const r1 = await bookSeat(db, { clubId: s.club.id, userId: u1, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
+    await bookSeat(db, { clubId: s.club.id, userId: u2, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
     expect(r1.ok).toBe(true);
-    const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: (r1 as { bookingId: string }).bookingId, now: new Date('2026-07-01T00:00:00Z') });
+    const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: (r1 as { bookingId: string }).bookingId, now: NOW });
     expect(cancel).toMatchObject({ ok: true });
     const promoted = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u2));
     expect(promoted[0].status).toBe('booked');
@@ -123,7 +128,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   it('blocks self-cancel after the cutoff', async () => {
     const s = await scenario({ seats: 2, cutoffHours: 8 });
     const u = await newMember(s.club.id, 'cut');
-    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
+    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
     // now = 2h before start (< 8h cutoff)
     const late = new Date(START.getTime() - 2 * 60 * 60 * 1000);
     const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u, bookingId: (r as { bookingId: string }).bookingId, now: late });
@@ -134,7 +139,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const s = await scenario({ seats: 2 });
     await db.insert(schema.clubHolidayOverrides).values({ clubId: s.club.id, date: MON, isOpen: false });
     const u = await newMember(s.club.id, 'closed');
-    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
+    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
     expect(r).toEqual({ ok: false, error: 'no_session' });
     const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u));
     expect(rows).toHaveLength(0);
@@ -158,7 +163,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   it('rejects cancelling once the session has already started, even with no cutoff configured', async () => {
     const s = await scenario({ seats: 2, cutoffHours: null });
     const u = await newMember(s.club.id, 'started');
-    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key() });
+    const r = await bookSeat(db, { clubId: s.club.id, userId: u, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
     expect(r.ok).toBe(true);
     const afterStart = new Date(START.getTime() + 60 * 60 * 1000); // 1h after START
     const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u, bookingId: (r as { bookingId: string }).bookingId, now: afterStart });
@@ -172,8 +177,8 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const u1 = await newMember(s.club.id, 'u1');
     const u2 = await newMember(s.club.id, 'u2');
     const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START };
-    const r1 = await bookSeat(db, { ...common, userId: u1, paymentType: 'multisport', idempotencyKey: key() });
-    const r2 = await bookSeat(db, { ...common, userId: u2, paymentType: 'regular', idempotencyKey: key() });
+    const r1 = await bookSeat(db, { ...common, userId: u1, paymentType: 'multisport', idempotencyKey: key(), now: NOW });
+    const r2 = await bookSeat(db, { ...common, userId: u2, paymentType: 'regular', idempotencyKey: key(), now: NOW });
     expect(r1).toMatchObject({ ok: true, outcome: 'seated' });
     expect(r2).toMatchObject({ ok: true, outcome: 'waitlisted' });
     const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, s.club.id));
@@ -186,10 +191,10 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const u1 = await newMember(s.club.id, 'u1');
     const u2 = await newMember(s.club.id, 'u2');
     const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular' as const };
-    const r1 = await bookSeat(db, { ...common, userId: u1, idempotencyKey: key() });
-    await bookSeat(db, { ...common, userId: u2, idempotencyKey: key() });
+    const r1 = await bookSeat(db, { ...common, userId: u1, idempotencyKey: key(), now: NOW });
+    await bookSeat(db, { ...common, userId: u2, idempotencyKey: key(), now: NOW });
     if (!r1.ok) throw new Error('setup');
-    const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: r1.bookingId });
+    const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: r1.bookingId, now: NOW });
     expect(cancel).toMatchObject({ ok: true, promoted: { userId: u2, sessionId: expect.any(String) } });
     const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, s.club.id));
     expect(rows.find((r) => r.userId === u2)!.status).toBe('booked');
@@ -200,10 +205,10 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const u1 = await newMember(s.club.id, 'u1');
     const u2 = await newMember(s.club.id, 'u2');
     const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular' as const };
-    await bookSeat(db, { ...common, userId: u1, idempotencyKey: key() });
-    const r2 = await bookSeat(db, { ...common, userId: u2, idempotencyKey: key() });
+    await bookSeat(db, { ...common, userId: u1, idempotencyKey: key(), now: NOW });
+    const r2 = await bookSeat(db, { ...common, userId: u2, idempotencyKey: key(), now: NOW });
     if (!r2.ok) throw new Error('setup');
-    const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u2, bookingId: r2.bookingId });
+    const cancel = await cancelBooking(db, { clubId: s.club.id, userId: u2, bookingId: r2.bookingId, now: NOW });
     expect(cancel).toEqual({ ok: true });
     const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, s.club.id));
     expect(rows.find((r) => r.userId === u1)!.status).toBe('booked');
@@ -214,10 +219,10 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const u1 = await newMember(s.club.id, 'u1');
     const u2 = await newMember(s.club.id, 'u2');
     const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular' as const };
-    const r1 = await bookSeat(db, { ...common, userId: u1, idempotencyKey: key() });
-    await bookSeat(db, { ...common, userId: u2, idempotencyKey: key() });
+    const r1 = await bookSeat(db, { ...common, userId: u1, idempotencyKey: key(), now: NOW });
+    await bookSeat(db, { ...common, userId: u2, idempotencyKey: key(), now: NOW });
     if (!r1.ok) throw new Error('setup');
-    const selfBlocked = await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: r1.bookingId });
+    const selfBlocked = await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: r1.bookingId, now: NOW });
     expect(selfBlocked).toEqual({ ok: false, error: 'cutoff_passed' });
     const removed = await ownerRemoveBooking(db, { clubId: s.club.id, bookingId: r1.bookingId });
     expect(removed).toMatchObject({ ok: true, promoted: { userId: u2 } });
@@ -228,7 +233,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   it('owner seats a member into a free seat, tagged source=owner', async () => {
     const s = await scenario({ seats: 2, allowedPayment: 'both' });
     const u1 = await newMember(s.club.id, 'u1');
-    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular' });
+    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
     expect(res).toMatchObject({ ok: true });
     if (!res.ok) throw new Error('add failed');
     const [row] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, res.bookingId));
@@ -240,15 +245,15 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const s = await scenario({ seats: 1, allowedPayment: 'both' });
     const u1 = await newMember(s.club.id, 'u1');
     const u2 = await newMember(s.club.id, 'u2');
-    await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular' });
-    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u2, paymentType: 'regular' });
+    await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
+    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u2, paymentType: 'regular', now: NOW });
     expect(res).toEqual({ ok: false, error: 'session_full' });
   });
 
   it('owner-add rejects a non-approved member', async () => {
     const s = await scenario({ seats: 2, allowedPayment: 'both' });
     const pend = await newMember(s.club.id, 'p', null, 'pending');
-    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: pend, paymentType: 'regular' });
+    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: pend, paymentType: 'regular', now: NOW });
     expect(res).toEqual({ ok: false, error: 'not_a_member' });
   });
 });

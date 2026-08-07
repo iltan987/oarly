@@ -1,4 +1,5 @@
 // Generated via `pnpm auth:generate` (better-auth CLI), then hand-edited: keep pgEnum on default_payment_type, timestamptz on all timestamps, date() for birthday, and NOT NULL + defaults on locale/theme/isAdmin. Re-apply these edits after any future regen.
+// The CLI is deliberately NOT a devDependency — it hard-depends on better-sqlite3 (unused here, +54MB, deprecated prebuild-install) and drags in a second better-auth/drizzle-orm tree. `auth:generate` runs it via `pnpm dlx` at a version pinned in package.json, so regen output stays reproducible; bump that pin deliberately, not incidentally.
 import { relations } from "drizzle-orm";
 import { boolean, date, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
