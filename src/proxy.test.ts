@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetRateLimitState } from '@/lib/rate-limit';
+import { RATE_LIMITS } from '@/lib/rate-limit-config';
 import * as rateLimitGuard from '@/lib/rate-limit-guard';
 
 import { proxy } from '../proxy';
@@ -75,11 +76,16 @@ describe('proxy', () => {
 });
 
 describe('proxy — §17 general baseline', () => {
+  // Derived from the config rather than hardcoded: this rule is deliberately tuned (it was
+  // raised from 100 to 1000 so a whole club behind one NAT cannot exhaust it at slot-open),
+  // and a hardcoded count here would turn every future tuning into a spurious test failure.
+  const BASELINE = RATE_LIMITS.apiBaselinePerIp.limit;
+
   beforeEach(() => { resetRateLimitState(); });
 
-  it('allows up to 100 POSTs/min per IP, then rejects the 101st with 429', async () => {
+  it('allows up to the baseline POSTs/min per IP, then rejects the next one with 429', async () => {
     const ip = '203.0.113.50';
-    for (let i = 0; i < 100; i += 1) {
+    for (let i = 0; i < BASELINE; i += 1) {
       const res = await proxy(postReq(ip));
       expect(res.status).not.toBe(429);
     }
@@ -87,19 +93,22 @@ describe('proxy — §17 general baseline', () => {
     expect(res.status).toBe(429);
   });
 
-  it('the 429 carries a positive integer Retry-After header', async () => {
+  it('the 429 carries a positive integer Retry-After header no larger than the window', async () => {
     const ip = '203.0.113.51';
-    for (let i = 0; i < 100; i += 1) await proxy(postReq(ip));
+    for (let i = 0; i < BASELINE; i += 1) await proxy(postReq(ip));
     const res = await proxy(postReq(ip));
     expect(res.status).toBe(429);
     const retryAfter = res.headers.get('retry-after');
     expect(retryAfter).toMatch(/^\d+$/);
     expect(Number(retryAfter)).toBeGreaterThan(0);
+    // Upper bound too, so a seconds/milliseconds mix-up cannot survive: a `* 1000` would
+    // report 60000, which /^\d+$/ and "> 0" both accept.
+    expect(Number(retryAfter)).toBeLessThanOrEqual(RATE_LIMITS.apiBaselinePerIp.windowSec);
   });
 
   it('still routes a GET normally from an IP already exhausted on POST', async () => {
     const ip = '203.0.113.52';
-    for (let i = 0; i < 100; i += 1) await proxy(postReq(ip));
+    for (let i = 0; i < BASELINE; i += 1) await proxy(postReq(ip));
     const blocked = await proxy(postReq(ip));
     expect(blocked.status).toBe(429); // sanity: this IP really is exhausted for POST
     const res = await proxy(getReq(ip));

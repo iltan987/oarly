@@ -42,7 +42,8 @@ module stays the single tuning point.
 |---|---|---|
 | `/api/auth/sign-in/email` | credential stuffing against a leaked password list | account takeover |
 | `/api/auth/sign-up/email` | signup flood | junk users, Resend quota burn |
-| `/api/auth/forget-password` | mail-bomb a known member | Resend quota, member harassment |
+| `/api/auth/request-password-reset` | mail-bomb a known member | Resend quota, member harassment |
+| `/api/auth/send-verification-email` | mail-bomb a known *unverified* member | Resend quota, member harassment |
 | `bookSeatAction` | scripted seat sniping at slot-open | unfair allocation; DB advisory-lock contention |
 | `cancelBookingAction` | cancel/rebook churn | one waitlist-promotion email per cycle |
 | `requestClubAction` | club-request flood | admin inbox flood |
@@ -50,8 +51,14 @@ module stays the single tuning point.
 | `/api/club-logo/upload` | Blob token minting | storage cost |
 | `setLocale` (unguarded) | trivial POST flood | function invocations |
 
-The booking row's `(user_id, idempotency_key)` dedupe (§10) already absorbs the honest
-double-taps of the slot-open rush, so the booking limits only need to stop scripts.
+The booking row's `(user_id, idempotency_key)` dedupe (§10 of the platform design) makes an
+honest double-tap harmless *to the database* — the second insert is discarded rather than
+double-booking a seat. It does **not**, however, make a double-tap free to the limiter:
+`enforceRateLimit` runs at the top of `bookSeatAction`, above the parse and above
+`bookSeat`, so both taps consume a token before the dedupe is ever consulted. The booking
+limits must therefore be sized for real human traffic *including* its double-taps, not just
+for scripts. (This corrected a claim in an earlier draft of this section that the dedupe
+"already absorbs" the rush; it absorbs the rows, not the tokens.)
 
 ## 4. Architecture
 
@@ -59,7 +66,7 @@ Four layers, each covering what the layer above cannot reach.
 
 ```
                         ┌────────────────────────────────────────┐
-  every non-/api POST → │ proxy.ts  — §17 general baseline       │  100/min per IP
+  every non-/api POST → │ proxy.ts  — §17 general baseline       │  1000/min per IP
                         │            (server actions)            │
                         └────────────────────────────────────────┘
                         ┌────────────────────────────────────────┐
@@ -130,7 +137,8 @@ Oarly is ever fronted by something else, or run directly, per-IP limits become b
 by rotating the header. Documented in the file header.
 
 All local requests resolve to `'unknown'` and therefore share a single per-IP bucket.
-That is fine — and is why the per-IP limits are set well above the per-account ones.
+That is fine — and is why the per-IP limits are set well above the per-account ones
+(§4.8 gives the ratios and the arithmetic that fixed them).
 
 ### 4.3 The action adapter (`src/lib/rate-limit-guard.ts`)
 
@@ -145,6 +153,16 @@ Checks run **sequentially and short-circuit**: if the per-account bucket rejects
 per-IP bucket is not touched. A single abusive account must not be able to burn the
 shared per-IP bucket for everyone behind the same NAT — a rowing club's members plausibly
 share one office or gym IP.
+
+The short-circuit is a mitigation, not the guarantee. The guarantee has to come from the
+*ratio* between the shared bucket and the private one: the per-IP limits must sit far
+enough above the per-account ones that a plausible number of members, each acting entirely
+within their own permitted rate, still cannot exhaust the shared bucket. That premise was
+**false as first shipped** — `bookingPerIp`/`bookingPerAccount` was only 6:1, so six
+members at their own permitted rate emptied the club's bucket. It is now **60:1**
+(600/min vs 10/min), which covers 60 members at full private rate, above the ~40-member
+club the product targets and well above the ~30-member break-even the old ratio implied.
+See §4.8.
 
 This module reads no request state itself; the action passes the already-resolved IP in.
 Core purity is preserved: `src/lib/booking.ts` and friends are untouched.
@@ -194,7 +212,7 @@ When the baseline trips, the proxy returns a bare `429` with a `Retry-After` hea
 
 **Known UX caveat, accepted:** a raw 429 to a server-action POST is not an RSC payload,
 so React's client runtime surfaces it as a generic "something went wrong" rather than a
-toast. At 100/min per IP this only trips for scripted abuse, and the named-action limits
+toast. At 1000/min per IP this only trips for scripted abuse, and the named-action limits
 in §4.3 — which *do* produce a proper toast — are all far tighter, so a human hits those
 first. Not worth a custom RSC error envelope.
 
@@ -203,8 +221,11 @@ first. Not worth a custom RSC error envelope.
 Three changes to `src/auth.ts`:
 
 1. **`customRules`** implementing §17 per-endpoint, per-IP thresholds:
-   `/sign-in/email` 20/min, `/sign-up/email` 5/hour, `/forget-password` and
-   `/reset-password` 10/hour, `/send-verification-email` 10/hour. The flat
+   `/sign-in/email` 20/min, `/sign-up/email` 30/hour, `/request-password-reset` and
+   `/reset-password` 60/hour, `/send-verification-email` 60/hour. (An earlier draft named
+   the reset endpoint `/forget-password`; better-auth 1.6.26 calls it
+   `/request-password-reset`, which is what the implementation has always used. The hourly
+   numbers are the retuned ones — see §4.8.) The flat
    `window: 60, max: 100` stays as the fallback for every other auth endpoint.
 
 2. **`customStorage`** backed by the same Upstash client, so limits are shared across
@@ -253,6 +274,66 @@ container is not enough. `docker-compose.yml` gains two services behind a
 Docker. It is the only place the Upstash path is exercised end to end: it proves the
 atomicity claim by firing N concurrent `rateLimit` calls at a limit of K and asserting
 exactly K succeed — the assertion the old `INCR`/`EXPIRE` implementation would fail.
+
+### 4.8 Per-IP threshold tuning (2026-08-07, post-implementation)
+
+§17 introduces its numbers as "default thresholds (tunable in one config)". The whole-branch
+review found that the per-IP defaults, once all four layers of §4 were actually stacked,
+lock out a legitimate club. They are retuned here. **Only the shared per-IP rules move; every
+per-account and per-email rule keeps its §17 value.**
+
+| Rule | §17 default | Now | Ratio to its private counterpart |
+|---|---|---|---|
+| `bookingPerIp` | 60 / min | **600 / min** | 60:1 vs `bookingPerAccount` (10/min) |
+| `apiBaselinePerIp` | 100 / min | **1000 / min** | above `bookingPerIp`, so it never binds first |
+| `signupPerIp` | 5 / hour | **30 / hour** | — |
+| `passwordResetPerIp` | 10 / hour | **60 / hour** | 20:1 vs `passwordResetPerEmail` (3/hour) |
+
+**The shared-NAT arithmetic.** A booking submit is a single POST to `/s/<slug>/book`. That
+path is **not** under `/api`, so it passes `proxy.ts`'s matcher and the request is charged
+*three* tokens, not one:
+
+| Token | Rule | Dimension |
+|---|---|---|
+| 1 | `apiBaselinePerIp` (proxy, §4.5) | **shared** per egress IP |
+| 2 | `bookingPerIp` (action, §4.4) | **shared** per egress IP |
+| 3 | `bookingPerAccount` (action, §4.4) | private per member |
+
+The effective ceiling for one egress IP is therefore `min(bookingPerIp, apiBaselinePerIp)`.
+At the §17 defaults that is `min(60, 100) = 60` booking submits per minute — **for the
+entire club**, since a rowing club plausibly sits behind one boathouse, gym, or office NAT.
+
+Sizing that against the product's target: a 40-member club, each member booking two
+outings, fires ~80 POSTs in the minute the slot opens. Break-even is 30 members at 2
+outings. So 20 of 40 members are refused — and because both backends use a **fixed**
+window whose TTL is set on first increment, they stay refused until the boundary rolls,
+by which time the seats are gone. Worse, the refusal arrives as a bare proxy 429 (§4.5),
+which React surfaces as "something went wrong", so the member has no idea waiting is the
+remedy.
+
+Also note the token ordering: because `bookingPerAccount` is checked *after* the proxy has
+already spent an `apiBaselinePerIp` token, §4.3's short-circuit cannot protect the shared
+bucket from the proxy layer. Only the ratio can.
+
+**Why raise the shared limits rather than tighten the private one.** `bookingPerAccount`
+stays at 10/min: it is per-member, so a shared NAT does not aggregate it, and it is the
+control that genuinely stops scripted sniping. The per-IP dimension, by contrast, is
+trivially evaded by an attacker rotating IPs — it buys almost no enforcement — while being
+the one dimension a legitimate club is forced to share. A limit that costs honest users a
+seat and costs an attacker a proxy rental is the wrong limit. So the per-IP rules are sized
+to **never bind on legitimate traffic**, retained only to blunt a crude single-source
+flood.
+
+Same shape, smaller numbers, on the auth endpoints: an admin onboarding 20 new members from
+the clubhouse Wi-Fi hits `signupPerIp` at member 6 and the rest are locked out for an hour.
+30/hour clears that with headroom. `passwordResetPerIp` goes to 60/hour for the same
+reason, and the mail-bomb control stays exactly where it was — `passwordResetPerEmail` at
+3/hour, keyed on the *target mailbox*, which no NAT aggregates and no IP rotation evades
+(§4.6, extended in the same round to cover `/send-verification-email`).
+
+Guarded by `rate-limit-config.test.ts`, which asserts the baseline stays above every named
+per-minute per-IP rule and that the booking ratio leaves room for 40 members at full
+private rate.
 
 ## 5. Testing
 

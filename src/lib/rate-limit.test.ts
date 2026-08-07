@@ -107,8 +107,8 @@ describe('rateLimit (in-memory fallback)', () => {
 
   it('keeps buckets separate per rule even when two rules share identical thresholds', async () => {
     // The real hazard this guards against: two DIFFERENT rules with the SAME `limit`
-    // and `windowSec` (several such pairs exist in RATE_LIMITS, e.g. `bookingPerIp` and
-    // `localePerIp` are both `{ limit: 60, windowSec: 60 }`) called with the same
+    // and `windowSec` (such pairs exist in RATE_LIMITS, e.g. `joinRequestPerAccount` and
+    // `logoUploadPerAccount` are both `{ limit: 20, windowSec: 60 * 60 }`) called with the same
     // caller-supplied identifier (e.g. the same account id, or the same IP) must not
     // share one counter. Deliberately does NOT vary limit/windowSec between the two
     // rules — that would only prove the OLD (values-based) storageKey worked, not that

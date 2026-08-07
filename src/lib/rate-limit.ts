@@ -37,9 +37,10 @@ const PREFIX = 'oarly:rl';
  * counter.
  *
  * Discriminating on `rule.name` rather than `rule.limit`/`rule.windowSec` is deliberate:
- * `RATE_LIMITS` already has multiple rules with identical thresholds (e.g. `bookingPerIp`
- * and `localePerIp` are both `{ limit: 60, windowSec: 60 }`), so keying on the values
- * would have reproduced the exact collision this function exists to prevent. `name` is
+ * `RATE_LIMITS` already has multiple rules with identical thresholds (e.g.
+ * `joinRequestPerAccount` and `logoUploadPerAccount` are both
+ * `{ limit: 20, windowSec: 60 * 60 }`), so keying on the values would have reproduced the
+ * exact collision this function exists to prevent. `name` is
  * kept in sync with each rule's own `RATE_LIMITS` key by
  * `rate-limit-config.test.ts`.
  */
@@ -65,14 +66,25 @@ function inMemory(key: string, rule: RateRule, now: number): RateResult {
 }
 
 // --- Upstash-backed limiter (production) ---
-// `Ratelimit` is constructed per distinct rule and memoized at module scope, together
-// with a per-rule ephemeral cache. Both must live outside any request handler: that is
-// the only way Fluid Compute's instance reuse can reject an already-blocked identifier
-// without paying a Redis round trip. Each rule gets its OWN cache Map, so a blocked
-// identifier cached under one rule cannot leak a false block into another rule's cache —
-// but the cache is a separate concern from the Redis key itself, which is why callers
-// pass `storageKey(key, rule)` as the identifier rather than the raw `key` (see its
-// doc comment).
+// `Ratelimit` instances are memoized at module scope, each with its own ephemeral cache.
+// Both must live outside any request handler: that is the only way Fluid Compute's
+// instance reuse can reject an already-blocked identifier without paying a Redis round
+// trip.
+//
+// The memo is keyed on `${limit}:${windowSec}` — the limiter's own configuration — NOT on
+// the rule name, so rules that happen to share thresholds SHARE one `Ratelimit` and one
+// ephemeral cache Map. That is deliberate and safe, but for a reason worth stating: the
+// identifier every caller passes to `.limit()` is `storageKey(key, rule)`, which is
+// name-prefixed, and the ephemeral cache is keyed on that identifier. So two rules sharing
+// an instance still occupy disjoint regions of the shared cache (and of Redis), and a
+// blocked identifier under one rule cannot leak a false block into another. Constructing a
+// second identical `Ratelimit` per name would only add an instance and a cache, never
+// change a verdict.
+//
+// The two schemes have therefore DIVERGED on purpose: the memo discriminates on
+// behaviour, the storage key discriminates on identity. Do not "align" them by keying the
+// memo on `rule.name` under the impression that isolation depends on it, and do not key
+// storage on thresholds — that direction is a real collision (see `storageKey`).
 const limiters = new Map<string, Ratelimit>();
 let redis: Redis | null = null;
 

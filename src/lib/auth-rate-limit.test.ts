@@ -86,9 +86,19 @@ describe('authRateLimitRules', () => {
     });
   });
 
-  it('uses the §17 values', () => {
-    expect(authRateLimitRules['/sign-up/email']).toEqual({ window: 3600, max: 5 });
+  it('uses the tuned §17 values', () => {
+    // §17 calls its numbers "default thresholds (tunable in one config)". The per-IP auth
+    // rules were tuned upward from those defaults (sign-up 5 -> 30/hour, password reset
+    // 10 -> 60/hour) because a club onboarding from one clubhouse Wi-Fi shares a single
+    // egress IP; the untouched per-EMAIL rule below is the control that actually bounds
+    // mail volume. Pinned literally so a future edit to rate-limit-config.ts has to come
+    // here and restate the intent.
     expect(authRateLimitRules['/sign-in/email']).toEqual({ window: 60, max: 20 });
+    expect(authRateLimitRules['/sign-up/email']).toEqual({ window: 3600, max: 30 });
+    expect(authRateLimitRules['/request-password-reset']).toEqual({ window: 3600, max: 60 });
+    expect(RATE_LIMITS.passwordResetPerEmail).toEqual({
+      name: 'passwordResetPerEmail', limit: 3, windowSec: 3600,
+    });
   });
 });
 

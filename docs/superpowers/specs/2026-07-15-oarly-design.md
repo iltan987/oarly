@@ -372,12 +372,27 @@ Destruction or Anonymization of Personal Data:
 - **DB:** Neon Postgres (Vercel Marketplace), **Drizzle ORM**. **Email:** Resend.
 - **Hosting:** Vercel (Fluid Compute); middleware for tenant resolution.
 - **Rate-limiting:** edge limiter backed by a Redis-style store (e.g. Upstash via Marketplace).
-  Default thresholds (tunable in one config):
+  Default thresholds (tunable in one config — `src/lib/rate-limit-config.ts`; the per-IP numbers
+  below were retuned on 2026-08-07, see the note after the list):
   - **Login:** 5 failed attempts / 15 min per account (then exponential backoff), 20 / min per IP.
-  - **Sign-up:** 5 / hour per IP. **Password reset / verify resend:** 3 / hour per email, 10 / hour per IP.
-  - **Booking submit:** 10 / min per account, 60 / min per IP (idempotency, §10, absorbs the legitimate
-    double-taps of the rush; this only stops scripted spam).
-  - **General API baseline:** 100 / min per IP.
+  - **Sign-up:** 30 / hour per IP *(was 5)*. **Password reset / verify resend:** 3 / hour per email,
+    60 / hour per IP *(was 10)*.
+  - **Booking submit:** 10 / min per account, 600 / min per IP *(was 60)*. The per-account rule is what
+    stops scripted spam; the idempotency key (§10) dedupes double-taps in the DB but does **not** save a
+    rate-limit token, because the limiter runs before the insert.
+  - **General API baseline:** 1000 / min per IP *(was 100)*.
+
+  **Why the per-IP numbers moved.** A per-IP bucket is shared by everyone behind one NAT and private to
+  nobody, and Oarly's users are clubs whose members plausibly all sit on one boathouse / gym / office
+  egress address — so a per-IP ceiling is in practice a per-**club** ceiling. At the original values a
+  single booking POST charged both the general baseline (100/min) and the booking per-IP rule (60/min),
+  giving a shared ceiling of min(60, 100) = 60 booking submits per minute for an entire club; a
+  40-member club booking two outings each at slot-open sends ~80 and 20 members are refused until the
+  fixed window rolls, by which time the seats are gone. The same shape locked out an admin onboarding
+  20 members from the clubhouse Wi-Fi at 5 sign-ups/hour. Conversely a real attacker rotates IPs for
+  pennies, so the per-IP dimension buys little enforcement in the first place. The per-IP rules are
+  therefore sized to never bind on legitimate traffic, and the per-**account** / per-**email** rules —
+  all left at their original values — are the controls that actually stop abuse.
 - **Cron (Vercel):** nightly slot/session generation; frequent (few minutes) slot-open + pre-reservation
   reveal + seating recompute; hourly reminders *(stretch)*.
 - **Time:** store UTC; render in club timezone (`Europe/Istanbul` default).
