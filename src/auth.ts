@@ -95,9 +95,60 @@ export const auth = betterAuth({
     },
   },
 
-  advanced: env.COOKIE_DOMAIN
-    ? { crossSubDomainCookies: { enabled: true, domain: env.COOKIE_DOMAIN } }
-    : {},
+  advanced: {
+    /**
+     * How better-auth derives the client IP it keys its own rate limits on.
+     *
+     * WITHOUT this block better-auth 1.6.26 trusts `x-forwarded-for` ONLY when the header
+     * holds a single value — `if (forwardedIps.length !== 1) return null;` in
+     * `@better-auth/core/dist/utils/ip.mjs` (`getIPFromHeader`). On `null` its limiter
+     * substitutes the literal `NO_TRUSTED_IP_KEY` (`better-auth/dist/api/rate-limiter/
+     * index.mjs`, `resolveRateLimitConfig`), so the rate-limit key stops being
+     * `${ip}|${path}` and becomes `no-trusted-ip|${path}`: EVERY auth request on the
+     * platform lands in ONE bucket. `/sign-in/email` would be 20 sign-ins per minute for
+     * the whole SaaS, with zero per-IP protection. Dormant on stock Vercel, whose edge
+     * sets a single-valued header — and live the moment anything is put in front of it
+     * (Cloudflare, a corporate proxy, a CDN), which is a deployment change, not a code
+     * change, and would fail silently as "sign-in is mysteriously flaky".
+     *
+     * Setting `trustedProxies` to a non-empty list of valid CIDRs is what switches
+     * `getIPFromHeader` out of that single-value-only mode: it then walks the chain from
+     * the RIGHT, skipping hops that match the list, and returns the first one that does
+     * not. We deliberately list a range that can never match a real hop, so nothing is
+     * actually trusted and the walk always stops at the rightmost entry — the address our
+     * own edge observed, i.e. the only entry in the chain a remote client cannot append
+     * to. `192.0.2.0/24` is RFC 5737 TEST-NET-1, reserved for documentation and not
+     * globally routable, which is exactly why it is safe as that sentinel (it is also the
+     * range better-auth's own option docs use in their example). The effect is: a chained
+     * header still yields a real per-IP key instead of collapsing the platform into one
+     * bucket.
+     *
+     * `ipAddressHeaders` is stated explicitly rather than left at its `['x-forwarded-for']`
+     * default so the header PRECEDENCE matches `src/lib/request-ip.ts` (forwarded-for
+     * first, `x-real-ip` as the fallback) — Vercel sets both single-valued, so the
+     * fallback also covers a forwarded-for we cannot parse at all.
+     *
+     * TRUST ASSUMPTION, same one as `src/lib/request-ip.ts`'s file header: this is only
+     * safe because Vercel's edge overwrites these headers on every inbound request, so a
+     * client cannot spoof them. Run this app with no proxy in front and per-IP limits
+     * become bypassable by rotating the header — here as much as there.
+     *
+     * NOTE the deliberate divergence from `parseClientIp`: that function takes the
+     * LEFTMOST chain entry (the client, per the XFF convention) because it keys our own
+     * limits; better-auth cannot express leftmost-wins, so it keys on the rightmost. The
+     * two therefore agree on stock Vercel (single value: leftmost === rightmost) and
+     * differ only behind an extra proxy, where they are still both per-IP and neither
+     * collapses. Do not "align" them by trusting broad ranges — trusting a range that
+     * covers real clients is what would make the chain spoofable.
+     */
+    ipAddress: {
+      ipAddressHeaders: ['x-forwarded-for', 'x-real-ip'],
+      trustedProxies: ['192.0.2.0/24'],
+    },
+    ...(env.COOKIE_DOMAIN
+      ? { crossSubDomainCookies: { enabled: true, domain: env.COOKIE_DOMAIN } }
+      : {}),
+  },
 
   trustedOrigins,
 
