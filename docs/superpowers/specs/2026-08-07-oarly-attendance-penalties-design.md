@@ -270,6 +270,58 @@ clubs.
 
 ---
 
+## Half C — Bounded waitlists
+
+**The gap.** `resolveSeating` (`src/lib/seating.ts:19-32`) waitlists *everyone* beyond capacity, with no
+upper bound. A 4-seat session with 15 hopefuls yields 4 seated and 11 waiting — a queue longer than the
+boat, most of whom will never get a seat, all of whom keep a live booking row and will receive
+promotion mail that never comes. Nothing in the codebase caps it today.
+
+**`clubs.waitlist_capacity`**, a nullable integer, sits with the other booking policies. `null` means
+unlimited, which is exactly today's behaviour, so existing clubs are unaffected until an owner sets a
+number. It is a club policy rather than a per-boat property for the same reason `cancel_cutoff_hours`
+is: it describes how much queue the club wants to manage, not a physical fact about a hull. Owners set
+it on the Policies page alongside the cancellation cutoff.
+
+**Admission is checked, not ordered.** `resolveSeating` stays untouched — it decides *who* gets the
+seats, and that is a separate question from *who is allowed to join at all*. The cap is admission
+control in `bookSeat`, evaluated under the per-slot advisory lock it already takes:
+
+> count active bookings for the target session; if `count >= capacity + waitlistCapacity`, return
+> `waitlist_full`.
+
+Unlike the MultiSport daily limit, this needs **no unique index**. The invariant is confined to one
+session, and the per-slot advisory lock already serializes every booking for that slot — so the count
+cannot go stale between the check and the insert. The rush case is exactly what the lock was built for:
+of 15 concurrent requests against a 4+4 session, the first 8 are admitted in arrival order and the
+remaining 7 each read a full count and are turned away with a typed error.
+
+**Target selection follows.** `bookSeat` picks among a boat's sessions by preferring one with a free
+seat and otherwise the shortest queue. With a cap, "shortest queue" must also mean "not already at the
+cap"; if every session of the chosen boat is full to its waitlist limit, the booking is rejected rather
+than being forced into one of them.
+
+**`ownerAddBooking` is unaffected** — it is empty-seat-only and never creates a waitlist entry.
+Promotion is unaffected too: it only ever shortens a queue.
+
+**Member-facing.** `member-calendar` gains `waitlistLeft: number | null` per session (null = unlimited).
+The session card grows a state between "full" and "unavailable": a full session with room in the queue
+still offers **Join waitlist**, while one whose queue is also full reads **Waitlist full** with no
+action. Without that state a member would be shown a button that always fails.
+
+**Owner-facing.** The day roster labels the waiting list `3/4` when a cap is set, so an owner can see at
+a glance that the queue is closed.
+
+---
+
+## Migration 0007
+
+`clubs.waitlist_capacity integer` (nullable). Separate from 0006 because it belongs to a different
+concern and lands with the code that reads it; adding a nullable column to `clubs` carries no backfill
+and no failure mode.
+
+---
+
 ## Migration 0006
 
 Five changes in one migration:
@@ -306,6 +358,7 @@ Typed discriminated results throughout, matching `bookSeat`; no throws across th
 | Already marked absent | `already_marked` |
 | Undo on an unmarked booking | `not_marked` |
 | MultiSport seat already held that day | `multisport_day_taken` |
+| Session seated **and** its waitlist at capacity | `waitlist_full` |
 
 Email failures never fail the action — the existing best-effort `notify` path is unchanged in that
 respect.
@@ -322,6 +375,10 @@ respect.
   undo's recompute; multi-tenant isolation (a member's bookings in another club are untouched).
 - **Integration — MultiSport:** two clubs, same day, **concurrent** `bookSeat` — exactly one wins.
   This proves the index rather than the guard, so the guard must be bypassed or raced deliberately.
+- **Integration — waitlist cap:** the rush case from the brief. A 4-seat session with
+  `waitlist_capacity = 4` and **15 concurrent bookers**: exactly 4 seated, exactly 4 waitlisted with
+  queue positions 1-4, and exactly 7 rejected with `waitlist_full`. Plus: a `null` cap still admits
+  everyone, and a cancellation reopens one queue slot.
 - Every new test threads an **explicit frozen `now`** instead of reading the clock, per the hardcoded-date
   time bomb that took out the booking suite last cycle.
 - i18n parity for the new `en` + `tr` keys.

@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let a club owner record absences from the day roster, turn each absence into a ban under the club's configured policy, enforce it through the existing eligibility gate — and separately, enforce that a MultiSport card takes at most one session per day across all clubs.
+**Goal:** Let a club owner record absences from the day roster and turn each into a ban enforced by the existing eligibility gate; enforce that a MultiSport card takes at most one session per day across all clubs; and bound the waitlist so a full session stops accepting bookers instead of queuing an unlimited number of them.
 
-**Architecture:** Two independent halves sharing one migration. Half A adds a pure rules module (`penalty.ts`) and a thin transactional core (`attendance.ts`) that marks a booking `no_show`, writes a penalty row, recomputes `memberships.banned_until` as a max over that member's penalty rows, and cancels the member's seats falling inside the ban window (promoting waitlisters). Half B adds a denormalized `bookings.booking_date` plus a partial unique index that makes the database — not application code — the guarantee for the MultiSport daily limit.
+**Architecture:** Three independent parts. **Half A** adds a pure rules module (`penalty.ts`) and a thin transactional core (`attendance.ts`) that marks a booking `no_show`, writes a penalty row, recomputes `memberships.banned_until` as a max over that member's penalty rows, and cancels the member's seats falling inside the ban window (promoting waitlisters). **Half B** adds a denormalized `bookings.booking_date` plus a partial unique index that makes the database — not application code — the guarantee for the MultiSport daily limit. **Half C** adds `clubs.waitlist_capacity` and admission control in `bookSeat`; that one needs no index, because the invariant lives inside a single session and the per-slot advisory lock already serializes it.
+
+**Task map:** Tasks 1-2 are shared groundwork (migration 0006, pure rules). Tasks 3-4 are Half B. Tasks 5-8 are Half A. Tasks 9-11 are Half C.
 
 **Tech Stack:** Next.js 16 App Router (React 19), Drizzle ORM + Postgres, Vitest (unit + integration against real PG), next-intl, react-email + Resend, Base UI via shadcn `base-nova`, Tailwind 4.
 
@@ -2291,6 +2293,548 @@ Walk through, on a club subdomain:
 ```bash
 git add "app/s/[slug]/manage" messages/
 git commit -m "feat(manage): mark and undo absences from the day roster"
+```
+
+---
+
+## Task 9: Bounded waitlists — migration 0007 and admission control
+
+**Files:**
+- Modify: `src/db/schema/clubs.ts`, `src/db/schema/clubs.test.ts`
+- Create: `drizzle/0007_*.sql` (generated)
+- Modify: `src/lib/booking.ts`, `src/lib/booking.integration.test.ts`
+
+**Interfaces:**
+- Consumes: `applySeating` / `Tx` (Task 3).
+- Produces:
+  - `clubs.waitlistCapacity` (`integer | null`; **null = unlimited**)
+  - `BookResult` gains `| { ok: false; error: 'waitlist_full' }`
+
+- [ ] **Step 1: Write the failing schema test**
+
+Append to `src/db/schema/clubs.test.ts`, matching how that file already asserts club columns:
+
+```typescript
+it('carries an optional waitlist capacity', () => {
+  const cols = Object.fromEntries(getTableConfig(clubs).columns.map((c) => [c.name, c]));
+  expect(cols['waitlist_capacity']).toBeDefined();
+  // Nullable on purpose: null means "unlimited", which is exactly the behaviour
+  // every existing club has today, so the column changes nothing until an owner
+  // sets a number.
+  expect(cols['waitlist_capacity'].notNull).toBe(false);
+});
+```
+
+- [ ] **Step 2: Run it to confirm it fails**
+
+Run: `pnpm vitest run src/db/schema/clubs.test.ts`
+Expected: FAIL — `waitlist_capacity` is undefined.
+
+- [ ] **Step 3: Add the column**
+
+In `src/db/schema/clubs.ts`, beside the other booking policies:
+
+```typescript
+  cancelCutoffHours: integer('cancel_cutoff_hours'),
+  // How many members may queue behind a full session. null = unlimited (today's
+  // behaviour). A club policy rather than a per-boat property, for the same
+  // reason cancel_cutoff_hours is: it describes how much queue the club wants to
+  // manage, not a physical fact about a hull.
+  waitlistCapacity: integer('waitlist_capacity'),
+```
+
+- [ ] **Step 4: Generate and apply the migration**
+
+```bash
+pnpm vitest run src/db/schema/clubs.test.ts     # expect PASS
+pnpm db:generate
+pnpm db:migrate
+```
+
+Expected: `drizzle/0007_*.sql` contains a single `ALTER TABLE "clubs" ADD COLUMN "waitlist_capacity" integer;`. No hand-editing needed — a nullable column on an existing table has no backfill and no failure mode.
+
+- [ ] **Step 5: Write the failing integration tests**
+
+Append to `src/lib/booking.integration.test.ts`, reusing its existing seed helpers and frozen `NOW`:
+
+```typescript
+describe('waitlist capacity', () => {
+  it('turns away bookers once the seats and the queue are both full', async () => {
+    // The brief: 4 seats, 4 queue slots, 15 hopefuls. 8 get in, 7 are told no.
+    const c = await seedClubWithCapacity({ seats: 4, waitlistCapacity: 4 });
+    const users = await seedMembers(c, 15);
+
+    const results = [];
+    for (const uid of users) {
+      results.push(await bookSeat(db, { clubId: c.clubId, userId: uid, windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: `w-${uid}`, now: NOW }));
+    }
+
+    expect(results.filter((r) => r.ok && r.outcome === 'seated')).toHaveLength(4);
+    expect(results.filter((r) => r.ok && r.outcome === 'waitlisted')).toHaveLength(4);
+    expect(results.filter((r) => !r.ok && r.error === 'waitlist_full')).toHaveLength(7);
+
+    const queued = results.filter((r) => r.ok && r.outcome === 'waitlisted').map((r) => (r.ok ? r.queuePosition : null));
+    expect([...queued].sort()).toEqual([1, 2, 3, 4]);
+  });
+
+  it('holds the line under a concurrent rush', async () => {
+    // Same shape, but all 15 at once — the per-slot advisory lock is what makes
+    // the count reliable between the check and the insert.
+    const c = await seedClubWithCapacity({ seats: 4, waitlistCapacity: 4 });
+    const users = await seedMembers(c, 15);
+
+    const results = await Promise.all(users.map((uid) =>
+      bookSeat(db, { clubId: c.clubId, userId: uid, windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: `r-${uid}`, now: NOW })));
+
+    expect(results.filter((r) => r.ok)).toHaveLength(8);
+    expect(results.filter((r) => !r.ok && r.error === 'waitlist_full')).toHaveLength(7);
+
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, c.clubId));
+    expect(rows.filter((r) => r.status === 'booked')).toHaveLength(4);
+    expect(rows.filter((r) => r.status === 'waitlisted')).toHaveLength(4);
+  });
+
+  it('admits everyone when no cap is set', async () => {
+    const c = await seedClubWithCapacity({ seats: 2, waitlistCapacity: null });
+    const users = await seedMembers(c, 9);
+    const results = [];
+    for (const uid of users) {
+      results.push(await bookSeat(db, { clubId: c.clubId, userId: uid, windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: `u-${uid}`, now: NOW }));
+    }
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(results.filter((r) => r.ok && r.outcome === 'waitlisted')).toHaveLength(7);
+  });
+
+  it('reopens a queue slot when someone cancels', async () => {
+    const c = await seedClubWithCapacity({ seats: 1, waitlistCapacity: 1 });
+    const users = await seedMembers(c, 3);
+    const first = await bookSeat(db, { clubId: c.clubId, userId: users[0], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: 'q-1', now: NOW });
+    const second = await bookSeat(db, { clubId: c.clubId, userId: users[1], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: 'q-2', now: NOW });
+    const third = await bookSeat(db, { clubId: c.clubId, userId: users[2], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: 'q-3', now: NOW });
+    expect(third).toEqual({ ok: false, error: 'waitlist_full' });
+    if (!second.ok) throw new Error('setup failed');
+
+    await cancelBooking(db, { clubId: c.clubId, userId: users[1], bookingId: second.bookingId, now: NOW });
+    const retry = await bookSeat(db, { clubId: c.clubId, userId: users[2], windowId: c.windowId, boatTypeId: c.boatTypeId, startAt: c.startAt, paymentType: 'regular', idempotencyKey: 'q-4', now: NOW });
+    expect(retry.ok).toBe(true);
+    if (!first.ok) throw new Error('setup failed');
+  });
+});
+```
+
+Write `seedClubWithCapacity({ seats, waitlistCapacity })` as a local helper returning `{ clubId, windowId, boatTypeId, startAt }` — a fresh tagged club with `waitlistCapacity` set, one boat type with `seats`, one schedule window and one `window_boats` row with `quantity: 1`. Write `seedMembers(c, n)` to insert `n` `user` rows each with an `approved` `memberships` row in that club, returning their ids. Model both on the seed helper already at the top of the file.
+
+- [ ] **Step 6: Run them to confirm they fail**
+
+Run: `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test pnpm vitest run --no-file-parallelism src/lib/booking.integration.test.ts`
+Expected: FAIL — all 15 are admitted, so the `waitlist_full` counts are 0.
+
+- [ ] **Step 7: Add the cap to `bookSeat`**
+
+Extend the result union:
+
+```typescript
+export type BookResult =
+  | { ok: true; bookingId: string; outcome: 'seated' | 'waitlisted'; queuePosition: number | null }
+  | { ok: false; error: 'ineligible'; reason: EligibilityReason }
+  | { ok: false; error: 'already_booked_this_slot' }
+  | { ok: false; error: 'multisport_day_taken' }
+  | { ok: false; error: 'waitlist_full' }
+  | { ok: false; error: 'no_session' };
+```
+
+Select the new column in step 1's club query:
+
+```typescript
+    const [club] = await tx
+      .select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode, openOnHolidays: clubs.openOnHolidays, bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays, waitlistCapacity: clubs.waitlistCapacity })
+      .from(clubs)
+      .where(eq(clubs.id, input.clubId));
+```
+
+Then rewrite step 8's target selection so the cap participates. Replace the existing `withFree` / `target` block with:
+
+```typescript
+    // 8. Choose the target session of the chosen boat: pack a boat (first free seat
+    //    by id), else the shortest queue among those still accepting.
+    //
+    //    `waitlistCapacity` bounds how many may queue behind a full session; null
+    //    means unlimited, which is what every club had before the column existed.
+    //    No unique index is needed for this one — unlike the MultiSport daily
+    //    limit, the invariant lives entirely inside a single session, and the
+    //    per-slot advisory lock taken in step 4 already serializes every booking
+    //    for this slot. That is what makes the count reliable between here and
+    //    the insert: of 15 concurrent bookers, the first `capacity + waitlist`
+    //    are admitted in arrival order and the rest each read a full count.
+    const boatSessions = foc.sessions.filter((s) => s.boatTypeId === input.boatTypeId && s.status === 'open').sort((a, b) => (a.id < b.id ? -1 : 1));
+    if (boatSessions.length === 0) return { ok: false, error: 'no_session' };
+    const activeRows = await tx.select({ sessionId: bookings.sessionId }).from(bookings).where(and(inArray(bookings.sessionId, boatSessions.map((s) => s.id)), inArray(bookings.status, [...ACTIVE])));
+    const activeCount = new Map<string, number>();
+    for (const r of activeRows) activeCount.set(r.sessionId, (activeCount.get(r.sessionId) ?? 0) + 1);
+
+    const limitFor = (capacity: number) => (club.waitlistCapacity == null ? Infinity : capacity + club.waitlistCapacity);
+    const accepting = boatSessions.filter((s) => (activeCount.get(s.id) ?? 0) < limitFor(s.capacity));
+    if (accepting.length === 0) return { ok: false, error: 'waitlist_full' };
+
+    const withFree = accepting.filter((s) => (activeCount.get(s.id) ?? 0) < s.capacity);
+    const target = withFree.length > 0
+      ? withFree[0]
+      : [...accepting].sort((a, b) => (activeCount.get(a.id) ?? 0) - (activeCount.get(b.id) ?? 0) || (a.id < b.id ? -1 : 1))[0];
+```
+
+Nothing else changes: `resolveSeating` still decides *who* holds the seats, which is a separate question from who is admitted at all.
+
+- [ ] **Step 8: Run the integration tests**
+
+Run: `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test pnpm vitest run --no-file-parallelism src/lib/booking.integration.test.ts`
+Expected: PASS, including both rush cases.
+
+- [ ] **Step 9: Lint, types, full suite**
+
+```bash
+pnpm lint && pnpm exec tsc --noEmit && pnpm test:integration
+```
+
+Expected: all green.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add src/db/schema/clubs.ts src/db/schema/clubs.test.ts drizzle/ src/lib/booking.ts src/lib/booking.integration.test.ts
+git commit -m "feat(booking): bound the waitlist and turn away bookers once it is full"
+```
+
+---
+
+## Task 10: Owner sets the waitlist capacity
+
+**Files:**
+- Modify: `src/lib/scheduling-settings.ts`, `src/lib/scheduling-settings.integration.test.ts`
+- Modify: `src/lib/schemas.ts`, `src/lib/schemas.test.ts`
+- Modify: `app/s/[slug]/manage/policies/actions.ts`, `app/s/[slug]/manage/policies/policies-form.tsx`, `app/s/[slug]/manage/policies/page.tsx`
+- Modify: `messages/en.json`, `messages/tr.json`
+
+**Interfaces:**
+- Consumes: `clubs.waitlistCapacity` (Task 9).
+- Produces: `SchedulingSettingsInput` gains `waitlistCapacity: number | null`.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `src/lib/schemas.test.ts`, the policy tests use a `base` object — add the new field to it and append:
+
+```typescript
+it('accepts a waitlist capacity and treats it as optional', () => {
+  expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: 4 }).success).toBe(true);
+  expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: null }).success).toBe(true);
+  expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: 0 }).success).toBe(true);
+});
+
+it('rejects a negative or absurd waitlist capacity', () => {
+  expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: -1 }).success).toBe(false);
+  expect(schedulingSettingsSchema.safeParse({ ...base, waitlistCapacity: 1000 }).success).toBe(false);
+});
+```
+
+Remember to add `waitlistCapacity: null` to the shared `base` fixture, and to every other object in that file that is parsed against `schedulingSettingsSchema`.
+
+In `src/lib/scheduling-settings.integration.test.ts`, add `waitlistCapacity` to every `updateSchedulingSettings` call and to the `getSchedulingSettings` equality assertion, then append:
+
+```typescript
+it('round-trips the waitlist capacity', async () => {
+  const c = await seedClub();
+  await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', openOnHolidays: false, waitlistCapacity: 4 });
+  expect((await getSchedulingSettings(db, c.id)).waitlistCapacity).toBe(4);
+  await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', openOnHolidays: false, waitlistCapacity: null });
+  expect((await getSchedulingSettings(db, c.id)).waitlistCapacity).toBeNull();
+});
+```
+
+Match that file's existing club-seeding helper rather than inventing `seedClub` if it names it differently.
+
+- [ ] **Step 2: Run them to confirm they fail**
+
+```bash
+pnpm vitest run src/lib/schemas.test.ts
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test pnpm vitest run --no-file-parallelism src/lib/scheduling-settings.integration.test.ts
+```
+
+Expected: FAIL — the schema strips the unknown key and the settings round-trip has no such field.
+
+- [ ] **Step 3: Extend the zod schema**
+
+In `src/lib/schemas.ts`, inside `schedulingSettingsSchema`'s object:
+
+```typescript
+    waitlistCapacity: z.coerce.number().int().min(0).max(999).nullable(),
+```
+
+- [ ] **Step 4: Extend the settings module**
+
+In `src/lib/scheduling-settings.ts`, add `waitlistCapacity: number | null;` to `SchedulingSettingsInput`, `waitlistCapacity: clubs.waitlistCapacity,` to the `getSchedulingSettings` select, and `waitlistCapacity: input.waitlistCapacity,` to the `updateSchedulingSettings` set.
+
+- [ ] **Step 5: Run the tests**
+
+```bash
+pnpm vitest run src/lib/schemas.test.ts
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test pnpm vitest run --no-file-parallelism src/lib/scheduling-settings.integration.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Add the i18n keys**
+
+In `messages/en.json`, under `manage.policies` (check the exact path with the parity script — the policies page passes a `labels` object built from these keys):
+
+```json
+"waitlistCapacity": "Waitlist size per session",
+"waitlistCapacityHint": "How many members may queue behind a full session. Leave empty for no limit.",
+```
+
+In `messages/tr.json`:
+
+```json
+"waitlistCapacity": "Seans başına bekleme listesi boyutu",
+"waitlistCapacityHint": "Dolu bir seansın arkasında kaç üye sıraya girebilir. Sınırsız için boş bırakın.",
+```
+
+- [ ] **Step 7: Wire the form**
+
+In `app/s/[slug]/manage/policies/actions.ts`, mirror the existing nullable-number handling:
+
+```typescript
+  const waitlistRaw = String(formData.get('waitlistCapacity') ?? '').trim();
+```
+
+and add to the `safeParse` object:
+
+```typescript
+    waitlistCapacity: waitlistRaw === '' ? null : waitlistRaw,
+```
+
+In `app/s/[slug]/manage/policies/policies-form.tsx`, add `waitlistCapacity: number | null;` to the `Settings` type and `waitlistCapacity: string; waitlistCapacityHint: string;` to `Labels`, then add the field directly after the `cancelCutoffHours` field:
+
+```tsx
+      <Field>
+        <FieldLabel htmlFor="waitlistCapacity">{labels.waitlistCapacity}</FieldLabel>
+        <Input id="waitlistCapacity" name="waitlistCapacity" type="number" min={0} max={999} defaultValue={settings.waitlistCapacity ?? ''} />
+        <p className="text-xs text-muted-foreground">{labels.waitlistCapacityHint}</p>
+      </Field>
+```
+
+In `app/s/[slug]/manage/policies/page.tsx`, add the two new labels to the `labels` object it builds. Read that file first to match how it names the translator keys.
+
+- [ ] **Step 8: Lint, types, full suite**
+
+```bash
+node -e "
+const flat=(o,p='')=>Object.entries(o).flatMap(([k,v])=>typeof v==='object'&&v?flat(v,p+k+'.'):[p+k]);
+const en=flat(require('./messages/en.json')), tr=flat(require('./messages/tr.json'));
+const miss=(a,b)=>a.filter(k=>!b.includes(k));
+console.log('missing in tr:',miss(en,tr)); console.log('missing in en:',miss(tr,en));
+"
+pnpm lint && pnpm exec tsc --noEmit && pnpm test:integration
+```
+
+Expected: parity lists empty; everything green.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/lib/schemas.ts src/lib/schemas.test.ts src/lib/scheduling-settings.ts src/lib/scheduling-settings.integration.test.ts "app/s/[slug]/manage/policies" messages/
+git commit -m "feat(policies): let the owner cap the per-session waitlist"
+```
+
+---
+
+## Task 11: Show a full waitlist to members and owners
+
+**Files:**
+- Modify: `src/lib/member-calendar.ts`, `src/lib/member-calendar.integration.test.ts`
+- Modify: `app/s/[slug]/(member)/book/book-calendar.tsx`
+- Modify: `src/lib/roster.ts`, `app/s/[slug]/manage/bookings/bookings-roster.tsx`
+- Modify: `messages/en.json`, `messages/tr.json`
+
+**Interfaces:**
+- Consumes: `clubs.waitlistCapacity` (Task 9); `MemberVirtualSession` (Task 4).
+- Produces:
+  - `MemberVirtualSession` gains `waitlistLeft: number | null` (null = unlimited)
+  - `RosterSession` gains `waitlistCapacity: number | null`
+  - `UiState` gains `'waitlistfull'`
+
+- [ ] **Step 1: Write the failing integration test**
+
+Append to `src/lib/member-calendar.integration.test.ts`:
+
+```typescript
+it('reports the remaining waitlist room, and zero once the queue is full', async () => {
+  const ctx = await seedWithWaitlist({ seats: 1, waitlistCapacity: 1 });
+  // Seat one member and queue another: the session is now closed to newcomers.
+  await seedActiveBooking(ctx, 'booked');
+  await seedActiveBooking(ctx, 'waitlisted');
+
+  const days = await computeMemberCalendar(db, ctx.clubId, ctx.member, { fromDateISO: DAY, days: 1, now: NOW });
+  expect(days[0].slots[0].sessions[0].waitlistLeft).toBe(0);
+});
+
+it('reports unlimited waitlist room as null', async () => {
+  const ctx = await seedWithWaitlist({ seats: 1, waitlistCapacity: null });
+  const days = await computeMemberCalendar(db, ctx.clubId, ctx.member, { fromDateISO: DAY, days: 1, now: NOW });
+  expect(days[0].slots[0].sessions[0].waitlistLeft).toBeNull();
+});
+```
+
+Write `seedWithWaitlist` / `seedActiveBooking` as local helpers modelled on the file's existing seed, materialising a real `slots` + `sessions` row so the counts have something to attach to.
+
+- [ ] **Step 2: Run it to confirm it fails**
+
+Run: `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test pnpm vitest run --no-file-parallelism src/lib/member-calendar.integration.test.ts`
+Expected: FAIL — `waitlistLeft` is `undefined`.
+
+- [ ] **Step 3: Compute `waitlistLeft` in `src/lib/member-calendar.ts`**
+
+Add to the session type:
+
+```typescript
+  /** Remaining room in the queue behind a full session. null = unlimited. */
+  waitlistLeft: number | null;
+```
+
+Select the club's cap alongside the booking-open policy it already reads:
+
+```typescript
+  const [club] = await db.select({ bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays, waitlistCapacity: clubs.waitlistCapacity }).from(clubs).where(eq(clubs.id, clubId));
+```
+
+The existing `seated` map counts only `status = 'booked'`, so add a parallel count of everyone active. Extend the block that fills `seated`:
+
+```typescript
+  const active = new Map<string, number>();
+  if (persistedIds.length) {
+    const activeRows = await db.select({ sessionId: bookings.sessionId }).from(bookings).where(and(inArray(bookings.sessionId, persistedIds), inArray(bookings.status, ['booked', 'waitlisted'])));
+    for (const r of activeRows) active.set(r.sessionId, (active.get(r.sessionId) ?? 0) + 1);
+  }
+```
+
+Then in the per-session mapper:
+
+```typescript
+          waitlistLeft: club.waitlistCapacity == null
+            ? null
+            : Math.max(0, s.capacity + club.waitlistCapacity - (s.sessionId ? (active.get(s.sessionId) ?? 0) : 0)),
+```
+
+- [ ] **Step 4: Run the integration test**
+
+Run: `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test pnpm vitest run --no-file-parallelism src/lib/member-calendar.integration.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Add the i18n keys**
+
+In `messages/en.json`, under `booking`:
+
+```json
+"waitlistFull": "Waitlist full",
+```
+
+and under `booking.errors`:
+
+```json
+"waitlist_full": "This session and its waitlist are both full."
+```
+
+In `messages/tr.json`, under `booking`:
+
+```json
+"waitlistFull": "Bekleme listesi dolu",
+```
+
+and under `booking.errors`:
+
+```json
+"waitlist_full": "Bu seans ve bekleme listesi dolu."
+```
+
+Under `manage.bookings` in `messages/en.json`:
+
+```json
+"waitingCount": "Waiting {n}/{capacity}",
+```
+
+and in `messages/tr.json`:
+
+```json
+"waitingCount": "Bekleyen {n}/{capacity}",
+```
+
+- [ ] **Step 6: Add the `waitlistfull` state to `book-calendar.tsx`**
+
+Extend the union and the tone map:
+
+```typescript
+type UiState = 'booked' | 'waitlisted' | 'ineligible' | 'notopen' | 'full' | 'waitlistfull' | 'open' | 'unavailable';
+```
+
+```typescript
+const toneOf: Record<UiState, BadgeTone> = {
+  booked: 'accent',
+  waitlisted: 'warn',
+  ineligible: 'neutral',
+  notopen: 'info',
+  full: 'neutral',
+  waitlistfull: 'neutral',
+  open: 'ok',
+  unavailable: 'neutral',
+};
+```
+
+In `uiStateOf`, distinguish a full session that still has queue room from one that has none. Replace the final line:
+
+```typescript
+  if (s.seatsLeft > 0) return 'open';
+  // A full session still offers the waitlist — unless the queue is full too, in
+  // which case showing a Join waitlist button would only ever fail.
+  return s.waitlistLeft === 0 ? 'waitlistfull' : 'full';
+```
+
+In `SessionCard`, add the label to the `pillText` chain, immediately after the `ui === 'full'` branch:
+
+```typescript
+    : ui === 'waitlistfull' ? t('waitlistFull')
+```
+
+The card's action button must not offer to book in this state. Find where `SessionCard` decides whether to render its book/waitlist button (it keys off `ui === 'open' || ui === 'full'`) and exclude `waitlistfull` — read the surrounding code and match its existing shape rather than restructuring it.
+
+- [ ] **Step 7: Show the queue depth on the owner roster**
+
+In `src/lib/roster.ts`, add `waitlistCapacity: number | null` to `RosterSession`, select `clubs.waitlistCapacity` (the function already has `clubId`, so read it once before the loop) and set it on each session.
+
+In `app/s/[slug]/manage/bookings/bookings-roster.tsx`, label the waitlisted block when a cap is set. Above the waitlisted `<ul>`:
+
+```tsx
+              {s.waitlisted.length > 0 && s.waitlistCapacity != null && (
+                <span className="text-xs text-muted-foreground">{t('waitingCount', { n: s.waitlisted.length, capacity: s.waitlistCapacity })}</span>
+              )}
+```
+
+- [ ] **Step 8: Verify parity, lint, types, tests, build**
+
+```bash
+node -e "
+const flat=(o,p='')=>Object.entries(o).flatMap(([k,v])=>typeof v==='object'&&v?flat(v,p+k+'.'):[p+k]);
+const en=flat(require('./messages/en.json')), tr=flat(require('./messages/tr.json'));
+const miss=(a,b)=>a.filter(k=>!b.includes(k));
+console.log('missing in tr:',miss(en,tr)); console.log('missing in en:',miss(tr,en));
+"
+pnpm lint && pnpm exec tsc --noEmit && pnpm test:integration && pnpm build
+```
+
+Expected: parity lists empty; everything green; build clean.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/lib/member-calendar.ts src/lib/member-calendar.integration.test.ts src/lib/roster.ts "app/s/[slug]" messages/
+git commit -m "feat(book): show a full waitlist instead of a button that would fail"
 ```
 
 ---
