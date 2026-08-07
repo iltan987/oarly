@@ -20,7 +20,7 @@ vi.mock('./actions', () => ({
   reorderSkillLevelAction: vi.fn(),
 }));
 
-import { deleteSkillLevelAction } from './actions';
+import { deleteSkillLevelAction, reorderSkillLevelAction } from './actions';
 import { SkillLevelsEditor } from './skill-levels-editor';
 
 const levels = [
@@ -73,6 +73,35 @@ describe('SkillLevelsEditor delete flow', () => {
 
     expect(confirmYesB).not.toBeDisabled();
     expect(confirmYesB).not.toHaveAttribute('data-pending');
+
+    resolve?.({ ok: true });
+  });
+});
+
+describe('SkillLevelsEditor reorder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // The whole point of an optimistic reorder: the row order updates on the
+  // current frame, before the server round trip resolves.
+  it('reorders the rendered list before the action resolves', async () => {
+    let resolve: ((r: { ok: true }) => void) | undefined;
+    vi.mocked(reorderSkillLevelAction).mockImplementation(
+      () => new Promise((r) => { resolve = r; }),
+    );
+
+    render(<SkillLevelsEditor slug="club" levels={levels} labels={labels} confirms={confirms} />);
+
+    const namesInOrder = () => screen.getAllByText(/^(Beginner|Advanced)$/).map((el) => el.textContent);
+    expect(namesInOrder()).toEqual(['Beginner', 'Advanced']);
+
+    fireEvent.submit(screen.getAllByRole('button', { name: 'moveDown' })[0].closest('form')!);
+
+    // Still unresolved — this proves the swap is optimistic, not a render of
+    // server-confirmed data.
+    await waitFor(() => expect(namesInOrder()).toEqual(['Advanced', 'Beginner']));
+    expect(reorderSkillLevelAction).toHaveBeenCalledTimes(1);
 
     resolve?.({ ok: true });
   });

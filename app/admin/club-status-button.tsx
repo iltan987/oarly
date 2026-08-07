@@ -1,14 +1,12 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useActionState, useEffect } from 'react';
+import { useOptimistic } from 'react';
 import { toast } from 'sonner';
 
 import { PendingButton } from '@/components/pending-button';
 
-import { setClubStatusAction, type SetClubStatusState } from './actions';
-
-const initial: SetClubStatusState | null = null;
+import { setClubStatusAction } from './actions';
 
 export function ClubStatusButton({
   clubId,
@@ -20,26 +18,42 @@ export function ClubStatusButton({
   label: string;
 }) {
   const t = useTranslations('admin');
-  const [state, formAction] = useActionState(setClubStatusAction, initial);
 
-  useEffect(() => {
-    if (state === null) return;
-    if (state.ok) {
-      toast.success(state.status === 'active' ? t('activated') : t('suspended2'));
+  // Activate/suspend is a value swap on this button's own label — it never
+  // moves anything, so it is safe to flip on the current frame. This page is
+  // a Server Component, so there is no client parent to lift the swap into;
+  // the club's status pill next to this button stays server-driven and
+  // updates on the next revalidated render, same as before.
+  const [optimistic, setOptimistic] = useOptimistic({ targetStatus, label });
+
+  // A plain async function passed as the <form>'s `action` runs inside
+  // React's implicit form-action transition, so `setOptimistic` is safe to
+  // call here on the current frame. It reads `optimistic.targetStatus` (not
+  // the `targetStatus` prop) so a second click before the first toggle
+  // resolves composes on top of the first, rather than reading a stale prop.
+  async function handleSubmit(formData: FormData) {
+    setOptimistic(
+      optimistic.targetStatus === 'active'
+        ? { targetStatus: 'suspended', label: t('suspend') }
+        : { targetStatus: 'active', label: t('activate') },
+    );
+    const result = await setClubStatusAction(null, formData);
+    if (result.ok) {
+      toast.success(result.status === 'active' ? t('activated') : t('suspended2'));
     } else {
       toast.error(t('actionError'));
     }
-  }, [state, t]);
+  }
 
   return (
-    <form action={formAction}>
+    <form action={handleSubmit}>
       <input type="hidden" name="clubId" value={clubId} />
-      <input type="hidden" name="status" value={targetStatus === 'active' ? 'active' : 'suspend'} />
+      <input type="hidden" name="status" value={optimistic.targetStatus === 'active' ? 'active' : 'suspend'} />
       <PendingButton
         size="sm"
-        variant={targetStatus === 'suspended' ? 'destructive' : 'default'}
+        variant={optimistic.targetStatus === 'suspended' ? 'destructive' : 'default'}
       >
-        {label}
+        {optimistic.label}
       </PendingButton>
     </form>
   );
