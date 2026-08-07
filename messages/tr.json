@@ -351,7 +351,9 @@
       "openOnHolidays": "Resmi tatillerde seans yapılsın",
       "waitlistCapacity": "Seans başına bekleme listesi boyutu",
       "waitlistCapacityHint": "Dolu bir seansın arkasında kaç üye sıraya girebilir. Sınırsız için boş bırakın.",
-      "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin."
+      "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin.",
+      "saved": "Politikalar kaydedildi.",
+      "errorInvalidInput": "İşaretli alanları kontrol edip tekrar deneyin."
     },
     "schedulePreview": {
       "title": "Program önizleme",

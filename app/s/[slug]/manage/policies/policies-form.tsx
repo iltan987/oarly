@@ -1,7 +1,8 @@
 'use client';
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
+import { PendingButton } from '@/components/pending-button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -23,13 +24,43 @@ type Labels = {
   selfCancel: string; cancelCutoff: string; noshow: string; noshowOff: string; noshow2d: string; noshow1w: string;
   noshow2w: string; noshow1m: string; noshowNever: string; multisport: string; multisportEqual: string;
   multisportPriority: string; multisportHint: string; openOnHolidays: string; waitlistCapacity: string;
-  waitlistCapacityHint: string; errorInvalidLead: string;
+  waitlistCapacityHint: string; errorInvalidLead: string; errorInvalidInput: string; saved: string;
 };
 
 const initial: PoliciesState = { status: 'idle' };
 
-export function PoliciesForm({ slug, settings, labels }: { slug: string; settings: Settings; labels: Labels }) {
+/**
+ * `page.tsx` stamps `club.updatedAt` on every write, and this component used to be
+ * keyed on it directly — which fully unmounts/remounts the form (and any effect
+ * inside it) the instant a save succeeds, before a toast effect can fire. This
+ * outer component is kept stable across saves: it owns `useActionState` and the
+ * toast effect, and passes `updatedAt` down only as a `key` on the inner fields,
+ * so the fields still reset to the freshly saved server values without destroying
+ * the component that reports the result.
+ */
+export function PoliciesForm({ slug, updatedAt, settings, labels }: { slug: string; updatedAt: number; settings: Settings; labels: Labels }) {
   const [state, formAction] = useActionState(savePoliciesAction.bind(null, slug), initial);
+
+  // Identity guard: `state` only changes reference when the action actually
+  // dispatches, but guard against re-firing on unrelated re-renders anyway
+  // (mirrors profile-form.tsx's rmHandled ref for the same reason).
+  const handled = useRef<PoliciesState>(initial);
+  useEffect(() => {
+    if (state === handled.current) return;
+    handled.current = state;
+    if (state.status === 'ok') toast.success(labels.saved);
+    else if (state.status === 'error') toast.error(state.cause === 'invalid_lead' ? labels.errorInvalidLead : labels.errorInvalidInput);
+  }, [state, labels.saved, labels.errorInvalidLead, labels.errorInvalidInput]);
+
+  return <PoliciesFields key={updatedAt} settings={settings} labels={labels} state={state} formAction={formAction} />;
+}
+
+function PoliciesFields({ settings, labels, state, formAction }: {
+  settings: Settings;
+  labels: Labels;
+  state: PoliciesState;
+  formAction: (formData: FormData) => void;
+}) {
   const [bookingOpenMode, setBookingOpenMode] = useState(settings.bookingOpenMode);
   const [noshowPenalty, setNoshowPenalty] = useState(settings.noshowPenalty);
   const [multisportMode, setMultisportMode] = useState(settings.multisportMode);
@@ -111,8 +142,10 @@ export function PoliciesForm({ slug, settings, labels }: { slug: string; setting
         <input type="checkbox" name="openOnHolidays" defaultChecked={settings.openOnHolidays} />
         {labels.openOnHolidays}
       </label>
-      {state.status === 'error' && <p className="text-sm text-destructive">{labels.errorInvalidLead}</p>}
-      <Button type="submit" className="self-start">{labels.save}</Button>
+      {state.status === 'error' && (
+        <p className="text-sm text-destructive">{state.cause === 'invalid_lead' ? labels.errorInvalidLead : labels.errorInvalidInput}</p>
+      )}
+      <PendingButton className="self-start">{labels.save}</PendingButton>
     </form>
   );
 }
