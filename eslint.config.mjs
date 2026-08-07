@@ -13,9 +13,9 @@ const eslintConfig = defineConfig([
 
   // Type-aware linting + import hygiene for our TypeScript source.
   // projectService pulls type info from the nearest tsconfig (which includes
-  // all **/*.ts(x)); .js/.mjs/.cjs are excluded below.
+  // all **/*.ts(x) and **/*.mts); .js/.mjs/.cjs are excluded below.
   {
-    files: ["**/*.{ts,tsx}"],
+    files: ["**/*.{ts,tsx,mts}"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
