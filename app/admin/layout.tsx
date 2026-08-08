@@ -17,7 +17,15 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   return (
     <div className="mx-auto max-w-4xl p-6">
       <header className="mb-6 flex items-center justify-between">
-        <Link href="/admin" className="font-heading text-lg font-bold text-brand">{t('title')}</Link>
+        {/* An <h1>, not a bare <Link> with heading typography. The console title looked
+            like a heading and had none of the semantics, which made /admin the only
+            section of the product with no <h1> — nothing for a screen reader's heading
+            list, and no document outline on any console page. The link stays inside it:
+            "go back to the clubs list" is a real affordance, it just is not what made
+            this text a heading. */}
+        <h1 className="font-heading text-lg font-bold text-brand">
+          <Link href="/admin">{t('title')}</Link>
+        </h1>
         <div className="flex items-center gap-1">
           <ThemeToggle />
           <SignOutButton redirectTo={signOutUrl} />
