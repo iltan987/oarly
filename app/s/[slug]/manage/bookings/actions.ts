@@ -9,6 +9,7 @@ import { memberships, user } from '@/db/schema';
 import { ownerAddBooking, ownerRemoveBooking } from '@/lib/booking';
 import { requireOwner } from '@/lib/membership';
 import { notifyBookingConfirmation, notifyOwnerRemoval, notifyWaitlistPromotion } from '@/lib/notify';
+import { escapeLike } from '@/lib/search-params';
 
 export type MemberHit = { userId: string; name: string; email: string; phone: string | null };
 
@@ -22,8 +23,7 @@ export async function searchClubMembersAction(slug: string, query: string): Prom
   const { club } = await requireOwner(slug, '/manage/bookings');
   const q = query.trim();
   if (q.length < 2) return [];
-  // Escape LIKE wildcards in user input so `%`/`_` are matched literally.
-  const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+  const like = `%${escapeLike(q)}%`;
   const now = Date.now();
   const rows = await db
     .select({ userId: memberships.userId, name: user.name, email: user.email, phone: user.phone, bannedUntil: memberships.bannedUntil })

@@ -40,6 +40,16 @@ describe.skipIf(!url)('clubs-admin', () => {
     return club;
   }
 
+  /**
+   * The queue is oldest-first, and a fixture inserted moments ago is therefore at the
+   * END of it. This suite shares a database it keeps appending pending rows to, so a
+   * freshly created request is reliably on the last page and nowhere else.
+   */
+  async function lastQueuePage(pageSize = 100) {
+    const { total } = await listPendingClubRequests(db, { pageSize });
+    return listPendingClubRequests(db, { page: Math.max(1, Math.ceil(total / pageSize)), pageSize });
+  }
+
   async function ownerIdsOf(clubId: string) {
     const rows = await db.select().from(schema.memberships).where(eq(schema.memberships.clubId, clubId));
     return rows.filter((m) => m.role === 'owner').map((m) => m.userId);
@@ -145,6 +155,74 @@ describe.skipIf(!url)('clubs-admin', () => {
     const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
     expect(after.status).toBe('pending');
     expect(after.reviewedAt).toBeNull();
+  });
+
+  // `trim()` strips ECMAScript WhiteSpace, and not every character that RENDERS as
+  // blank is whitespace. `U+200B` is category `Cf` and `U+2800` is `So`, so both
+  // survived a trim: a rejection note of one zero-width space was accepted, written to
+  // `review_note`, logged as `club.reject`, and emailed to the requester as a rejection
+  // whose reason renders blank — which defeats the only thing making an irreversible
+  // act reviewable.
+  it.each([
+    ['zero-width space', '​'],
+    ['zero-width non-joiner', '‌'],
+    ['word joiner', '⁠'],
+    ['braille pattern blank', '⠀'],
+    ['left-to-right mark', '‎'],
+    ['a mix of invisibles and whitespace', ' ​\t⠀\n '],
+    ['a no-break space', ' '],
+    ['tabs and newlines', '\t\n'],
+  ])('refuses a rejection note that is only %s', async (_label, note) => {
+    const admin = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `zw-${randomUUID()}`, name: 'Zw', status: 'pending' }).returning();
+
+    expect(await decideClubRequest(db, { clubId: club.id, decision: 'reject', note, actorId: admin.id }))
+      .toMatchObject({ ok: false, error: 'note_required' });
+
+    const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
+    expect(after.status).toBe('pending');
+    expect(after.reviewNote).toBeNull();
+    const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id));
+    expect(audit).toEqual([]);
+  });
+
+  // The other half: the guard must not reject real prose. A note is legible if it has
+  // a letter or a digit ANYWHERE, in any script — invisible characters around it are
+  // stored as written rather than scrubbed, because a note in Arabic or Hebrew
+  // legitimately carries `Cf` bidi marks.
+  it.each([
+    ['ASCII prose', 'Duplicate of an existing club'],
+    ['Turkish', 'Aynı kulüp zaten kayıtlı'],
+    ['a digit only', '2'],
+    ['Arabic with a bidi mark', '‏نادٍ مكرر‏'],
+    ['prose containing a zero-width space', 'Duplicate​club'],
+  ])('accepts a rejection note that is %s', async (_label, note) => {
+    const admin = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `ok-${randomUUID()}`, name: 'Ok', status: 'pending' }).returning();
+
+    expect(await decideClubRequest(db, { clubId: club.id, decision: 'reject', note, actorId: admin.id }))
+      .toMatchObject({ ok: true, status: 'rejected' });
+
+    const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
+    // Stored verbatim (bar the outer trim): the operator's words are the record.
+    expect(after.reviewNote).toBe(note.trim());
+  });
+
+  // An APPROVAL note is optional, so an illegible one is not a refusal — it is simply
+  // no note, and must not be stored as a `review_note` that renders blank on the
+  // detail page.
+  it('stores an illegible approval note as no note at all', async () => {
+    const admin = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `an-${randomUUID()}`, name: 'An', status: 'pending' }).returning();
+
+    expect(await decideClubRequest(db, { clubId: club.id, decision: 'approve', note: '​', actorId: admin.id }))
+      .toMatchObject({ ok: true, status: 'active' });
+
+    const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
+    expect(after.reviewNote).toBeNull();
   });
 
   it('refuses to decide a club that is not pending', async () => {
@@ -635,7 +713,7 @@ describe.skipIf(!url)('clubs-admin', () => {
     await db.insert(schema.clubs).values({ slug: `aq-${stamp}`, name: 'Active Q', status: 'active' });
     await db.insert(schema.clubs).values({ slug: `rq-${stamp}`, name: 'Rejected Q', status: 'rejected' });
 
-    const rows = await listPendingClubRequests(db);
+    const { rows } = await lastQueuePage();
     const ids = rows.map((r) => r.id);
     expect(ids).toContain(pendingClub.id);
     expect(rows.find((r) => r.id === pendingClub.id)?.requesterEmail).toBe(requester.email);
@@ -649,9 +727,79 @@ describe.skipIf(!url)('clubs-admin', () => {
       .returning();
     await db.delete(schema.user).where(eq(schema.user.id, requester.id));
 
-    const rows = await listPendingClubRequests(db);
+    const { rows } = await lastQueuePage();
     const hit = rows.find((r) => r.id === club.id);
     expect(hit).toBeDefined();
     expect(hit?.requesterEmail).toBeNull();
+  });
+
+  // The queue does NOT self-drain. `requestClub` writes `status: 'pending'` with no
+  // expiry and no TTL, there is no sweeper anywhere in the repo, nothing decides a
+  // request except a human, and signup is open — so a fortnight of admin absence, or
+  // one motivated user with a few verified addresses, leaves thousands of rows that
+  // this page would select and render in full, each one mounting a client component
+  // with its own `useActionState` and `Dialog`. That is the §6.4 defect this cycle
+  // exists to remove, sitting on the page an admin must load to fix the situation.
+  it('listPendingClubRequests never returns more rows than the page size', async () => {
+    const stamp = randomUUID().slice(0, 8);
+    await db.insert(schema.clubs).values(
+      Array.from({ length: 7 }, (_, i) => ({ slug: `qp-${stamp}-${i}`, name: `Queue ${stamp} ${i}`, status: 'pending' as const })),
+    );
+    const { rows, total } = await listPendingClubRequests(db, { pageSize: 3 });
+    expect(rows).toHaveLength(3);
+    expect(total).toBeGreaterThanOrEqual(7);
+  });
+
+  it('listPendingClubRequests paginates without repeating or dropping a request', async () => {
+    const stamp = randomUUID().slice(0, 8);
+    const inserted = await db.insert(schema.clubs).values(
+      Array.from({ length: 5 }, (_, i) => ({ slug: `qq-${stamp}-${i}`, name: `Page ${stamp} ${i}`, status: 'pending' as const })),
+    ).returning({ id: schema.clubs.id });
+
+    // The last three pages of two, which always covers at least the six newest rows and
+    // therefore all five fixtures — walking the WHOLE queue would be thousands of
+    // round trips against a database this suite has been appending to all along.
+    const pageSize = 2;
+    const { total } = await listPendingClubRequests(db, { pageSize });
+    const lastPage = Math.ceil(total / pageSize);
+    const seen: string[] = [];
+    for (let p = Math.max(1, lastPage - 2); p <= lastPage; p++) {
+      const { rows } = await listPendingClubRequests(db, { page: p, pageSize });
+      expect(rows.length).toBeLessThanOrEqual(pageSize);
+      seen.push(...rows.map((r) => r.id));
+    }
+    expect(new Set(seen).size).toBe(seen.length); // no row served twice
+    for (const { id } of inserted) expect(seen).toContain(id); // and none skipped
+  });
+
+  // Oldest first. With the queue paged, the order decides what an admin ever SEES:
+  // newest-first would park the request that has waited longest on the last page and
+  // leave it there indefinitely, which is how a backlog starves rather than drains.
+  //
+  // Asserted on the shape of the page rather than on where two fixtures land in it:
+  // this suite shares a database it has been appending pending rows to, so "my row is
+  // first" is not a property any single test can own.
+  it('listPendingClubRequests serves the longest-waiting requests first', async () => {
+    const stamp = randomUUID().slice(0, 8);
+    await db.insert(schema.clubs).values(
+      Array.from({ length: 2 }, (_, i) => ({ slug: `ord-${stamp}-${i}`, name: `Ord ${stamp} ${i}`, status: 'pending' as const })),
+    );
+
+    const { rows } = await listPendingClubRequests(db, { pageSize: 50 });
+    const times = rows.map((r) => r.createdAt.getTime());
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    // Not a constant run, which would satisfy both directions and prove nothing.
+    expect(times.at(-1)).toBeGreaterThan(times[0]);
+  });
+
+  // Same `bigint` hazard as the clubs list, and the same reason the clamp belongs in
+  // the library: a route-only guard still lets a direct call — which is how these tests
+  // call it — hand `1e20` to OFFSET.
+  it('listPendingClubRequests clamps a hostile page number instead of handing it to OFFSET', async () => {
+    for (const page of [1e20, Number.POSITIVE_INFINITY, Number.NaN, 1.5, 0, -3]) {
+      const res = await listPendingClubRequests(db, { page, pageSize: 2 });
+      expect(Number.isSafeInteger(res.page)).toBe(true);
+      expect(res.page).toBeGreaterThanOrEqual(1);
+    }
   });
 });

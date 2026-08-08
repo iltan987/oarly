@@ -4,6 +4,7 @@ import type { DB, DbOrTx } from '@/db';
 import { clubs, memberships, user } from '@/db/schema';
 import { logAudit } from '@/lib/audit';
 import { clampPage } from '@/lib/pagination';
+import { escapeLike } from '@/lib/search-params';
 
 export type UserMembershipSummary = {
   clubId: string;
@@ -51,10 +52,7 @@ export async function searchUsers(
 ): Promise<{ rows: AdminUserRow[]; total: number; page: number; pageSize: number }> {
   const pageSize = opts.pageSize ?? USERS_PAGE_SIZE;
   const q = opts.q?.trim();
-  // Escape LIKE metacharacters so a literal `_` or `%` in a search box matches itself.
-  // Unescaped, `_` is a single-character wildcard: searching `a_b` would quietly return
-  // `axb` too, and the operator would never know the result set was wrong.
-  const pattern = q ? `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+  const pattern = q ? `%${escapeLike(q)}%` : null;
   // `user.email` is stored lowercased by Better Auth, but `ilike` is used on both columns
   // anyway: `name` is free text, and one case rule for the whole box is what an operator
   // expects.

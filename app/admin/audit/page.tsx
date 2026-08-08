@@ -39,7 +39,6 @@ function parseCursor(raw: string | undefined): AuditCursor | null {
   return { createdAt: when, id };
 }
 
-
 export default async function AdminAuditPage({ searchParams }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {

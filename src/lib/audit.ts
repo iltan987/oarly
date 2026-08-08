@@ -2,6 +2,7 @@ import { and, desc, eq, like, type SQL, sql } from 'drizzle-orm';
 
 import type { DbOrTx } from '@/db';
 import { auditLog, clubs, user } from '@/db/schema';
+import { escapeLike } from '@/lib/search-params';
 
 export type ActingAsRole = 'owner' | 'member' | 'admin';
 
@@ -142,10 +143,9 @@ export async function listAuditRows(
   if (f.clubId) conds.push(eq(auditLog.clubId, f.clubId));
   if (f.actorUserId) conds.push(eq(auditLog.actorUserId, f.actorUserId));
   if (f.actionPrefix) {
-    // Escape LIKE metacharacters so an operator pasting `skill_level.` gets a
-    // literal match instead of a wildcard.
-    const escaped = f.actionPrefix.replace(/[\\%_]/g, (c) => `\\${c}`);
-    conds.push(like(auditLog.action, `${escaped}%`));
+    // Escaped so an operator pasting `skill_level.` gets a literal match rather than a
+    // wildcard — every audit action in the vocabulary contains an underscore or a dot.
+    conds.push(like(auditLog.action, `${escapeLike(f.actionPrefix)}%`));
   }
   if (opts.cursor) {
     conds.push(

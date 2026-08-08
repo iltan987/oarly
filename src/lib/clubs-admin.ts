@@ -5,6 +5,7 @@ import { boatTypes, clubs, memberships, scheduleWindows, user } from '@/db/schem
 import { logAudit } from '@/lib/audit';
 import type { DB } from '@/lib/membership';
 import { clampPage } from '@/lib/pagination';
+import { escapeLike } from '@/lib/search-params';
 import { validateSlug } from '@/lib/slug';
 
 // Better Auth's internal adapter lowercases `email` on both `createUser` and
@@ -37,6 +38,19 @@ export async function createClub(
   });
 }
 
+/**
+ * Does this string contain at least one letter or digit?
+ *
+ * The test for "the operator actually wrote a reason". Punctuation, emoji, zero-width
+ * characters and braille blanks all fail it, which is intended: a rejection is
+ * irreversible and the note is the entire record of why, both in `review_note` and in
+ * the email the requester receives.
+ */
+const LEGIBLE_TEXT_RE = /[\p{L}\p{N}]/u;
+function hasLegibleText(value: string): boolean {
+  return LEGIBLE_TEXT_RE.test(value);
+}
+
 export type DecideClubRequestResult =
   | { ok: true; status: 'active' | 'rejected'; requesterId: string | null; clubName: string; clubSlug: string }
   | { ok: false; error: 'not_found' | 'not_pending' | 'note_required' };
@@ -59,7 +73,21 @@ export async function decideClubRequest(
   db: DB,
   input: { clubId: string; decision: 'approve' | 'reject'; note: string | null; actorId: string },
 ): Promise<DecideClubRequestResult> {
-  const note = input.note?.trim() ? input.note.trim() : null;
+  // A note with nothing legible in it is not a note. `trim()` alone was not enough:
+  // it strips ECMAScript WhiteSpace, and the characters that render as blank are not
+  // all whitespace. `U+200B ZERO WIDTH SPACE` is general category `Cf`, so it survived
+  // a trim — a rejection note of one zero-width space was accepted, stored as
+  // `review_note`, logged as `club.reject`, and mailed to the requester as a rejection
+  // whose reason renders blank. Same for `U+2800 BRAILLE PATTERN BLANK` (category
+  // `So`, so stripping `Cf` alone would not have caught it).
+  //
+  // Hence `hasLegibleText` rather than a blocklist of invisible characters: the
+  // requirement is that the reason SAYS something, and the only way to be sure of that
+  // is to require something legible to be present. The stored value is the trimmed
+  // ORIGINAL, not a stripped copy — a note in Arabic or Hebrew legitimately carries
+  // `Cf` bidi marks, and rewriting the operator's words would mangle it.
+  const trimmed = input.note?.trim() ?? '';
+  const note = hasLegibleText(trimmed) ? trimmed : null;
   if (input.decision === 'reject' && !note) return { ok: false, error: 'note_required' };
 
   return db.transaction(async (tx) => {
@@ -358,11 +386,7 @@ export async function listClubsForAdmin(
 ): Promise<{ rows: AdminClubRow[]; total: number; page: number; pageSize: number }> {
   const pageSize = opts.pageSize ?? CLUBS_PAGE_SIZE;
   const q = opts.q?.trim();
-  // Escape LIKE metacharacters so a literal `%`, `_` or `\` in the search box matches
-  // itself. Unescaped, `_` is a single-character wildcard: searching `a_b` would
-  // quietly also return `axb`, widening the result set with nothing on screen to
-  // explain why.
-  const pattern = q ? `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+  const pattern = q ? `%${escapeLike(q)}%` : null;
   const where = pattern ? or(ilike(clubs.name, pattern), ilike(clubs.slug, pattern)) : undefined;
 
   const [countRow] = await db.select({ n: sql<number>`count(*)::int` }).from(clubs).where(where);
@@ -425,21 +449,50 @@ export type PendingClubRequest = {
   requesterEmail: string | null;
 };
 
+export const CLUB_REQUESTS_PAGE_SIZE = 25;
+
 /**
- * The requests queue: every club still awaiting a decision.
+ * The requests queue: one page of the clubs still awaiting a decision.
+ *
+ * PAGED, and the queue does not drain on its own — the reasoning that said otherwise
+ * was wrong. `requestClub` writes `status: 'pending'` with no expiry and no TTL, there
+ * is no sweeper anywhere in the repo, nothing decides a request except a human working
+ * through a dialog one club at a time, and signup is open. The only throttle is a
+ * per-account rate limit of 5/hour, which is 120 a day for ONE account. A fortnight of
+ * admin absence during a growth spurt, or one motivated user with a handful of
+ * verified addresses, is enough to leave thousands of rows — and the unpaginated
+ * version selected and rendered every one of them, each mounting a client component
+ * with its own `useActionState` and `Dialog`, on the very page an admin has to load to
+ * fix the situation.
+ *
+ * OLDEST FIRST, unlike every other list in the console. Order does not matter much on
+ * an unpaginated list; on a paged one it decides what an admin ever sees. Newest-first
+ * would park the request that has waited longest on the last page and leave it there,
+ * which is how a backlog starves instead of draining.
+ *
+ * `page` is clamped HERE and not only at the route, for the reason `listClubsForAdmin`
+ * documents: it is interpolated into `OFFSET`, which Postgres parses as `bigint`, and a
+ * route-only guard does nothing for a direct call.
  *
  * LEFT join on the requester, not inner. `clubs.created_by` is `on delete set null`,
  * so a requester who deleted their account leaves a live request with a null author —
  * and an inner join would drop that request out of the queue entirely, where nobody
  * could ever approve or reject it. The club would sit `pending` forever, holding its
  * slug against the partial unique index.
- *
- * Unpaginated but bounded in practice by the queue's own nature: a request leaves this
- * list the moment it is decided. It is the one console list whose length is an
- * operational signal rather than a data volume.
  */
-export async function listPendingClubRequests(db: DbOrTx): Promise<PendingClubRequest[]> {
-  return db
+export async function listPendingClubRequests(
+  db: DbOrTx,
+  opts: { page?: number; pageSize?: number } = {},
+): Promise<{ rows: PendingClubRequest[]; total: number; page: number; pageSize: number }> {
+  const pageSize = opts.pageSize ?? CLUB_REQUESTS_PAGE_SIZE;
+  const where = eq(clubs.status, 'pending');
+
+  const [countRow] = await db.select({ n: sql<number>`count(*)::int` }).from(clubs).where(where);
+  const total = countRow?.n ?? 0;
+  // Counted before the page is resolved on purpose: the clamp needs the total.
+  const page = clampPage(opts.page, total, pageSize);
+
+  const rows = await db
     .select({
       id: clubs.id,
       slug: clubs.slug,
@@ -450,6 +503,13 @@ export async function listPendingClubRequests(db: DbOrTx): Promise<PendingClubRe
     })
     .from(clubs)
     .leftJoin(user, eq(user.id, clubs.createdBy))
-    .where(eq(clubs.status, 'pending'))
-    .orderBy(desc(clubs.createdAt), desc(clubs.id));
+    .where(where)
+    // `id` breaks the tie so the order is total: two requests created in the same
+    // microsecond would otherwise be free to swap places between pages, which is how an
+    // offset page serves one request twice and skips another entirely.
+    .orderBy(asc(clubs.createdAt), asc(clubs.id))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  return { rows, total, page, pageSize };
 }
