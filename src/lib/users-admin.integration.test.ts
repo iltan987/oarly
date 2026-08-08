@@ -77,6 +77,43 @@ describe.skipIf(!url)('users-admin', () => {
     expect(new Set([...first.rows, ...second.rows].map((r) => r.id)).size).toBe(3);
   });
 
+  // A page number travels in a hand-editable URL and lands in `OFFSET (page - 1) * n`,
+  // which Postgres parses as `bigint`. Each of these raised out of the render as a 500
+  // before the clamp: `?page=1.5` -> `invalid input syntax for type bigint: "12.5"`.
+  it.each([
+    ['a fraction', 1.5],
+    ['a fraction on a later page', 2.7],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
+    ['NaN', Number.NaN],
+    ['a huge float', 1e20],
+    ['a negative page', -3],
+    ['zero', 0],
+  ] as const)('answers a query asking for %s of a page instead of raising from Postgres', async (_label, page) => {
+    const stamp = `cl${randomUUID().slice(0, 8)}`;
+    await mkUser({ name: `${stamp}-a` });
+
+    const res = await searchUsers(db, { q: stamp, page, pageSize: 2 });
+    expect(res.total).toBe(1);
+    expect(res.rows).toHaveLength(1);
+    expect(Number.isSafeInteger(res.page)).toBe(true);
+    expect(res.page).toBe(1);
+  });
+
+  // Asking for page 999 of a two-page list shows page 2. The rows, the reported page and
+  // the range the route renders from it then describe the same page — instead of the
+  // empty state above "24951-100 of 100" with a Previous link into another empty page.
+  it('clamps a page past the end to the last page that has rows', async () => {
+    const stamp = `ov${randomUUID().slice(0, 8)}`;
+    for (let i = 0; i < 3; i++) await mkUser({ name: `${stamp}-${i}` });
+
+    const res = await searchUsers(db, { q: stamp, page: 999, pageSize: 2 });
+    expect(res.page).toBe(2);
+    expect(res.total).toBe(3);
+    expect(res.rows).toHaveLength(1);
+    expect(res.rows[0].name).toBe(`${stamp}-2`);
+  });
+
   // No unbounded select: an empty query must still be capped, or `/admin/users` becomes
   // the same "select everything" the clubs list was.
   it('caps an empty query at the page size', async () => {

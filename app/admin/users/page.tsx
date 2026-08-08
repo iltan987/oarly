@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { db } from '@/db';
+import { normalizePage } from '@/lib/pagination';
 import { searchUsers, USERS_PAGE_SIZE } from '@/lib/users-admin';
 
 import { AdminToggle } from './admin-toggle';
@@ -28,8 +29,15 @@ export default async function AdminUsersPage({ searchParams }: {
   const sp = await searchParams;
   const t = await getTranslations('admin');
   const q = one(sp.q)?.trim() || undefined;
-  const page = Math.max(1, Number(one(sp.page) ?? '1') || 1);
-  const { rows, total } = await searchUsers(db, { q, page, pageSize: USERS_PAGE_SIZE });
+  // `?page=1.5` reached `OFFSET` as `12.5` and raised `invalid input syntax for type
+  // bigint` out of the render — the same hand-edited-URL 500 `/admin/audit` fixed in
+  // its cursor. `searchUsers` clamps again on its own; this keeps a nonsense value
+  // from ever leaving the route.
+  const requestedPage = normalizePage(one(sp.page));
+  // `page` is what came BACK, not what was asked for: the library pulls an
+  // out-of-range page down to the last one that exists, and the range below plus the
+  // pagination links have to describe the page the rows actually came from.
+  const { rows, total, page } = await searchUsers(db, { q, page: requestedPage, pageSize: USERS_PAGE_SIZE });
   const from = total === 0 ? 0 : (page - 1) * USERS_PAGE_SIZE + 1;
   const to = Math.min(page * USERS_PAGE_SIZE, total);
 

@@ -3,6 +3,7 @@ import { asc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import type { DB, DbOrTx } from '@/db';
 import { clubs, memberships, user } from '@/db/schema';
 import { logAudit } from '@/lib/audit';
+import { clampPage } from '@/lib/pagination';
 
 export type UserMembershipSummary = {
   clubId: string;
@@ -36,13 +37,19 @@ export const USERS_PAGE_SIZE = 25;
  * Memberships are fetched in one follow-up query keyed by the page's user ids
  * rather than joined into the main select — a join would multiply the user rows
  * by their membership count and break both LIMIT and the total.
+ *
+ * `page` is clamped HERE and not only at the route, because it is interpolated into
+ * `OFFSET`, which Postgres parses as `bigint`: `?page=1.5` reached this function as
+ * an offset of `12.5` and raised `invalid input syntax for type bigint` out of the
+ * render. A caller cannot be trusted to have sanitized a URL parameter, and the
+ * returned `page` is the one actually shown — clamped to the last page that exists,
+ * so the rows, the row range and the pagination links all describe the same page.
  */
 export async function searchUsers(
   db: DbOrTx,
   opts: { q?: string; page?: number; pageSize?: number },
 ): Promise<{ rows: AdminUserRow[]; total: number; page: number; pageSize: number }> {
   const pageSize = opts.pageSize ?? USERS_PAGE_SIZE;
-  const page = Math.max(1, opts.page ?? 1);
   const q = opts.q?.trim();
   // Escape LIKE metacharacters so a literal `_` or `%` in a search box matches itself.
   // Unescaped, `_` is a single-character wildcard: searching `a_b` would quietly return
@@ -55,6 +62,8 @@ export async function searchUsers(
 
   const [countRow] = await db.select({ n: sql<number>`count(*)::int` }).from(user).where(where);
   const total = countRow?.n ?? 0;
+  // Counted before the page is resolved on purpose: the clamp needs the total.
+  const page = clampPage(opts.page, total, pageSize);
 
   const people = await db
     .select({
