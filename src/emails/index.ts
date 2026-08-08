@@ -4,6 +4,7 @@ import { render } from 'react-email';
 import { type Locale, locales } from '@/i18n/config';
 
 import { BookingNoticeEmail } from './booking-notice';
+import { ClubDecisionEmail } from './club-decision';
 import { ResetPasswordEmail } from './reset-password';
 import { VerifyEmail } from './verify-email';
 
@@ -140,4 +141,30 @@ export async function renderNoShowPenalty(
   // reassemble the story themselves.
   const intro = data.bannedUntil ? t('booking.noShow.intro') : t('booking.noShow.introNoBan');
   return renderNotice(validLocale, t('booking.noShow.subject'), t('booking.noShow.heading'), intro, rows);
+}
+
+export async function renderClubDecision(
+  locale: string,
+  data: { clubName: string; decision: 'approved' | 'rejected'; note: string | null; url: string | null },
+): Promise<RenderedEmail> {
+  const validLocale = toLocale(locale);
+  const t = await loadEmailsTranslator(validLocale);
+  const approved = data.decision === 'approved';
+  const subject = approved ? t('clubApproved.subject') : t('clubRejected.subject');
+  const heading = approved
+    ? t('clubApproved.heading', { clubName: data.clubName })
+    : t('clubRejected.heading', { clubName: data.clubName });
+  const intro = approved ? t('clubApproved.intro') : t('clubRejected.intro');
+  const noteLabel = approved ? t('clubApproved.noteLabel') : t('clubRejected.noteLabel');
+  const element = ClubDecisionEmail({
+    heading,
+    intro,
+    noteLabel,
+    note: data.note,
+    button: approved ? t('clubApproved.button') : null,
+    url: approved ? data.url : null,
+    locale: validLocale,
+  });
+  const [html, text] = await Promise.all([render(element), render(element, { plainText: true })]);
+  return { subject, html, text };
 }

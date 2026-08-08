@@ -58,6 +58,19 @@
       "body": "We received a request to reset your password. Click the link below to set a new one.",
       "button": "Reset my password"
     },
+    "clubApproved": {
+      "subject": "Oarly — Your club request was approved",
+      "heading": "{clubName} is live",
+      "intro": "Your club request was approved. Your club page is ready and you can start setting up boats, schedule and members.",
+      "noteLabel": "Note from the reviewer",
+      "button": "Open my club"
+    },
+    "clubRejected": {
+      "subject": "Oarly — Your club request was declined",
+      "heading": "Your request for {clubName} was declined",
+      "intro": "We could not approve this club request. The reason is below. You're welcome to submit a new request once it's addressed.",
+      "noteLabel": "Reason"
+    },
     "booking": {
       "confirmation": {
         "subject": "Oarly — Booking received",

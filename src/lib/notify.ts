@@ -2,8 +2,10 @@ import { and, eq, type SQL } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { boatTypes, bookings, clubs, notifications, sessions, slots, user } from '@/db/schema';
-import { renderBookingCancellation, renderBookingConfirmation, renderNoShowPenalty, renderOwnerRemoval, renderWaitlistPromotion } from '@/emails';
+import { renderBookingCancellation, renderBookingConfirmation, renderClubDecision, renderNoShowPenalty, renderOwnerRemoval, renderWaitlistPromotion } from '@/emails';
+import { env } from '@/env';
 import { sendEmail } from '@/lib/email';
+import { clubUrl, parseAppOrigin } from '@/lib/urls';
 
 type Ctx = {
   toEmail: string;
@@ -111,5 +113,32 @@ export async function notifyWaitlistPromotion(db: DB, { userId, sessionId }: { u
     await sendEmail({ to: ctx.toEmail, subject: email.subject, html: email.html, text: email.text });
   } catch (err) {
     console.error('notifyWaitlistPromotion failed', err);
+  }
+}
+
+/**
+ * Best-effort: tells the requester their club request was approved or rejected.
+ * Never throws — call it AFTER `decideClubRequest` has committed, so a mail
+ * outage cannot roll back the decision (spec §5.4). `created_by` is
+ * `on delete set null`, so a requester whose account is gone is simply skipped;
+ * the decision itself stands.
+ */
+export async function notifyClubDecision(
+  db: DB,
+  { clubId, decision, note }: { clubId: string; decision: 'approved' | 'rejected'; note: string | null },
+): Promise<void> {
+  try {
+    const [row] = await db
+      .select({ toEmail: user.email, locale: user.locale, clubName: clubs.name, slug: clubs.slug })
+      .from(clubs)
+      .innerJoin(user, eq(user.id, clubs.createdBy))
+      .where(eq(clubs.id, clubId))
+      .limit(1);
+    if (!row) return;
+    const url = decision === 'approved' ? clubUrl(row.slug, parseAppOrigin(env.APP_URL)) : null;
+    const email = await renderClubDecision(row.locale, { clubName: row.clubName, decision, note, url });
+    await sendEmail({ to: row.toEmail, subject: email.subject, html: email.html, text: email.text });
+  } catch (err) {
+    console.error('notifyClubDecision failed', err);
   }
 }

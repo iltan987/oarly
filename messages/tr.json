@@ -58,6 +58,19 @@
       "body": "Şifrenizi sıfırlamak için bir istek aldık. Yeni bir şifre belirlemek için aşağıdaki bağlantıya tıklayın.",
       "button": "Şifremi sıfırla"
     },
+    "clubApproved": {
+      "subject": "Oarly — Kulüp isteğin onaylandı",
+      "heading": "{clubName} yayında",
+      "intro": "Kulüp isteğin onaylandı. Kulüp sayfan hazır; tekneleri, programı ve üyeleri şimdi ayarlayabilirsin.",
+      "noteLabel": "İnceleyenin notu",
+      "button": "Kulübümü aç"
+    },
+    "clubRejected": {
+      "subject": "Oarly — Kulüp isteğin reddedildi",
+      "heading": "{clubName} isteğin reddedildi",
+      "intro": "Bu kulüp isteğini onaylayamadık. Gerekçe aşağıda. Gerekli düzeltmeyi yaptıktan sonra yeni bir istek gönderebilirsin.",
+      "noteLabel": "Gerekçe"
+    },
     "booking": {
       "confirmation": {
         "subject": "Oarly — Rezervasyonunuz alındı",
