@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Agent worktrees (superpowers/Agent isolation) live inside the repo, so without this a
+# `git add -A` in any task could commit an entire second checkout. Also excluded from
+# eslint.config.mjs and tsconfig.json for the same reason.
+.claude/worktrees/
