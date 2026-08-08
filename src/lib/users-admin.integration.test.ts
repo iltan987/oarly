@@ -137,6 +137,75 @@ describe.skipIf(!url)('users-admin', () => {
     expect(rows[0].clubId).toBeNull();
   });
 
+  // Two operators on `/admin/users`: one grants, the other's page still shows "Make
+  // admin" and they click it. The second click must not add a second grant to the log —
+  // one row per thing that happened, or the log stops being a record of events.
+  it('does not write a second audit row for a grant that changes nothing', async () => {
+    const actor = await mkUser({ isAdmin: true });
+    const target = await mkUser();
+
+    expect(await setPlatformAdmin(db, { targetUserId: target.id, isAdmin: true, actorId: actor.id }))
+      .toMatchObject({ ok: true, isAdmin: true });
+    expect(await setPlatformAdmin(db, { targetUserId: target.id, isAdmin: true, actorId: actor.id }))
+      .toMatchObject({ ok: true, isAdmin: true });
+
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, target.id));
+    expect(rows.map((a) => a.action)).toEqual(['user.admin_grant']);
+    const [after] = await db.select().from(schema.user).where(eq(schema.user.id, target.id));
+    expect(after.isAdmin).toBe(true);
+  });
+
+  // The defect this cycle exists to prevent: a `user.admin_revoke` row claiming a revoke
+  // that did not happen, reachable from a stale page or a crafted POST.
+  it('writes no audit row when revoking someone who is not an admin', async () => {
+    const actor = await mkUser({ isAdmin: true });
+    await mkUser({ isAdmin: true }); // so `last_admin` is not what refuses this
+    const target = await mkUser({ isAdmin: false });
+
+    expect(await setPlatformAdmin(db, { targetUserId: target.id, isAdmin: false, actorId: actor.id }))
+      .toMatchObject({ ok: true, isAdmin: false });
+
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, target.id));
+    expect(rows).toHaveLength(0);
+    const [after] = await db.select().from(schema.user).where(eq(schema.user.id, target.id));
+    expect(after.isAdmin).toBe(false);
+  });
+
+  // Revoking a non-admin was refused as `last_admin`, which told the operator "this is
+  // the last platform admin" about a user who is not an admin at all.
+  it('does not blame the last-admin guard for a revoke of a non-admin', async () => {
+    await db.update(schema.user).set({ isAdmin: false }).where(eq(schema.user.isAdmin, true));
+    const onlyAdmin = await mkUser({ isAdmin: true });
+    const target = await mkUser({ isAdmin: false });
+
+    const res = await setPlatformAdmin(db, { targetUserId: target.id, isAdmin: false, actorId: onlyAdmin.id });
+    expect(res).toMatchObject({ ok: true, isAdmin: false });
+    // And the one real admin is untouched.
+    const [admin] = await db.select().from(schema.user).where(eq(schema.user.id, onlyAdmin.id));
+    expect(admin.isAdmin).toBe(true);
+  });
+
+  // The grant path takes no lock, so both transactions read `is_admin = false`. The
+  // `ne(...)` in the UPDATE is what stops the loser writing a second grant row.
+  it('writes one audit row when two grants of the same user race', async () => {
+    const actor = await mkUser({ isAdmin: true });
+    const target = await mkUser();
+
+    // Cold-pool trap, as in the revoke race below: without warm connections the second
+    // transaction spends its first milliseconds connecting and the two never overlap.
+    const warm = await Promise.all([pool.connect(), pool.connect()]);
+    for (const c of warm) c.release();
+
+    const [ra, rb] = await Promise.all([
+      setPlatformAdmin(db, { targetUserId: target.id, isAdmin: true, actorId: actor.id }),
+      setPlatformAdmin(db, { targetUserId: target.id, isAdmin: true, actorId: actor.id }),
+    ]);
+    expect([ra, rb].every((r) => r.ok)).toBe(true);
+
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, target.id));
+    expect(rows.map((a) => a.action)).toEqual(['user.admin_grant']);
+  });
+
   it('reports a missing target rather than writing an audit row', async () => {
     const actor = await mkUser({ isAdmin: true });
     const ghost = `ua-${randomUUID()}`;

@@ -1,4 +1,4 @@
-import { asc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm';
 
 import type { DB, DbOrTx } from '@/db';
 import { clubs, memberships, user } from '@/db/schema';
@@ -128,6 +128,21 @@ export type SetPlatformAdminResult =
  *    the lock, lets two concurrent revokes each observe two admins and each
  *    proceed — emptying the set with nobody left to refill it.
  *
+ * A request that asks for the flag the target ALREADY has is a no-op: it returns
+ * `{ ok: true }` and writes nothing. Two operators on `/admin/users`, one revoking
+ * while the other still has the pre-revoke page rendered, is enough to reach it —
+ * as is a crafted POST. Without this check the second click wrote a
+ * `user.admin_revoke` row for a revoke that did not happen, which is precisely the
+ * lie an audit log exists to prevent. It also stops a duplicate grant from writing
+ * a second `user.admin_grant`, and stops a revoke of a NON-admin from being refused
+ * as `last_admin` — telling the operator "this is the last platform admin" about
+ * someone who is not an admin at all.
+ *
+ * `{ ok: true }` rather than a `no_change` refusal: the state the operator asked
+ * for is the state that holds, so there is nothing for them to do differently, and
+ * a refusal would present a stale page as an error. What must not happen is the
+ * audit row, and no audit row is written.
+ *
  * The lock is what makes the second guard a guard. Under READ COMMITTED the loser
  * blocks on the locked rows, and when it is released Postgres re-checks the
  * `is_admin = true` qualification against the committed row version: the row the
@@ -141,9 +156,12 @@ export async function setPlatformAdmin(
   if (!input.isAdmin && input.targetUserId === input.actorId) return { ok: false, error: 'self_revoke' };
 
   return db.transaction(async (tx) => {
-    const [target] = await tx.select({ id: user.id }).from(user)
+    const [target] = await tx.select({ id: user.id, isAdmin: user.isAdmin }).from(user)
       .where(eq(user.id, input.targetUserId)).limit(1);
     if (!target) return { ok: false, error: 'not_found' };
+    // Already in the requested state — before the last-admin count, so revoking a
+    // non-admin is a no-op rather than a nonsense `last_admin` refusal.
+    if (target.isAdmin === input.isAdmin) return { ok: true, isAdmin: input.isAdmin };
 
     if (!input.isAdmin) {
       // `orderBy` before `for('update')` so concurrent revokes take the admin rows in
@@ -153,7 +171,15 @@ export async function setPlatformAdmin(
       if (admins.length <= 1) return { ok: false, error: 'last_admin' };
     }
 
-    await tx.update(user).set({ isAdmin: input.isAdmin }).where(eq(user.id, input.targetUserId));
+    // `ne(...)` repeats the read above as a WHERE clause, which is what makes the
+    // no-op check hold under concurrency: the grant path takes no lock, so two
+    // simultaneous grants both read `is_admin = false`. The loser blocks on the row,
+    // Postgres re-checks this qualification against the committed version, no row
+    // matches, and it returns without writing a second `user.admin_grant`.
+    const changed = await tx.update(user).set({ isAdmin: input.isAdmin })
+      .where(and(eq(user.id, input.targetUserId), ne(user.isAdmin, input.isAdmin)))
+      .returning({ id: user.id });
+    if (changed.length === 0) return { ok: true, isAdmin: input.isAdmin };
     // No `clubId`: the platform-admin flag is not scoped to a club, and inventing one
     // would be a lie in the log.
     await logAudit(tx, {
