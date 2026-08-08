@@ -244,6 +244,52 @@ describe('BookingsRoster add flow', () => {
   });
 });
 
+describe('BookingsRoster MultiSport toggle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows the payment picker by default (club has MultiSport enabled)', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" />);
+    expect(screen.getByRole('combobox')).toBeInTheDocument();
+  });
+
+  it('hides the payment picker when the club has MultiSport disabled', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" multisportEnabled={false} />);
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('forces the add to regular payment when the picker is hidden', async () => {
+    vi.mocked(ownerAddBookingAction).mockResolvedValue({ ok: true });
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" multisportEnabled={false} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick-member' }));
+    const form = screen.getByRole('button', { name: 'add' }).closest('form');
+    if (!form) throw new Error('add form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(ownerAddBookingAction).toHaveBeenCalledTimes(1));
+    const call = vi.mocked(ownerAddBookingAction).mock.calls[0];
+    expect((call[2] as FormData).get('paymentType')).toBe('regular');
+  });
+
+  // Gap this test closes: OwnerAddActionResult's 'multisport_disabled' error was wired
+  // through actions.ts but never consumed here, so a rejected add showed the same
+  // generic toast as any other failure — indistinguishable from a real bug.
+  it('reports a MultiSport-disabled rejection with its own message, not the generic error', async () => {
+    vi.mocked(ownerAddBookingAction).mockResolvedValue({ ok: false, error: 'multisport_disabled' });
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick-member' }));
+    const form = screen.getByRole('button', { name: 'add' }).closest('form');
+    if (!form) throw new Error('add form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('multisportDisabled'));
+    expect(toast.error).not.toHaveBeenCalledWith('actionError');
+  });
+});
+
 describe('BookingsRoster mark-absent flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();

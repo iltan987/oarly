@@ -330,6 +330,7 @@
       "navLabel": "Policies",
       "title": "Booking policies",
       "intro": "Control when booking opens, cancellation rules, no-show penalties, MultiSport priority, and holidays.",
+      "introNoMultisport": "Control when booking opens, cancellation rules, no-show penalties, and holidays.",
       "save": "Save",
       "bookingOpen": "Booking opens",
       "bookingOpenAlways": "Always open",
@@ -353,7 +354,13 @@
       "waitlistCapacityHint": "How many members may queue behind a full session. Leave empty for no limit.",
       "errorInvalidLead": "Enter a lead of at least 1 day, or choose \"Always open\".",
       "saved": "Policies saved.",
-      "errorInvalidInput": "Some values are out of range. Check them and try again."
+      "errorInvalidInput": "Some values are out of range. Check them and try again.",
+      "multisportEnabled": "Accept MultiSport",
+      "multisportEnabledHint": "Turn this off if your club has no MultiSport contract — members and staff will only see cash bookings.",
+      "cancel": "Cancel",
+      "confirmDisableMultisportTitle": "Turn off MultiSport?",
+      "confirmDisableMultisportBody": "{count, plural, =0 {No boats are set to MultiSport-only, so none will be affected.} one {# boat set to MultiSport-only will switch to cash-only.} other {# boats set to MultiSport-only will switch to cash-only.}} Turning MultiSport back on later will not restore them.",
+      "confirmDisableMultisportCta": "Turn off MultiSport"
     },
     "schedulePreview": {
       "title": "Schedule preview",

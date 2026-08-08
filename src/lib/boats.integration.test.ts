@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
-import { createBoat, listBoats, setBoatActive, updateBoat } from './boats';
+import { countMultisportOnlyBoats, createBoat, listBoats, setBoatActive, updateBoat } from './boats';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -89,6 +89,18 @@ describe.skipIf(!url)('boats', () => {
     expect(await setBoatActive(db, { clubId: c2.id, boatId: created.id, active: false })).toBe(false);
     const [row] = await db.select().from(schema.boatTypes).where(eq(schema.boatTypes.id, created.id));
     expect(row.active).toBe(true);
+  });
+
+  it('counts only multisport_only boats, scoped to the club', async () => {
+    const c1 = await newClub('boat-ms1');
+    const c2 = await newClub('boat-ms2');
+    await createBoat(db, c1.id, { name: 'MsOnly1', seats: 2, minSkillLevelId: null, allowedPayment: 'multisport_only', minAttendance: null });
+    await createBoat(db, c1.id, { name: 'MsOnly2', seats: 2, minSkillLevelId: null, allowedPayment: 'multisport_only', minAttendance: null });
+    await createBoat(db, c1.id, { name: 'Both', seats: 2, minSkillLevelId: null, allowedPayment: 'both', minAttendance: null });
+    await createBoat(db, c1.id, { name: 'CashOnly', seats: 2, minSkillLevelId: null, allowedPayment: 'regular_only', minAttendance: null });
+    await createBoat(db, c2.id, { name: 'OtherClubMsOnly', seats: 2, minSkillLevelId: null, allowedPayment: 'multisport_only', minAttendance: null });
+    expect(await countMultisportOnlyBoats(db, c1.id)).toBe(2);
+    expect(await countMultisportOnlyBoats(db, c2.id)).toBe(1);
   });
 
   it('lists boats scoped to their own club only', async () => {

@@ -22,6 +22,7 @@ const settings = {
   cancelCutoffHours: null,
   noshowPenalty: 'off' as const,
   multisportMode: 'equal' as const,
+  multisportEnabled: true,
   openOnHolidays: false,
   waitlistCapacity: null,
 };
@@ -33,7 +34,9 @@ const labels = {
   noshowNever: 'Never', multisport: 'MultiSport mode', multisportEqual: 'Equal', multisportPriority: 'Priority',
   multisportHint: 'hint', openOnHolidays: 'Open on holidays', waitlistCapacity: 'Waitlist capacity',
   waitlistCapacityHint: 'hint', errorInvalidLead: 'Enter a valid lead.', errorInvalidInput: 'Check the fields.',
-  saved: 'Policies saved.',
+  saved: 'Policies saved.', multisportEnabled: 'Accept MultiSport', multisportEnabledHint: 'Turn off if no contract.',
+  cancel: 'Cancel', confirmDisableMultisportTitle: 'Turn off MultiSport?',
+  confirmDisableMultisportBody: '2 boats will be converted.', confirmDisableMultisportCta: 'Turn off MultiSport',
 };
 
 function submit() {
@@ -106,5 +109,73 @@ describe('PoliciesForm', () => {
     await waitFor(() => expect(screen.getByText(labels.errorInvalidLead)).toBeInTheDocument());
     expect(toast.error).toHaveBeenCalledWith(labels.errorInvalidLead);
     expect(screen.queryByText(labels.errorInvalidInput)).not.toBeInTheDocument();
+  });
+});
+
+describe('PoliciesForm MultiSport toggle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('asks for confirmation before hiding the mode field, and does not act on the click alone', () => {
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
+    expect(screen.getByText(labels.multisport)).toBeInTheDocument();
+
+    // Captured before the click: Base UI's Dialog marks the rest of the page
+    // `aria-hidden` while open, so a role query issued AFTER it opens can no
+    // longer find this element by role — the element itself is unchanged.
+    const toggle = screen.getByRole('checkbox', { name: labels.multisportEnabled });
+    fireEvent.click(toggle);
+
+    expect(screen.getByText(labels.confirmDisableMultisportTitle)).toBeInTheDocument();
+    // Nothing has actually changed yet — the checkbox reverts and the mode field stays.
+    expect(toggle).toBeChecked();
+    expect(screen.getByText(labels.multisport)).toBeInTheDocument();
+  });
+
+  it('cancelling the confirmation leaves MultiSport enabled', () => {
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
+    const toggle = screen.getByRole('checkbox', { name: labels.multisportEnabled });
+    fireEvent.click(toggle);
+
+    fireEvent.click(screen.getByRole('button', { name: labels.cancel }));
+
+    expect(screen.queryByText(labels.confirmDisableMultisportTitle)).not.toBeInTheDocument();
+    expect(toggle).toBeChecked();
+    expect(screen.getByText(labels.multisport)).toBeInTheDocument();
+  });
+
+  // The hidden field still has to submit a valid `multisportMode` — the schema
+  // requires it unconditionally, so hiding the SELECT must not remove the top-level
+  // hidden input that carries its last known value (Task 7's "unmount submits
+  // nothing" hazard, applied here to a non-nullable field).
+  it('confirming hides the mode field but keeps submitting its last value', async () => {
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
+
+    const toggle = screen.getByRole('checkbox', { name: labels.multisportEnabled });
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: labels.confirmDisableMultisportCta }));
+
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByText(labels.multisport)).not.toBeInTheDocument();
+
+    submit();
+    await waitFor(() => expect(savePoliciesAction).toHaveBeenCalledTimes(1));
+    const formData = vi.mocked(savePoliciesAction).mock.calls[0][2] as FormData;
+    expect(formData.get('multisportEnabled')).toBeNull();
+    expect(formData.get('multisportMode')).toBe('equal');
+  });
+
+  it('re-enabling a disabled club does not ask for confirmation', () => {
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, multisportEnabled: false }} labels={labels} />);
+    expect(screen.queryByText(labels.multisport)).not.toBeInTheDocument();
+
+    const toggle = screen.getByRole('checkbox', { name: labels.multisportEnabled });
+    fireEvent.click(toggle);
+
+    expect(screen.queryByText(labels.confirmDisableMultisportTitle)).not.toBeInTheDocument();
+    expect(toggle).toBeChecked();
+    expect(screen.getByText(labels.multisport)).toBeInTheDocument();
   });
 });

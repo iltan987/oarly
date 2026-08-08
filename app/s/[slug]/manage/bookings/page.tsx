@@ -61,7 +61,7 @@ export default async function ManageBookingsPage({ params, searchParams }: { par
         invariant ownerAddBooking's override comment relies on.
       */}
       {roster.closed && <p className="text-sm text-muted-foreground">{t('closed')}</p>}
-      <BookingsRoster slug={slug} sessions={sessions} timezone={club.timezone} closed={roster.closed} />
+      <BookingsRoster slug={slug} sessions={sessions} timezone={club.timezone} closed={roster.closed} multisportEnabled={club.multisportEnabled} />
     </div>
   );
 }

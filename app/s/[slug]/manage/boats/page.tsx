@@ -26,6 +26,7 @@ export default async function BoatsPage({ params }: { params: Promise<{ slug: st
         slug={slug}
         boats={boats.map((b) => ({ id: b.id, name: b.name, seats: b.seats, minSkillLevelId: b.minSkillLevelId, allowedPayment: b.allowedPayment, minAttendance: b.minAttendance, active: b.active }))}
         levels={levels.map((l) => ({ id: l.id, name: l.name }))}
+        multisportEnabled={club.multisportEnabled}
         labels={{
           name: t('name'), seats: t('seats'), minSkill: t('minSkill'), noMinSkill: t('noMinSkill'),
           payment: t('payment'), paymentRegular: t('paymentRegular'), paymentMultisport: t('paymentMultisport'),

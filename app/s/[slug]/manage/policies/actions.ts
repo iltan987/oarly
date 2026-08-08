@@ -23,6 +23,7 @@ export async function savePoliciesAction(slug: string, _prev: PoliciesState, for
     cancelCutoffHours: cutoffRaw === '' ? null : cutoffRaw,
     noshowPenalty: formData.get('noshowPenalty'),
     multisportMode: formData.get('multisportMode'),
+    multisportEnabled: formData.get('multisportEnabled') === 'on',
     openOnHolidays: formData.get('openOnHolidays') === 'on',
     waitlistCapacity: waitlistRaw === '' ? null : waitlistRaw,
   });

@@ -76,6 +76,11 @@ function SeatPips({ capacity, seatsLeft, mine }: { capacity: number; seatsLeft: 
 }
 
 function PaymentChips({ session, t }: { session: MemberVirtualSession; t: ReturnType<typeof useTranslations> }) {
+  // Mirrors the radio picker in ConfirmBooking, which already self-hides in this
+  // case: with only one payment type possible there is nothing to disambiguate,
+  // and — at a club with MultiSport disabled — this is the last surface where a
+  // lone "Cash" chip would otherwise render on every session.
+  if (session.paymentChoices.length <= 1) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
       {session.paymentChoices.map((p) => (

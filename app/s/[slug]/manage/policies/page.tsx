@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 
 import { db } from '@/db';
+import { countMultisportOnlyBoats } from '@/lib/boats';
 import { requireOwner } from '@/lib/membership';
 import { getSchedulingSettings } from '@/lib/scheduling-settings';
 
@@ -13,13 +14,16 @@ export default async function PoliciesPage({ params }: { params: Promise<{ slug:
   const { slug } = await params;
   const { club } = await requireOwner(slug, '/manage/policies');
   const t = await getTranslations('manage.policies');
-  const settings = await getSchedulingSettings(db, club.id);
+  const [settings, multisportOnlyBoatCount] = await Promise.all([
+    getSchedulingSettings(db, club.id),
+    countMultisportOnlyBoats(db, club.id),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="font-heading text-lg font-semibold">{t('title')}</h2>
-        <p className="text-sm text-muted-foreground">{t('intro')}</p>
+        <p className="text-sm text-muted-foreground">{t(settings.multisportEnabled ? 'intro' : 'introNoMultisport')}</p>
       </div>
       <PoliciesForm
         slug={slug}
@@ -34,6 +38,10 @@ export default async function PoliciesPage({ params }: { params: Promise<{ slug:
           multisportHint: t('multisportHint'), openOnHolidays: t('openOnHolidays'), waitlistCapacity: t('waitlistCapacity'),
           waitlistCapacityHint: t('waitlistCapacityHint'), errorInvalidLead: t('errorInvalidLead'),
           errorInvalidInput: t('errorInvalidInput'), saved: t('saved'),
+          multisportEnabled: t('multisportEnabled'), multisportEnabledHint: t('multisportEnabledHint'),
+          cancel: t('cancel'), confirmDisableMultisportTitle: t('confirmDisableMultisportTitle'),
+          confirmDisableMultisportBody: t('confirmDisableMultisportBody', { count: multisportOnlyBoatCount }),
+          confirmDisableMultisportCta: t('confirmDisableMultisportCta'),
         }}
       />
     </div>

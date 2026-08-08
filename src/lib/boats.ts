@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { boatTypes, skillLevels } from '@/db/schema';
@@ -52,4 +52,16 @@ export async function setBoatActive(db: DB, input: { clubId: string; boatId: str
     .where(and(eq(boatTypes.id, input.boatId), eq(boatTypes.clubId, input.clubId)))
     .returning({ id: boatTypes.id });
   return res.length > 0;
+}
+
+/**
+ * How many of this club's boats are currently MultiSport-only — the count the
+ * policies page's disable-confirmation reports, since that many would be
+ * converted to cash-only (see `updateSchedulingSettings`'s `convertedBoats`).
+ * A plain read, so it does not itself change anything.
+ */
+export async function countMultisportOnlyBoats(db: DB, clubId: string): Promise<number> {
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(boatTypes)
+    .where(and(eq(boatTypes.clubId, clubId), eq(boatTypes.allowedPayment, 'multisport_only')));
+  return row?.n ?? 0;
 }
