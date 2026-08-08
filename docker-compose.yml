@@ -36,7 +36,9 @@ services:
     profiles: [redis]
 
   redis-http:
-    image: hiett/serverless-redis-http:latest
+    # Pinned to match .github/workflows/ci.yml. srh's `latest` tag has pointed at
+    # 0.0.10 since 2024-05-11, so this is the same image, just reproducible.
+    image: hiett/serverless-redis-http:0.0.10
     profiles: [redis]
     environment:
       SRH_MODE: env
