@@ -58,19 +58,28 @@ describe('BoatsEditor MultiSport toggle', () => {
     expect((call[2] as FormData).get('allowedPayment')).toBe('regular_only');
   });
 
-  it('hides the field on the edit form too, forcing a previously "both" boat to regular_only on save', async () => {
+  // The field is hidden, so the owner is never shown `allowedPayment` and never
+  // agrees to change it — an unrelated edit (this one only renames the boat) must
+  // therefore echo the stored value back untouched. `both` already permits cash, so
+  // it strands nothing; narrowing it to `regular_only` here is pure data loss, and
+  // it contradicts the disable confirmation, which promises to convert only
+  // MultiSport-ONLY boats. Mutate the hidden input back to `'regular_only'` and
+  // this fails.
+  it('hides the field on the edit form but leaves a stored "both" boat unchanged through an unrelated edit', async () => {
     vi.mocked(updateBoatAction).mockResolvedValue({ ok: true });
     render(<BoatsEditor slug="club" boats={[boat]} levels={[]} labels={labels} multisportEnabled={false} />);
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
     expect(screen.queryByText('Allowed payment')).not.toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Quad (renamed)' } });
     const form = screen.getByRole('button', { name: 'Save' }).closest('form');
     if (!form) throw new Error('form not found');
     fireEvent.submit(form);
 
     await waitFor(() => expect(updateBoatAction).toHaveBeenCalledTimes(1));
-    const call = vi.mocked(updateBoatAction).mock.calls[0];
-    expect((call[2] as FormData).get('allowedPayment')).toBe('regular_only');
+    const submitted = vi.mocked(updateBoatAction).mock.calls[0][2] as FormData;
+    expect(submitted.get('name')).toBe('Quad (renamed)');
+    expect(submitted.get('allowedPayment')).toBe('both');
   });
 });

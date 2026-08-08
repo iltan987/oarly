@@ -14,6 +14,21 @@ export interface BoatInput {
   minAttendance: number | null;
 }
 
+/**
+ * Spec §5.2's invariant, defended on the write path: no boat may advertise
+ * MultiSport at a club that has MultiSport off, or it becomes unbookable. The
+ * editor hides the payment field when the flag is off, but `allowedPayment`
+ * still arrives from FormData, so a crafted POST could otherwise re-create
+ * exactly the stranded boat disabling the flag exists to prevent.
+ *
+ * `both` is deliberately untouched — it already permits cash, so it is not
+ * stranded, and rewriting it would destroy a setting the owner never saw.
+ */
+export function clampAllowedPayment<T extends { allowedPayment: AllowedPayment }>(input: T, clubMultisportEnabled: boolean): T {
+  if (clubMultisportEnabled || input.allowedPayment !== 'multisport_only') return input;
+  return { ...input, allowedPayment: 'regular_only' };
+}
+
 export function listBoats(db: DB, clubId: string): Promise<BoatType[]> {
   return db.select().from(boatTypes).where(eq(boatTypes.clubId, clubId)).orderBy(asc(boatTypes.name));
 }

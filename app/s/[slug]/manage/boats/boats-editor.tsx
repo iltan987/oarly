@@ -46,13 +46,18 @@ function BoatFields({ boat, levels, labels, formId, multisportEnabled }: { boat?
       */}
       <input type="hidden" name="minSkillLevelId" value={minSkillLevelId === NONE_VALUE ? '' : minSkillLevelId} />
       {/*
-        `regular_only` is the only possibility once the club has no MultiSport
-        contract, so a club that just disabled it and then edits a boat here
-        should not silently keep a stale `multisport_only`/`both` value —
-        force it, matching the write-time invariant `updateSchedulingSettings`
-        already repairs for existing boats.
+        With the field hidden the STORED value is echoed straight back, never
+        rewritten. A `both` boat already permits cash, so narrowing it here
+        would silently destroy a setting on any unrelated edit — a rename, a
+        seat count — that the owner was never shown and never agreed to (the
+        disable confirmation only promises to convert MultiSport-ONLY boats).
+        A stale `both` is inert: `paymentChoicesFor` and `checkEligibility`
+        narrow on the club flag alone. `multisport_only` boats were already
+        converted at write time by `updateSchedulingSettings`, and
+        `clampAllowedPayment` re-asserts that invariant server-side. Only a
+        NEW boat defaults to `regular_only` here.
       */}
-      <input type="hidden" name="allowedPayment" value={multisportEnabled ? allowedPayment : 'regular_only'} />
+      <input type="hidden" name="allowedPayment" value={multisportEnabled ? allowedPayment : (boat?.allowedPayment ?? 'regular_only')} />
       <Field>
         <FieldLabel htmlFor={`name-${formId}`}>{labels.name}</FieldLabel>
         <Input id={`name-${formId}`} name="name" defaultValue={boat?.name} required />
