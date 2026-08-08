@@ -239,6 +239,7 @@
     "transferSelect": "Yeni yönetici",
     "transferCta": "Devret",
     "transferNoCandidates": "Yöneticiliği devralabilecek onaylı üye yok.",
+    "transferTruncated": "Yalnızca ilk {count} onaylı üye alfabetik sırayla listeleniyor. Sonrasındaki kişiler burada seçilemiyor.",
     "confirmTransferTitle": "{club} kulübünün yöneticiliği {name} kişisine verilsin mi?",
     "confirmTransferBody": "Mevcut yönetici üyeliğe düşürülecek. Kulübün yine tek bir yöneticisi olacak.",
     "confirmTransferCta": "Evet, yöneticiliği devret",

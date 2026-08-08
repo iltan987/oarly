@@ -26,10 +26,12 @@ const SELECT_ID = 'transfer-owner-select';
  * confirmation `<form>` whose value must be readable from `FormData`, and a native
  * select is both simpler and directly assertable in jsdom.
  */
-export function TransferOwner({ clubId, clubName, candidates }: {
+export function TransferOwner({ clubId, clubName, candidates, truncated = false }: {
   clubId: string;
   clubName: string;
   candidates: TransferCandidate[];
+  /** `candidates` was capped. See `ClubAdminDetail.transferCandidatesTruncated`. */
+  truncated?: boolean;
 }) {
   const t = useTranslations('admin');
   const [selected, setSelected] = useState(candidates[0]?.userId ?? '');
@@ -65,21 +67,31 @@ export function TransferOwner({ clubId, clubName, candidates }: {
   const chosen = candidates.find((c) => c.userId === selected) ?? candidates[0];
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
-      <div className="flex flex-col gap-1 text-sm">
-        <label htmlFor={SELECT_ID} className="text-muted-foreground">{t('transferSelect')}</label>
-        <select
-          id={SELECT_ID}
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-        >
-          {candidates.map((c) => (
-            <option key={c.userId} value={c.userId}>{c.name} — {c.email}</option>
-          ))}
-        </select>
+    <div className="flex flex-col gap-2">
+      {/* The cap is alphabetical, so on an oversized club the back half of the
+          alphabet is simply absent from the picker. Saying so is the difference
+          between a limitation and a bug an operator cannot see. */}
+      {truncated && (
+        <p className="text-xs text-muted-foreground">
+          {t('transferTruncated', { count: candidates.length })}
+        </p>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1 text-sm">
+          <label htmlFor={SELECT_ID} className="text-muted-foreground">{t('transferSelect')}</label>
+          <select
+            id={SELECT_ID}
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+          >
+            {candidates.map((c) => (
+              <option key={c.userId} value={c.userId}>{c.name} — {c.email}</option>
+            ))}
+          </select>
+        </div>
+        <Button size="sm" onClick={() => setOpen(true)}>{t('transferCta')}</Button>
       </div>
-      <Button size="sm" onClick={() => setOpen(true)}>{t('transferCta')}</Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

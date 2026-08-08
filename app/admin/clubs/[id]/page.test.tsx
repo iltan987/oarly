@@ -52,6 +52,7 @@ function detail(overrides: Partial<ClubAdminDetail> = {}, club: Record<string, u
     owners: [{ userId: 'u1', name: 'Ada', email: 'ada@example.com' }],
     memberCounts: { pending: 1, approved: 2, rejected: 0, banned: 3 },
     transferCandidates: [{ userId: 'u2', name: 'Bora', email: 'bora@example.com' }],
+    transferCandidatesTruncated: false,
     boatCount: 4,
     windowCount: 5,
     ...overrides,

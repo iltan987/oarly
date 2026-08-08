@@ -68,6 +68,22 @@ describe('TransferOwner', () => {
     expect(screen.queryByRole('button', { name: 'transferCta' })).not.toBeInTheDocument();
   });
 
+  // The cap is ALPHABETICAL — candidates are ordered by name — so on an oversized club
+  // the back half of the alphabet is absent from the picker entirely. Without this
+  // line there is nothing on screen to distinguish that from "those people don't
+  // exist", which is a silent wrong answer rather than a stated limitation.
+  it('says so when the candidate list was capped', () => {
+    render(<TransferOwner clubId="c1" clubName="Boğaziçi" candidates={candidates} truncated />);
+    expect(screen.getByText('transferTruncated:{"count":2}')).toBeInTheDocument();
+    // …and still offers the transfer: a capped list is usable, just incomplete.
+    expect(screen.getByRole('button', { name: 'transferCta' })).toBeInTheDocument();
+  });
+
+  it('stays quiet when the list is complete', () => {
+    render(<TransferOwner clubId="c1" clubName="Boğaziçi" candidates={candidates} />);
+    expect(screen.queryByText(/^transferTruncated/)).toBeNull();
+  });
+
   // Both refusals come from server-side guards and can never succeed on a retry, so
   // they are reported verbatim instead of as the generic "try again".
   it.each([
@@ -96,6 +112,7 @@ describe('club detail message catalogs', () => {
       'transferTitle', 'transferSelect', 'transferCta', 'transferNoCandidates',
       'confirmTransferTitle', 'confirmTransferBody', 'confirmTransferCta', 'transferred',
       'transferErrorNotMember', 'transferErrorAlreadyOwner', 'statusRejected', 'cancel',
+      'transferTruncated',
     ] as const) {
       expect(messages.admin[key]).toBeTruthy();
     }
@@ -107,5 +124,8 @@ describe('club detail message catalogs', () => {
     expect(messages.admin.confirmTransferTitle).toContain('{name}');
     expect(messages.admin.confirmTransferTitle).toContain('{club}');
     expect(messages.admin.detailReviewedBy).toContain('{name}');
+    // Without `{count}` the hint cannot say HOW many were listed, which is the only
+    // actionable part of it.
+    expect(messages.admin.transferTruncated).toContain('{count}');
   });
 });

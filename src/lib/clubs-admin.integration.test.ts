@@ -8,7 +8,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
-import { createClub, decideClubRequest, getClubAdminDetail, setClubStatus, transferOwnership } from './clubs-admin';
+import {
+  createClub, decideClubRequest, getClubAdminDetail, setClubStatus,
+  TRANSFER_CANDIDATE_LIMIT, transferOwnership,
+} from './clubs-admin';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -18,10 +21,13 @@ describe.skipIf(!url)('clubs-admin', () => {
   beforeAll(async () => { pool = new Pool({ connectionString: url }); db = drizzle(pool, { schema }); await migrate(db, { migrationsFolder: './drizzle' }); });
   afterAll(async () => { await pool.end(); });
 
-  // `randomUUID`, not a timestamp: `Date.now()` plus a floored `performance.now()`
-  // repeats inside one millisecond, and the transfer tests below create three or
-  // four users back to back — a collision there is a primary-key error in an
-  // unrelated assertion's setup.
+  // `randomUUID`, not a timestamp. `Date.now()` plus a floored `performance.now()` CAN
+  // repeat inside one millisecond, which would be a primary-key error in an unrelated
+  // assertion's setup — the transfer tests below create three or four users back to
+  // back. This is a LATENT flake, not an observed one: reverting to the timestamp id
+  // still passes, because each `mkUser` awaits a round trip and consecutive calls
+  // rarely land in the same millisecond. The change removes the possibility and masks
+  // nothing.
   async function mkUser(name = 'X') {
     const id = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id, name, email: `${id}@t.co` });
@@ -353,9 +359,13 @@ describe.skipIf(!url)('clubs-admin', () => {
 
   // Two admins reassigning the same club at once. `transferOwnership` READS the
   // memberships and then writes two of them, which is the same check-then-act shape
-  // that let two concurrent decisions both win in `decideClubRequest`. Without the row
-  // lock, READ COMMITTED lets the loser's demote re-evaluate `role = 'owner'` against
+  // that let two concurrent decisions both win in `decideClubRequest`. With no lock at
+  // all, READ COMMITTED lets the loser's demote re-evaluate `role = 'owner'` against
   // the winner's committed row, match nothing, and promote a SECOND owner.
+  //
+  // This case does NOT by itself justify locking the club row: the two racers share
+  // the old owner's membership row, so a lock on `role = 'owner'` would serialise them
+  // here too. The ownerless case below is what separates the two designs.
   it('never leaves two owners or none when two transfers race', async () => {
     const admin = await mkUser();
     const oldOwner = await mkUser();
@@ -369,9 +379,15 @@ describe.skipIf(!url)('clubs-admin', () => {
     ]);
 
     // Warm two pool connections FIRST. `db.transaction` calls `pool.connect()`, and on
-    // a cold pool the second call spends its first milliseconds on a TCP handshake and
+    // a COLD pool the second call spends its first milliseconds on a TCP handshake and
     // auth — by which time the first transaction has already committed and the race
-    // cannot occur. Without this, the test passes with the row lock removed.
+    // cannot occur, so the test would pass with the lock removed.
+    //
+    // Honest scope: it is insurance here, not the thing that makes this test work.
+    // Every test above has already run queries through this pool, so it is warm by the
+    // time control reaches here, and removing this warm-up still fails the mutation.
+    // It is kept because that is an accident of file order — running this test first,
+    // or alone, would restore the cold pool.
     const warm = await Promise.all([pool.connect(), pool.connect()]);
     for (const c of warm) c.release();
 
@@ -397,6 +413,43 @@ describe.skipIf(!url)('clubs-admin', () => {
     const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id));
     expect(audit.map((x) => x.action)).toEqual(['club.transfer_owner', 'club.transfer_owner']);
     expect(audit.map((x) => x.target).sort()).toEqual([a.id, b.id].sort());
+  });
+
+  // THE case that justifies locking the club row rather than the owner membership rows.
+  //
+  // An ownerless club is precisely the club this function exists to repair, and it is
+  // the one where an owner-row lock protects nothing: `WHERE role = 'owner'` matches
+  // ZERO rows, so `FOR UPDATE` over it locks nothing, the two transfers never meet,
+  // both demote nothing, and both promote — two owners. The club row always exists, so
+  // locking it serialises the repair as well as the ordinary transfer.
+  it('never produces two owners when two transfers race on an OWNERLESS club', async () => {
+    const admin = await mkUser();
+    const a = await mkUser('A');
+    const b = await mkUser('B');
+    const club = await mkClub('ro');
+    await db.insert(schema.memberships).values([
+      { userId: a.id, clubId: club.id, role: 'member', status: 'approved' },
+      { userId: b.id, clubId: club.id, role: 'member', status: 'approved' },
+    ]);
+    expect(await ownerIdsOf(club.id)).toEqual([]);
+
+    const warm = await Promise.all([pool.connect(), pool.connect()]);
+    for (const c of warm) c.release();
+
+    const [r1, r2] = await Promise.all([
+      transferOwnership(db, { clubId: club.id, toUserId: a.id, actorId: admin.id }),
+      transferOwnership(db, { clubId: club.id, toUserId: b.id, actorId: admin.id }),
+    ]);
+
+    expect([r1.ok, r2.ok]).toEqual([true, true]);
+    expect(await ownerIdsOf(club.id)).toHaveLength(1);
+
+    // Serialisation is visible in `fromUserId`: whichever ran first found no owner to
+    // demote (`null`), and the second demoted the first one's target. Two `null`s here
+    // would mean the transactions never saw each other, which is the bug.
+    const fromIds = [r1, r2].map((r) => (r.ok ? r.fromUserId : 'refused'));
+    expect(fromIds.filter((f) => f === null)).toHaveLength(1);
+    expect(fromIds.filter((f) => f !== null)).toHaveLength(1);
   });
 
   it('getClubAdminDetail reports owners, member counts and transfer candidates', async () => {
@@ -429,8 +482,40 @@ describe.skipIf(!url)('clubs-admin', () => {
     // and the banned member must not be offered, because `transferOwnership` refuses
     // every one of them — offering them produces a guaranteed error toast.
     expect(detail?.transferCandidates.map((c) => c.userId)).toEqual([approved.id]);
+    expect(detail?.transferCandidatesTruncated).toBe(false);
     expect(detail?.boatCount).toBe(2);
     expect(detail?.windowCount).toBe(1);
+  });
+
+  // The candidate list is capped, and the cap is ALPHABETICAL — so on an oversized club
+  // the tail of the alphabet is absent from the picker. That has to be reported, or an
+  // operator cannot tell it from "that person is not a member".
+  it('flags the candidate list as truncated at the cap, without capping the counts', async () => {
+    const owner = await mkUser('Owner');
+    const club = await mkClub('gt');
+    const extra = TRANSFER_CANDIDATE_LIMIT + 5;
+    const people = Array.from({ length: extra }, (_, i) => ({
+      id: `u-${randomUUID()}`,
+      // Zero-padded so the alphabetical order is the numeric one and the cap is
+      // observable: the last five names must be the ones missing.
+      name: `M${String(i).padStart(4, '0')}`,
+    }));
+    await db.insert(schema.user).values(people.map((p) => ({ id: p.id, name: p.name, email: `${p.id}@t.co` })));
+    await db.insert(schema.memberships).values([
+      { userId: owner.id, clubId: club.id, role: 'owner' as const, status: 'approved' as const },
+      ...people.map((p) => ({ userId: p.id, clubId: club.id, role: 'member' as const, status: 'approved' as const })),
+    ]);
+
+    const detail = await getClubAdminDetail(db, club.id);
+    expect(detail?.transferCandidates).toHaveLength(TRANSFER_CANDIDATE_LIMIT);
+    expect(detail?.transferCandidatesTruncated).toBe(true);
+    // The truncation is alphabetical, which is the part that makes it worth saying out
+    // loud: the picker holds M0000… and not the tail.
+    expect(detail?.transferCandidates[0].name).toBe('M0000');
+    expect(detail?.transferCandidates.at(-1)?.name).toBe(`M${String(TRANSFER_CANDIDATE_LIMIT - 1).padStart(4, '0')}`);
+    // Counts come from a GROUP BY, not from the capped list, so the page still reports
+    // the club's real size rather than the cap.
+    expect(detail?.memberCounts.approved).toBe(extra + 1);
   });
 
   // Counts must be scoped to THIS club, or a busy neighbour inflates every number an

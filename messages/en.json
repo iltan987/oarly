@@ -239,6 +239,7 @@
     "transferSelect": "New owner",
     "transferCta": "Transfer",
     "transferNoCandidates": "No approved members are available to take ownership.",
+    "transferTruncated": "Only the first {count} approved members are listed, in alphabetical order. Anyone after them can't be picked here yet.",
     "confirmTransferTitle": "Make {name} the owner of {club}?",
     "confirmTransferBody": "The current owner is demoted to member. This club will still have exactly one owner.",
     "confirmTransferCta": "Yes, transfer ownership",

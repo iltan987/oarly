@@ -111,7 +111,12 @@ export default async function AdminClubDetailPage({ params }: { params: Promise<
           </ul>
         )}
         <h2 className="mt-3 font-heading text-sm font-semibold">{t('transferTitle')}</h2>
-        <TransferOwner clubId={club.id} clubName={club.name} candidates={detail.transferCandidates} />
+        <TransferOwner
+          clubId={club.id}
+          clubName={club.name}
+          candidates={detail.transferCandidates}
+          truncated={detail.transferCandidatesTruncated}
+        />
       </Card>
 
       <Card className="grid grid-cols-1 gap-3 p-4 text-sm sm:grid-cols-3">

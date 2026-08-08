@@ -167,14 +167,24 @@ export async function transferOwnership(
     // `.for('update')` on the CLUB row is what serialises two concurrent transfers,
     // and it is load-bearing rather than defensive. This function reads the
     // memberships, decides, and then writes two of them — the same check-then-act
-    // shape that let two concurrent `decideClubRequest` calls both win. Without the
-    // lock, under READ COMMITTED: both transactions read their own target as an
-    // eligible member; the first demotes the owner and promotes its target; the
-    // second's demote (`WHERE role = 'owner'`) blocks, then re-evaluates against the
-    // committed row, finds it is now `member`, matches NOTHING, and promotes a
-    // SECOND owner. The club ends with two. Locking the club row instead of the
-    // membership rows is deliberate: the two racers target DIFFERENT membership
-    // rows, so a lock on those would not make them meet.
+    // shape that let two concurrent `decideClubRequest` calls both win. With no lock,
+    // under READ COMMITTED: both transactions read their own target as an eligible
+    // member; the first demotes the owner and promotes its target; the second's demote
+    // (`WHERE role = 'owner'`) blocks, then re-evaluates against the committed row,
+    // finds it is now `member`, matches NOTHING, and promotes a SECOND owner.
+    //
+    // Why the CLUB row and not the owner membership rows — the interesting part, and
+    // NOT because the racers fail to meet on those rows. They do meet: they share the
+    // old owner's row, and locking `WHERE role = 'owner'` serialises the ordinary
+    // transfer perfectly well (verified — the ordinary race test passes with that
+    // lock substituted in).
+    //
+    // It fails on the one club that matters most: an OWNERLESS one, which is precisely
+    // the club this function was added to repair. There, `WHERE role = 'owner'` matches
+    // zero rows, so `FOR UPDATE` over it locks nothing, the two transfers never meet,
+    // both demote nothing, and both promote — two owners. The club row always exists,
+    // so it serialises the repair as well as the ordinary case. Both scenarios have
+    // their own test; substituting an owner-row lock fails the ownerless one 3/3.
     const [club] = await tx.select({ id: clubs.id }).from(clubs)
       .where(eq(clubs.id, input.clubId)).limit(1).for('update');
     if (!club) return { ok: false, error: 'club_not_found' };
@@ -238,6 +248,16 @@ export type ClubAdminDetail = {
   owners: { userId: string; name: string; email: string }[];
   memberCounts: { pending: number; approved: number; rejected: number; banned: number };
   transferCandidates: { userId: string; name: string; email: string }[];
+  /**
+   * `transferCandidates` hit `TRANSFER_CANDIDATE_LIMIT` and there may be more.
+   *
+   * Surfaced rather than left implicit because the truncation is ALPHABETICAL — the
+   * list is ordered by name — so on an oversized club the back half of the alphabet
+   * would simply never appear in the picker, with nothing on screen to say so. A
+   * silent cap that quietly excludes half the members by surname is worse than a
+   * visible one. The real fix is a search-backed picker (deferred, spec §7).
+   */
+  transferCandidatesTruncated: boolean;
   boatCount: number;
   windowCount: number;
 };
@@ -297,6 +317,9 @@ export async function getClubAdminDetail(db: DbOrTx, clubId: string): Promise<Cl
     owners,
     memberCounts,
     transferCandidates,
+    // `===` and not `>=`: the query cannot return more than it asked for, and a full
+    // page is the only signal available that a next one might exist.
+    transferCandidatesTruncated: transferCandidates.length === TRANSFER_CANDIDATE_LIMIT,
     boatCount: boats[0]?.n ?? 0,
     windowCount: windows[0]?.n ?? 0,
   };
