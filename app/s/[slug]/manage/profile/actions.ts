@@ -15,7 +15,7 @@ function refresh(slug: string) {
 }
 
 export async function saveProfileAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
-  const { club } = await requireOwner(slug, '/manage/profile');
+  const { club, user } = await requireOwner(slug, '/manage/profile');
   const parsed = clubProfileSchema.safeParse({
     name: String(formData.get('name') ?? '').trim(),
     tagline: String(formData.get('tagline') ?? '').trim() || undefined,
@@ -35,7 +35,7 @@ export async function saveProfileAction(slug: string, _prev: ManageActionResult 
     brandAccent: d.brandAccent ?? null,
     headingFont: d.headingFont,
     logoUrl: d.logoUrl ? d.logoUrl : null,
-  });
+  }, user.id);
   if (!ok) return { ok: false };
   refresh(slug);
   return { ok: true };

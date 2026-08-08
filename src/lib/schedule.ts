@@ -2,6 +2,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { boatTypes, scheduleWindows, windowBoats } from '@/db/schema';
+import { logAudit } from '@/lib/audit';
 
 export type ScheduleWindow = typeof scheduleWindows.$inferSelect;
 export type WindowError = 'end_before_start' | 'uneven_tiling' | 'overlap' | 'invalid_boats' | 'not_found';
@@ -74,7 +75,7 @@ async function validate(db: DB, clubId: string, input: WindowInput, excludeWindo
   return null;
 }
 
-export async function createWindow(db: DB, clubId: string, input: WindowInput): Promise<WindowResult> {
+export async function createWindow(db: DB, clubId: string, input: WindowInput, actorId: string): Promise<WindowResult> {
   const err = await validate(db, clubId, input, null);
   if (err) return { ok: false, error: err };
   return db.transaction(async (tx) => {
@@ -83,11 +84,12 @@ export async function createWindow(db: DB, clubId: string, input: WindowInput): 
       .values({ clubId, weekday: input.weekday, startTime: input.startTime, endTime: input.endTime, defaultSessionMinutes: input.defaultSessionMinutes })
       .returning({ id: scheduleWindows.id });
     await tx.insert(windowBoats).values(input.boats.map((b) => ({ windowId: w.id, boatTypeId: b.boatTypeId, quantity: b.quantity })));
+    await logAudit(tx, { actorUserId: actorId, clubId, action: 'window.create', target: w.id, actingAsRole: 'owner' });
     return { ok: true, id: w.id };
   });
 }
 
-export async function updateWindow(db: DB, input: { clubId: string; windowId: string } & WindowInput): Promise<WindowResult> {
+export async function updateWindow(db: DB, input: { clubId: string; windowId: string; actorId: string } & WindowInput): Promise<WindowResult> {
   const [existing] = await db
     .select({ id: scheduleWindows.id })
     .from(scheduleWindows)
@@ -103,14 +105,20 @@ export async function updateWindow(db: DB, input: { clubId: string; windowId: st
       .where(and(eq(scheduleWindows.id, input.windowId), eq(scheduleWindows.clubId, input.clubId)));
     await tx.delete(windowBoats).where(eq(windowBoats.windowId, input.windowId));
     await tx.insert(windowBoats).values(input.boats.map((b) => ({ windowId: input.windowId, boatTypeId: b.boatTypeId, quantity: b.quantity })));
+    await logAudit(tx, { actorUserId: input.actorId, clubId: input.clubId, action: 'window.update', target: input.windowId, actingAsRole: 'owner' });
     return { ok: true, id: input.windowId };
   });
 }
 
-export async function deleteWindow(db: DB, input: { clubId: string; windowId: string }): Promise<boolean> {
-  const res = await db
-    .delete(scheduleWindows)
-    .where(and(eq(scheduleWindows.id, input.windowId), eq(scheduleWindows.clubId, input.clubId)))
-    .returning({ id: scheduleWindows.id });
-  return res.length > 0;
+/** Wrapped so the audit row commits with the deletion (spec §4.3). */
+export async function deleteWindow(db: DB, input: { clubId: string; windowId: string; actorId: string }): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const res = await tx
+      .delete(scheduleWindows)
+      .where(and(eq(scheduleWindows.id, input.windowId), eq(scheduleWindows.clubId, input.clubId)))
+      .returning({ id: scheduleWindows.id });
+    if (res.length === 0) return false;
+    await logAudit(tx, { actorUserId: input.actorId, clubId: input.clubId, action: 'window.delete', target: input.windowId, actingAsRole: 'owner' });
+    return true;
+  });
 }

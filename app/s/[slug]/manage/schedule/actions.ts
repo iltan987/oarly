@@ -14,7 +14,7 @@ function refresh(slug: string) {
 }
 
 export async function saveWindowAction(slug: string, _prev: WindowFormState, formData: FormData): Promise<WindowFormState> {
-  const { club } = await requireOwner(slug, '/manage/schedule');
+  const { club, user } = await requireOwner(slug, '/manage/schedule');
   const boatTypeIds = formData.getAll('boatTypeId').map(String);
   const quantities = formData.getAll('quantity').map((q) => Number(q));
   const parsed = windowSchema.safeParse({
@@ -27,15 +27,15 @@ export async function saveWindowAction(slug: string, _prev: WindowFormState, for
   if (!parsed.success) return { status: 'error', error: null }; // shows the generic message
   const windowId = formData.get('windowId');
   const result = windowId
-    ? await updateWindow(db, { clubId: club.id, windowId: String(windowId), ...parsed.data })
-    : await createWindow(db, club.id, parsed.data);
+    ? await updateWindow(db, { clubId: club.id, windowId: String(windowId), actorId: user.id, ...parsed.data })
+    : await createWindow(db, club.id, parsed.data, user.id);
   if (!result.ok) return { status: 'error', error: result.error };
   refresh(slug);
   return { status: 'ok', error: null };
 }
 
 export async function deleteWindowAction(slug: string, formData: FormData): Promise<void> {
-  const { club } = await requireOwner(slug, '/manage/schedule');
-  await deleteWindow(db, { clubId: club.id, windowId: String(formData.get('windowId')) });
+  const { club, user } = await requireOwner(slug, '/manage/schedule');
+  await deleteWindow(db, { clubId: club.id, windowId: String(formData.get('windowId')), actorId: user.id });
   refresh(slug);
 }

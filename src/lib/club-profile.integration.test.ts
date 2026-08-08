@@ -13,9 +13,16 @@ const url = process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('club-profile', () => {
   let pool: Pool;
   let db: ReturnType<typeof drizzle<typeof schema>>;
-  beforeAll(async () => { pool = new Pool({ connectionString: url }); db = drizzle(pool, { schema }); await migrate(db, { migrationsFolder: './drizzle' }); });
+  beforeAll(async () => { pool = new Pool({ connectionString: url }); db = drizzle(pool, { schema }); await migrate(db, { migrationsFolder: './drizzle' }); actor = await newUser(); });
   afterAll(async () => { await pool.end(); });
 
+  let seq = 0;
+  let actor: string;
+  async function newUser() {
+    const id = `cp-u-${Date.now()}-${seq++}`;
+    await db.insert(schema.user).values({ id, name: 'O', email: `${id}@t.co` });
+    return id;
+  }
   async function newClub(tag: string) {
     const [c] = await db.insert(schema.clubs).values({ slug: `${tag}-${Date.now()}-${Math.round(performance.now())}`, name: tag, status: 'active' }).returning();
     return c;
@@ -23,7 +30,7 @@ describe.skipIf(!url)('club-profile', () => {
 
   it('updates profile fields and logo', async () => {
     const c = await newClub('cp-upd');
-    expect(await updateClubProfile(db, c.id, { name: 'Bebek Kürek', tagline: 'İstanbul', description: 'Bir kulüp', phone: '555', brandAccent: '#0E9E93', headingFont: 'premium', logoUrl: 'https://blob/x.png' })).toBe(true);
+    expect(await updateClubProfile(db, c.id, { name: 'Bebek Kürek', tagline: 'İstanbul', description: 'Bir kulüp', phone: '555', brandAccent: '#0E9E93', headingFont: 'premium', logoUrl: 'https://blob/x.png' }, actor)).toBe(true);
     const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, c.id));
     expect(after.name).toBe('Bebek Kürek');
     expect(after.tagline).toBe('İstanbul');
@@ -36,7 +43,7 @@ describe.skipIf(!url)('club-profile', () => {
 
   it('sets and clears the logo independently of other profile fields', async () => {
     const c = await newClub('cp-logo');
-    await updateClubProfile(db, c.id, { name: 'Keep Me', tagline: null, description: null, phone: null, brandAccent: null, headingFont: 'default', logoUrl: null });
+    await updateClubProfile(db, c.id, { name: 'Keep Me', tagline: null, description: null, phone: null, brandAccent: null, headingFont: 'default', logoUrl: null }, actor);
     await setClubLogo(db, c.id, 'https://blob/logo.png');
     let [row] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, c.id));
     expect(row.logoUrl).toBe('https://blob/logo.png');
@@ -92,5 +99,34 @@ describe.skipIf(!url)('club-profile', () => {
     await db.insert(schema.memberships)
       .values({ userId: owner, clubId: rejected.id, role: 'owner', status: 'approved' });
     expect(await ownedClubId(db, owner, slug)).toBeNull();
+  });
+
+  it('audits club.profile_update against the club itself', async () => {
+    const c = await newClub('cp-audit');
+    const owner = await newUser();
+    expect(await updateClubProfile(db, c.id, { name: 'Audited', tagline: null, description: null, phone: null, brandAccent: null, headingFont: 'default', logoUrl: null }, owner)).toBe(true);
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, c.id));
+    expect(rows.map((a) => a.action)).toEqual(['club.profile_update']);
+    expect(rows[0].target).toBe(c.id);
+    expect(rows[0].actorUserId).toBe(owner);
+    expect(rows[0].actingAsRole).toBe('owner');
+  });
+
+  it('leaves the cosmetic logo and social mutations unaudited (spec §4.2)', async () => {
+    const c = await newClub('cp-unaudited');
+    await setClubLogo(db, c.id, 'https://blob/logo.png');
+    const socialId = await addSocial(db, { clubId: c.id, platform: 'instagram', handle: 'x' });
+    expect(await removeSocial(db, { clubId: c.id, socialId })).toBe(true);
+    expect(await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, c.id))).toHaveLength(0);
+  });
+
+  // See the equivalent probe in scheduling-settings: a real FK violation inside the
+  // transaction, asserted by the mutation NOT taking effect.
+  it('rolls the profile change back when the audit insert fails', async () => {
+    const c = await newClub('cp-atomic');
+    await expect(updateClubProfile(db, c.id, { name: 'Ghost', tagline: null, description: null, phone: null, brandAccent: null, headingFont: 'default', logoUrl: null }, 'no-such-user'))
+      .rejects.toThrow();
+    const [row] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, c.id));
+    expect(row.name).toBe('cp-atomic');
   });
 });

@@ -2,6 +2,7 @@ import { and, asc, eq, ne } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { clubs, clubSocials, memberships } from '@/db/schema';
+import { logAudit } from '@/lib/audit';
 
 export interface ProfileInput {
   name: string;
@@ -13,17 +14,26 @@ export interface ProfileInput {
   logoUrl: string | null;
 }
 
-export async function updateClubProfile(db: DB, clubId: string, input: ProfileInput): Promise<boolean> {
-  const res = await db.update(clubs).set({
-    name: input.name, tagline: input.tagline, description: input.description,
-    phone: input.phone, brandAccent: input.brandAccent, headingFont: input.headingFont,
-    logoUrl: input.logoUrl,
-  }).where(eq(clubs.id, clubId)).returning({ id: clubs.id });
-  return res.length > 0;
+/** Wrapped in a transaction so the audit row commits with the profile change (spec §4.3). */
+export async function updateClubProfile(db: DB, clubId: string, input: ProfileInput, actorId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const res = await tx.update(clubs).set({
+      name: input.name, tagline: input.tagline, description: input.description,
+      phone: input.phone, brandAccent: input.brandAccent, headingFont: input.headingFont,
+      logoUrl: input.logoUrl,
+    }).where(eq(clubs.id, clubId)).returning({ id: clubs.id });
+    if (res.length === 0) return false;
+    await logAudit(tx, { actorUserId: actorId, clubId, action: 'club.profile_update', target: clubId, actingAsRole: 'owner' });
+    return true;
+  });
 }
 
 /** Persists just the logo, independent of the profile form, so an upload sticks
- *  immediately (no separate Save click). `null` clears it. */
+ *  immediately (no separate Save click). `null` clears it.
+ *
+ *  Deliberately unaudited, as are `addSocial` and `removeSocial` below: cosmetic
+ *  self-description carrying no authority over any person, and frequent enough
+ *  that logging it would drown the entries that matter (spec §4.2). */
 export async function setClubLogo(db: DB, clubId: string, logoUrl: string | null): Promise<void> {
   await db.update(clubs).set({ logoUrl }).where(eq(clubs.id, clubId));
 }

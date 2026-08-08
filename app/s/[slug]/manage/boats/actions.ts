@@ -24,28 +24,28 @@ function parseBoat(formData: FormData) {
 }
 
 export async function createBoatAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
-  const { club } = await requireOwner(slug, '/manage/boats');
+  const { club, user } = await requireOwner(slug, '/manage/boats');
   const parsed = parseBoat(formData);
   if (!parsed.success) return { ok: false };
-  const res = await createBoat(db, club.id, clampAllowedPayment(parsed.data, club.multisportEnabled));
+  const res = await createBoat(db, club.id, clampAllowedPayment(parsed.data, club.multisportEnabled), user.id);
   if (!res.ok) return { ok: false };
   refresh(slug);
   return { ok: true };
 }
 
 export async function updateBoatAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
-  const { club } = await requireOwner(slug, '/manage/boats');
+  const { club, user } = await requireOwner(slug, '/manage/boats');
   const parsed = parseBoat(formData);
   if (!parsed.success) return { ok: false };
-  const res = await updateBoat(db, { clubId: club.id, boatId: String(formData.get('boatId')), ...clampAllowedPayment(parsed.data, club.multisportEnabled) });
+  const res = await updateBoat(db, { clubId: club.id, boatId: String(formData.get('boatId')), actorId: user.id, ...clampAllowedPayment(parsed.data, club.multisportEnabled) });
   if (!res.ok) return { ok: false };
   refresh(slug);
   return { ok: true };
 }
 
 export async function setBoatActiveAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
-  const { club } = await requireOwner(slug, '/manage/boats');
-  const ok = await setBoatActive(db, { clubId: club.id, boatId: String(formData.get('boatId')), active: formData.get('active') === 'true' });
+  const { club, user } = await requireOwner(slug, '/manage/boats');
+  const ok = await setBoatActive(db, { clubId: club.id, boatId: String(formData.get('boatId')), active: formData.get('active') === 'true', actorId: user.id });
   if (ok) refresh(slug);
   return { ok };
 }

@@ -14,13 +14,13 @@ function refresh(slug: string) {
 }
 
 export async function addSkillLevelAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
-  const { club } = await requireOwner(slug, '/manage/skill-levels');
+  const { club, user } = await requireOwner(slug, '/manage/skill-levels');
   const parsed = skillLevelNameSchema.safeParse({ name: String(formData.get('name') ?? '').trim() });
   if (!parsed.success) return { ok: false };
   // createSkillLevel throws on the (club_id, rank) unique collision that a
   // concurrent create can cause — treat any failure as a surfaced error.
   try {
-    await createSkillLevel(db, { clubId: club.id, name: parsed.data.name });
+    await createSkillLevel(db, { clubId: club.id, name: parsed.data.name, actorId: user.id });
   } catch {
     return { ok: false };
   }
@@ -29,19 +29,19 @@ export async function addSkillLevelAction(slug: string, _prev: ManageActionResul
 }
 
 export async function renameSkillLevelAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
-  const { club } = await requireOwner(slug, '/manage/skill-levels');
+  const { club, user } = await requireOwner(slug, '/manage/skill-levels');
   const parsed = skillLevelNameSchema.safeParse({ name: String(formData.get('name') ?? '').trim() });
   if (!parsed.success) return { ok: false };
-  const ok = await renameSkillLevel(db, { clubId: club.id, skillLevelId: String(formData.get('skillLevelId')), name: parsed.data.name });
+  const ok = await renameSkillLevel(db, { clubId: club.id, skillLevelId: String(formData.get('skillLevelId')), name: parsed.data.name, actorId: user.id });
   if (ok) refresh(slug);
   return { ok };
 }
 
 export async function reorderSkillLevelAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
-  const { club } = await requireOwner(slug, '/manage/skill-levels');
+  const { club, user } = await requireOwner(slug, '/manage/skill-levels');
   const direction = formData.get('direction') === 'up' ? 'up' : 'down';
   try {
-    const ok = await reorderSkillLevel(db, { clubId: club.id, skillLevelId: String(formData.get('skillLevelId')), direction });
+    const ok = await reorderSkillLevel(db, { clubId: club.id, skillLevelId: String(formData.get('skillLevelId')), direction, actorId: user.id });
     if (ok) refresh(slug);
     return { ok };
   } catch {
@@ -50,8 +50,8 @@ export async function reorderSkillLevelAction(slug: string, _prev: ManageActionR
 }
 
 export async function deleteSkillLevelAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
-  const { club } = await requireOwner(slug, '/manage/skill-levels');
-  const ok = await deleteSkillLevel(db, { clubId: club.id, skillLevelId: String(formData.get('skillLevelId')) });
+  const { club, user } = await requireOwner(slug, '/manage/skill-levels');
+  const ok = await deleteSkillLevel(db, { clubId: club.id, skillLevelId: String(formData.get('skillLevelId')), actorId: user.id });
   if (ok) refresh(slug);
   return { ok };
 }
