@@ -1,4 +1,5 @@
 'use client';
+import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -45,6 +46,11 @@ const initial: PoliciesState = { status: 'idle' };
  */
 export function PoliciesForm({ slug, updatedAt, settings, labels }: { slug: string; updatedAt: number; settings: Settings; labels: Labels }) {
   const [state, formAction] = useActionState(savePoliciesAction.bind(null, slug), initial);
+  // Every other string arrives pre-resolved in `labels`, but the converted-boat count
+  // is only known after the save — and a `(count) => t(...)` prop cannot cross the
+  // server/client boundary, so this one message is resolved here (as `boats-editor.tsx`
+  // already does alongside its own `labels`).
+  const t = useTranslations('manage.policies');
 
   // Identity guard: `state` only changes reference when the action actually
   // dispatches, but guard against re-firing on unrelated re-renders anyway
@@ -53,9 +59,12 @@ export function PoliciesForm({ slug, updatedAt, settings, labels }: { slug: stri
   useEffect(() => {
     if (state === handled.current) return;
     handled.current = state;
-    if (state.status === 'ok') toast.success(labels.saved);
+    // The confirmation dialog quotes an estimate read at page render; this is what the
+    // save actually did, so an owner who added a MultiSport-only boat in another tab
+    // still learns the real number.
+    if (state.status === 'ok') toast.success(state.convertedBoats > 0 ? t('savedWithConversions', { count: state.convertedBoats }) : labels.saved);
     else if (state.status === 'error') toast.error(state.cause === 'invalid_lead' ? labels.errorInvalidLead : labels.errorInvalidInput);
-  }, [state, labels.saved, labels.errorInvalidLead, labels.errorInvalidInput]);
+  }, [state, t, labels.saved, labels.errorInvalidLead, labels.errorInvalidInput]);
 
   return <PoliciesFields key={updatedAt} settings={settings} labels={labels} state={state} formAction={formAction} />;
 }

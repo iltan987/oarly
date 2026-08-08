@@ -37,13 +37,13 @@ export type MemberCalendarDay = Omit<CalendarDay, 'slots'> & { slots: MemberVirt
  * the boat's own allow-list — Task 2 guarantees no `multisport_only` boat survives
  * at a disabled club, so `both` (and, defensively, `multisport_only`) narrow to cash.
  */
-function paymentChoicesFor(allowed: AllowedPayment, clubMultisportEnabled: boolean): PaymentType[] {
+export function paymentChoicesFor(allowed: AllowedPayment, clubMultisportEnabled: boolean): PaymentType[] {
   if (!clubMultisportEnabled) return ['regular'];
   if (allowed === 'regular_only') return ['regular'];
   if (allowed === 'multisport_only') return ['multisport'];
   return ['regular', 'multisport'];
 }
-function defaultPaymentFor(allowed: AllowedPayment, pref: PaymentType, clubMultisportEnabled: boolean): PaymentType {
+export function defaultPaymentFor(allowed: AllowedPayment, pref: PaymentType, clubMultisportEnabled: boolean): PaymentType {
   if (!clubMultisportEnabled) return 'regular';
   if (allowed === 'regular_only') return 'regular';
   if (allowed === 'multisport_only') return 'multisport';

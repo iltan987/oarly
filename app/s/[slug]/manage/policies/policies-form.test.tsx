@@ -2,6 +2,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Every user-visible string arrives via the `labels` prop except the
+// converted-boats message, which needs a runtime count — asserted on by key here
+// rather than resolved through the real message files.
+vi.mock('next-intl', () => ({
+  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
+    (values ? `${key}:${JSON.stringify(values)}` : key),
+}));
+
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -65,7 +73,7 @@ describe('PoliciesForm', () => {
    * `toast.success` never fires and this test fails.
    */
   it('reports a save whose revalidation remounts the fields mid-flight', async () => {
-    let resolve: ((r: { status: 'ok' }) => void) | undefined;
+    let resolve: ((r: { status: 'ok'; convertedBoats: number }) => void) | undefined;
     vi.mocked(savePoliciesAction).mockImplementation(
       () => new Promise((r) => { resolve = r; }),
     );
@@ -81,13 +89,35 @@ describe('PoliciesForm', () => {
     // new `key`, inner fields unmounted and remounted — mid-flight.
     rerender(<PoliciesForm slug="test-club" updatedAt={2} settings={settings} labels={labels} />);
 
-    resolve?.({ status: 'ok' });
+    resolve?.({ status: 'ok', convertedBoats: 0 });
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
     expect(toast.success).toHaveBeenCalledWith(labels.saved);
 
     // …and a further remount must not replay it.
     rerender(<PoliciesForm slug="test-club" updatedAt={3} settings={settings} labels={labels} />);
     expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
+  // Disabling MultiSport edits the club's boats (spec §5.2). The confirmation dialog
+  // quotes a count read at PAGE RENDER, which can be stale by the time Save is
+  // pressed; `updateSchedulingSettings` returns what it actually converted, and until
+  // now `savePoliciesAction` threw that number away.
+  it('reports the boats the save actually converted, not just "saved"', async () => {
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok', convertedBoats: 3 });
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
+
+    submit();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
+    expect(toast.success).toHaveBeenCalledWith('savedWithConversions:{"count":3}');
+  });
+
+  it('reports a plain save when nothing was converted', async () => {
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok', convertedBoats: 0 });
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
+
+    submit();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
+    expect(toast.success).toHaveBeenCalledWith(labels.saved);
   });
 
   it('shows the field-level error for a Zod failure and the lead-day error for the domain failure', async () => {
@@ -152,7 +182,7 @@ describe('PoliciesForm MultiSport toggle', () => {
   // hidden input that carries its last known value (Task 7's "unmount submits
   // nothing" hazard, applied here to a non-nullable field).
   it('confirming hides the mode field but keeps submitting its last value', async () => {
-    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok', convertedBoats: 0 });
     render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
 
     const toggle = screen.getByRole('checkbox', { name: labels.multisportEnabled });
@@ -226,7 +256,7 @@ describe('PoliciesForm nested settings', () => {
   // must still parse — asserted here against the REAL (unmocked) schema, not
   // assumed from the component compiling.
   it('still produces a schema-valid payload with both nested fields hidden', async () => {
-    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok', convertedBoats: 0 });
     render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, bookingOpenMode: 'always', selfCancelEnabled: false }} labels={labels} />);
 
     expect(screen.queryByText(labels.leadDays)).not.toBeInTheDocument();
@@ -257,7 +287,7 @@ describe('PoliciesForm nested settings', () => {
    * policies-form.tsx and this fails on `null`.
    */
   it('keeps submitting the stored cancel cutoff after self-cancel is switched off', async () => {
-    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok', convertedBoats: 0 });
     render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, selfCancelEnabled: true, cancelCutoffHours: 12 }} labels={labels} />);
 
     fireEvent.click(screen.getByRole('checkbox', { name: labels.selfCancel }));
@@ -277,7 +307,7 @@ describe('PoliciesForm nested settings', () => {
   // …and an edit made before switching self-cancel off is what survives, not the
   // value the page was rendered with — the hidden input carries the live state.
   it('carries an unsaved cutoff edit through the field unmounting', async () => {
-    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok', convertedBoats: 0 });
     render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, selfCancelEnabled: true, cancelCutoffHours: 12 }} labels={labels} />);
 
     fireEvent.change(screen.getByLabelText(labels.cancelCutoff), { target: { value: '6' } });
@@ -291,7 +321,7 @@ describe('PoliciesForm nested settings', () => {
   // The other side: lead mode WITH the field visible must still parse, so the
   // above isn't passing merely because the schema no longer checks anything.
   it('still parses when lead mode is on and the lead-days field is visible and filled', async () => {
-    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok', convertedBoats: 0 });
     render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, bookingOpenMode: 'lead', bookingOpenLeadDays: 3 }} labels={labels} />);
 
     expect(screen.getByText(labels.leadDays)).toBeInTheDocument();

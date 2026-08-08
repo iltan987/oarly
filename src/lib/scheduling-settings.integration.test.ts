@@ -51,7 +51,7 @@ describe.skipIf(!url)('scheduling-settings', () => {
     return b;
   }
 
-  it('persists and reads back all seven fields', async () => {
+  it('persists and reads back all nine fields', async () => {
     const c = await newClub('set-rw');
     const r = await updateSchedulingSettings(db, c.id, { ...fullSettings, bookingOpenMode: 'lead', bookingOpenLeadDays: 3, selfCancelEnabled: false, cancelCutoffHours: 8, noshowPenalty: '1w', multisportMode: 'priority', multisportEnabled: true, openOnHolidays: true, waitlistCapacity: 5 });
     expect(r).toEqual({ ok: true, convertedBoats: 0 });
