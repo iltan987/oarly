@@ -354,7 +354,7 @@
       "waitlistCapacityHint": "How many members may queue behind a full session. Leave empty for no limit.",
       "errorInvalidLead": "Enter a lead of at least 1 day, or choose \"Always open\".",
       "saved": "Policies saved.",
-    "savedWithConversions": "Policies saved. {count, plural, one {# boat} other {# boats}} switched from MultiSport-only to cash-only.",
+      "savedWithConversions": "Policies saved. {count, plural, one {# boat} other {# boats}} switched from MultiSport-only to cash-only.",
       "errorInvalidInput": "Some values are out of range. Check them and try again.",
       "multisportEnabled": "Accept MultiSport",
       "multisportEnabledHint": "Turn this off if your club has no MultiSport contract — members and staff will only see cash bookings.",
