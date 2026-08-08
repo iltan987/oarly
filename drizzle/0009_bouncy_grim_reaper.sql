@@ -1,3 +1,23 @@
+-- SET LOCAL, and FIRST: drizzle runs every pending migration inside ONE transaction,
+-- so this bounds lock acquisition for the whole batch and is discarded with the
+-- transaction either way.
+--
+-- Why it is here rather than nowhere. The DROP CONSTRAINT below takes ACCESS
+-- EXCLUSIVE on `clubs`, and that lock is then HELD for the rest of the batch: 0011's
+-- audit_log rewrite and both of its index builds run underneath it (~2 s per million
+-- audit rows). `clubs` is the table every request resolves a tenant through, and an
+-- ACCESS EXCLUSIVE request that has to WAIT also queues every reader arriving behind
+-- it. So one long-running SELECT holding ACCESS SHARE when the deploy starts is enough
+-- to stall the whole site for as long as that query runs.
+--
+-- 5s converts that into a failed deploy the operator retries, which is the strictly
+-- better outcome: nothing has been applied (one transaction, one rollback) and the
+-- site never stopped serving.
+--
+-- Deliberately NOT statement_timeout: the risk here is WAITING for a lock, not holding
+-- one too long, and a statement_timeout would abort a legitimately slow index build on
+-- a large table — turning a slow deploy into a failed one for no safety gain.
+SET LOCAL lock_timeout = '5s';--> statement-breakpoint
 ALTER TYPE "public"."club_status" ADD VALUE 'rejected';--> statement-breakpoint
 ALTER TYPE "public"."membership_role" ADD VALUE 'admin';--> statement-breakpoint
 ALTER TABLE "clubs" DROP CONSTRAINT "clubs_slug_unique";--> statement-breakpoint
