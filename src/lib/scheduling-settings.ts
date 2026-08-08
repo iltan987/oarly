@@ -39,6 +39,20 @@ export async function getSchedulingSettings(db: DB, clubId: string): Promise<Sch
   return c;
 }
 
+/**
+ * Unlike every other mutation in this module's neighbours, this one has no
+ * "row not found" branch: the UPDATE below matches zero rows for an unknown
+ * `clubId` and says nothing about it. Since the audit row was added, such a call
+ * **throws** rather than returning `{ ok: true }` — `audit_log.club_id` is a real
+ * foreign key to `clubs.id`, so the audit insert fails and takes the whole
+ * transaction with it.
+ *
+ * That is the safe direction (a settings change for a club that does not exist
+ * can never commit unattributed), and it is unreachable in production because
+ * `requireOwner` has already loaded a live club. It is documented and pinned by a
+ * test rather than "fixed" into a typed error, because the throw is a genuine
+ * invariant violation, not an expected outcome the caller should branch on.
+ */
 export async function updateSchedulingSettings(
   db: DB,
   clubId: string,

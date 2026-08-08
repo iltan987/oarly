@@ -150,4 +150,29 @@ describe.skipIf(!url)('skill-levels', () => {
     await expect(createSkillLevel(db, { clubId: c.id, name: 'X', actorId: 'no-such-user' })).rejects.toThrow();
     expect(await listSkillLevels(db, c.id)).toHaveLength(0);
   });
+
+  it('rolls the rename back when the audit insert fails', async () => {
+    const owner = await newUser();
+    const c = await newClub('sl-atomic-r');
+    const lvl = await createSkillLevel(db, { clubId: c.id, name: 'Keep', actorId: owner });
+    await expect(renameSkillLevel(db, { clubId: c.id, skillLevelId: lvl.id, name: 'Renamed', actorId: 'no-such-user' })).rejects.toThrow();
+    expect((await listSkillLevels(db, c.id))[0].name).toBe('Keep');
+  });
+
+  it('rolls the reorder back when the audit insert fails', async () => {
+    const owner = await newUser();
+    const c = await newClub('sl-atomic-o');
+    await createSkillLevel(db, { clubId: c.id, name: 'A', actorId: owner });
+    const b = await createSkillLevel(db, { clubId: c.id, name: 'B', actorId: owner });
+    await expect(reorderSkillLevel(db, { clubId: c.id, skillLevelId: b.id, direction: 'up', actorId: 'no-such-user' })).rejects.toThrow();
+    expect((await listSkillLevels(db, c.id)).map((l) => l.name)).toEqual(['A', 'B']);
+  });
+
+  it('rolls the deletion back when the audit insert fails', async () => {
+    const owner = await newUser();
+    const c = await newClub('sl-atomic-d');
+    const lvl = await createSkillLevel(db, { clubId: c.id, name: 'Survivor', actorId: owner });
+    await expect(deleteSkillLevel(db, { clubId: c.id, skillLevelId: lvl.id, actorId: 'no-such-user' })).rejects.toThrow();
+    expect((await listSkillLevels(db, c.id)).map((l) => l.id)).toEqual([lvl.id]);
+  });
 });

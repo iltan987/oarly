@@ -158,4 +158,27 @@ describe.skipIf(!url)('boats', () => {
     const after = await db.select().from(schema.boatTypes).where(eq(schema.boatTypes.clubId, c.id));
     expect(after).toHaveLength(before.length);
   });
+
+  it('rolls the boat update back when the audit insert fails', async () => {
+    const owner = await newUser();
+    const c = await newClub('boat-atomic-u');
+    const created = await createBoat(db, c.id, { name: 'Keep', seats: 2, minSkillLevelId: null, allowedPayment: 'both', minAttendance: null }, owner);
+    if (!created.ok) throw new Error('setup');
+    await expect(updateBoat(db, { clubId: c.id, boatId: created.id, actorId: 'no-such-user', name: 'Renamed', seats: 8, minSkillLevelId: null, allowedPayment: 'both', minAttendance: null }))
+      .rejects.toThrow();
+    const [row] = await db.select().from(schema.boatTypes).where(eq(schema.boatTypes.id, created.id));
+    expect(row.name).toBe('Keep');
+    expect(row.seats).toBe(2);
+  });
+
+  it('rolls the activation change back when the audit insert fails', async () => {
+    const owner = await newUser();
+    const c = await newClub('boat-atomic-a');
+    const created = await createBoat(db, c.id, { name: 'Quad', seats: 4, minSkillLevelId: null, allowedPayment: 'both', minAttendance: null }, owner);
+    if (!created.ok) throw new Error('setup');
+    await expect(setBoatActive(db, { clubId: c.id, boatId: created.id, active: false, actorId: 'no-such-user' }))
+      .rejects.toThrow();
+    const [row] = await db.select().from(schema.boatTypes).where(eq(schema.boatTypes.id, created.id));
+    expect(row.active).toBe(true);
+  });
 });

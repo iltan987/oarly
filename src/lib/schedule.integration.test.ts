@@ -154,4 +154,28 @@ describe.skipIf(!url)('schedule', () => {
     await expect(deleteWindow(db, { clubId: c.id, windowId: created.id, actorId: 'no-such-user' })).rejects.toThrow();
     expect(await listWindowsWithBoats(db, c.id)).toHaveLength(1);
   });
+
+  it('rolls the window creation back when the audit insert fails', async () => {
+    const c = await newClub('sch-atomic-c');
+    const boat = await newBoat(c.id, 'Quad');
+    await expect(createWindow(db, c.id, { weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60, boats: [{ boatTypeId: boat.id, quantity: 1 }] }, 'no-such-user'))
+      .rejects.toThrow();
+    expect(await listWindowsWithBoats(db, c.id)).toHaveLength(0);
+  });
+
+  it('rolls the window update back when the audit insert fails', async () => {
+    const owner = await newUser();
+    const c = await newClub('sch-atomic-u');
+    const boat = await newBoat(c.id, 'Quad');
+    const b = { boatTypeId: boat.id, quantity: 1 };
+    const created = await createWindow(db, c.id, { weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60, boats: [b] }, owner);
+    if (!created.ok) throw new Error('setup failed');
+    await expect(updateWindow(db, { clubId: c.id, windowId: created.id, actorId: 'no-such-user', weekday: 1, startTime: '10:00', endTime: '12:00', defaultSessionMinutes: 120, boats: [{ boatTypeId: boat.id, quantity: 5 }] }))
+      .rejects.toThrow();
+    const [w] = await listWindowsWithBoats(db, c.id);
+    expect(w.startTime.slice(0, 5)).toBe('08:00');
+    expect(w.defaultSessionMinutes).toBe(60);
+    // The boats set is rewritten inside the same transaction, so it must roll back too.
+    expect(w.boats).toEqual([{ boatTypeId: boat.id, boatName: 'Quad', quantity: 1 }]);
+  });
 });

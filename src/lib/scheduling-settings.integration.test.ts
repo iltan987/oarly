@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -121,6 +123,21 @@ describe.skipIf(!url)('scheduling-settings', () => {
       .rejects.toThrow();
     const [row] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, c.id));
     expect(row.noshowPenalty).toBe('off');
+  });
+
+  // Pins the behaviour change the audit row introduced: before it, an unknown
+  // clubId updated nothing and still returned { ok: true }. Now audit_log.club_id's
+  // FK to clubs.id fails inside the transaction, so the call throws and writes
+  // nothing. Unreachable via requireOwner, but a caller that reaches it should
+  // learn this from the suite rather than from an unhandled rejection.
+  it('throws, and writes no audit row, for a clubId that matches no club', async () => {
+    const owner = await newUser();
+    const ghost = randomUUID();
+    // Matched on audit_log specifically: asserting only "it throws" would still pass
+    // if it started failing for some unrelated reason, which would quietly stop
+    // testing the FK that makes the rollback safe.
+    await expect(updateSchedulingSettings(db, ghost, { ...fullSettings, multisportEnabled: true }, owner)).rejects.toThrow(/audit_log/);
+    expect(await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, ghost))).toHaveLength(0);
   });
 
   describe('disabling MultiSport repairs the boat invariant', () => {

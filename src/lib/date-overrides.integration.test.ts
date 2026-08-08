@@ -93,4 +93,17 @@ describe.skipIf(!url)('date-overrides', () => {
     const rows = await db.select().from(schema.clubHolidayOverrides).where(eq(schema.clubHolidayOverrides.clubId, c.id));
     expect(rows).toHaveLength(1);
   });
+
+  it('rolls the set back when the audit insert fails, on both the insert and the upsert branch', async () => {
+    const owner = await newUser();
+    const c = await newClub('ov-atomic-set');
+    // Insert branch: nothing must survive.
+    await expect(setDateOverride(db, c.id, { dateISO: '2026-07-21', isOpen: false }, 'no-such-user')).rejects.toThrow();
+    expect(await db.select().from(schema.clubHolidayOverrides).where(eq(schema.clubHolidayOverrides.clubId, c.id))).toHaveLength(0);
+    // onConflictDoUpdate branch: the existing value must not be flipped.
+    await setDateOverride(db, c.id, { dateISO: '2026-07-21', isOpen: false }, owner);
+    await expect(setDateOverride(db, c.id, { dateISO: '2026-07-21', isOpen: true }, 'no-such-user')).rejects.toThrow();
+    const [row] = await db.select().from(schema.clubHolidayOverrides).where(eq(schema.clubHolidayOverrides.clubId, c.id));
+    expect(row.isOpen).toBe(false);
+  });
 });
