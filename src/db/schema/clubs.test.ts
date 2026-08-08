@@ -4,13 +4,24 @@ import { describe, expect, it } from 'vitest';
 import { clubs, memberships, skillLevels } from '@/db/schema/clubs';
 
 describe('clubs schema', () => {
-  it('clubs has a unique slug and policy columns', () => {
+  it('clubs has policy columns and a slug unique only among non-rejected rows', () => {
     const cfg = getTableConfig(clubs);
     const cols = Object.fromEntries(cfg.columns.map((c) => [c.name, c]));
-    expect(cols['slug'].isUnique).toBe(true);
     for (const name of ['multisport_mode', 'booking_open_mode', 'noshow_penalty', 'brand_accent', 'timezone', 'tagline', 'description']) {
       expect(cols[name]).toBeDefined();
     }
+
+    // Slug uniqueness is a PARTIAL index, not a column-level UNIQUE: a rejected club
+    // request must not hold its slug hostage (spec §5.2), so rejected rows are exempt.
+    expect(cols['slug'].isUnique).toBe(false);
+    const slugUq = cfg.indexes.find((i) => i.config.name === 'clubs_slug_uq');
+    expect(slugUq).toBeDefined();
+    expect(slugUq!.config.unique).toBe(true);
+    expect(slugUq!.config.columns.map((c) => (c as { name: string }).name)).toEqual(['slug']);
+    // The predicate must enumerate the surviving statuses. `<> 'rejected'` would use an
+    // enum value in the same transaction that added it, which Postgres forbids — it
+    // commits on a fresh DB and breaks the production deploy. See the migration comment.
+    expect(slugUq!.config.where).toBeDefined();
   });
 
   it('defaults multisport_enabled to true so existing clubs are unaffected', () => {

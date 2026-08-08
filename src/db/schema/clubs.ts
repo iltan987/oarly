@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
 boolean, integer,   pgTable, text, timestamp, uniqueIndex,
 uuid, } from 'drizzle-orm/pg-core';
@@ -10,7 +11,7 @@ multisportModeEnum,   noshowPenaltyEnum, } from './enums';
 
 export const clubs = pgTable('clubs', {
   id: uuid('id').defaultRandom().primaryKey(),
-  slug: text('slug').notNull().unique(),
+  slug: text('slug').notNull(),
   name: text('name').notNull(),
   logoUrl: text('logo_url'),
   tagline: text('tagline'),
@@ -34,9 +35,22 @@ export const clubs = pgTable('clubs', {
   brandAccent: text('brand_accent'),
   headingFont: headingFontEnum('heading_font').notNull().default('default'),
   createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+  // Who decided this club request, when, and why. `review_note` is required when
+  // rejecting (enforced in `decideClubRequest`) and optional when approving.
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: text('reviewed_by').references(() => user.id, { onDelete: 'set null' }),
+  reviewNote: text('review_note'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (t) => [
+  // Partial, not a plain UNIQUE: a rejected request must not hold its slug hostage,
+  // or one spam request permanently burns a real club's name (spec §5.2).
+  // The predicate lists the surviving statuses instead of `<> 'rejected'` because
+  // `ALTER TYPE … ADD VALUE` and a use of that value cannot share a transaction, and
+  // drizzle runs every pending migration in ONE transaction. `<> 'rejected'` passes on
+  // a fresh DB and fails on an already-migrated one.
+  uniqueIndex('clubs_slug_uq').on(t.slug).where(sql`${t.status} IN ('pending', 'active', 'suspended')`),
+]);
 
 export const clubSocials = pgTable('club_socials', {
   id: uuid('id').defaultRandom().primaryKey(),
