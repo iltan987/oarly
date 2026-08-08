@@ -6,10 +6,6 @@
     "signOut": "Sign out",
     "loading": "Loading…"
   },
-  "payment": {
-    "regular": "Cash",
-    "multisport": "MultiSport"
-  },
   "home": {
     "heroTitle": "Book the boat, skip the group chat",
     "heroSubtitle": "Session booking for rowing clubs — seats, waitlists and payment, sorted.",

@@ -6,10 +6,6 @@
     "signOut": "Çıkış yap",
     "loading": "Yükleniyor…"
   },
-  "payment": {
-    "regular": "Nakit",
-    "multisport": "MultiSport"
-  },
   "home": {
     "heroTitle": "Tekneyi ayırt, grup sohbetini boşver",
     "heroSubtitle": "Kürek kulüpleri için seans rezervasyonu — koltuklar, yedek liste ve ödeme tek yerde.",
