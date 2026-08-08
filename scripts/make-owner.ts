@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 
 config({ path: ['.env.local', '.env'] }); // Next.js reads .env.local; plain dotenv/config would miss it
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
@@ -44,7 +44,11 @@ async function main() {
   const [u] = await db.select().from(schema.user).where(eq(schema.user.email, email)).limit(1);
   if (!u) throw new Error(`No user with email '${email}'. Sign up at localhost:3000/sign-up first, then re-run.`);
 
-  const [club] = await db.select().from(schema.clubs).where(eq(schema.clubs.slug, slug)).limit(1);
+  // `ne(status, 'rejected')` mirrors the partial index `clubs_slug_uq`: a rejected club
+  // and a live club may share a slug, so an unfiltered `limit 1` would hand out ownership
+  // of whichever row the planner reached first. A rejected club is not addressable by slug.
+  const [club] = await db.select().from(schema.clubs)
+    .where(and(eq(schema.clubs.slug, slug), ne(schema.clubs.status, 'rejected'))).limit(1);
   if (!club) throw new Error(`No club with slug '${slug}'. Run 'pnpm db:seed' (creates 'demo') or create one via /admin.`);
 
   await db.update(schema.user).set({ emailVerified: true }).where(eq(schema.user.id, u.id));

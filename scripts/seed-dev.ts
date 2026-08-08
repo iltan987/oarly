@@ -1,6 +1,6 @@
 import 'dotenv/config';
 
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
@@ -14,7 +14,11 @@ async function main() {
   const db = drizzle(pool, { schema });
 
   const slug = 'demo';
-  const existing = await db.select().from(schema.clubs).where(eq(schema.clubs.slug, slug)).limit(1);
+  // `ne(status, 'rejected')` mirrors the partial index `clubs_slug_uq`, which exempts
+  // rejected rows. Without it a rejected 'demo' would satisfy this "already exists" gate
+  // and the seeder would silently skip creating the live club it is supposed to create.
+  const existing = await db.select().from(schema.clubs)
+    .where(and(eq(schema.clubs.slug, slug), ne(schema.clubs.status, 'rejected'))).limit(1);
 
   if (existing.length > 0) {
     console.log(`✓ club '${slug}' already exists — nothing to do`);

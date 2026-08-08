@@ -1,4 +1,4 @@
-import { getTableConfig } from 'drizzle-orm/pg-core';
+import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 
 import { clubs, memberships, skillLevels } from '@/db/schema/clubs';
@@ -18,10 +18,18 @@ describe('clubs schema', () => {
     expect(slugUq).toBeDefined();
     expect(slugUq!.config.unique).toBe(true);
     expect(slugUq!.config.columns.map((c) => (c as { name: string }).name)).toEqual(['slug']);
-    // The predicate must enumerate the surviving statuses. `<> 'rejected'` would use an
-    // enum value in the same transaction that added it, which Postgres forbids — it
-    // commits on a fresh DB and breaks the production deploy. See the migration comment.
+    // The predicate must ENUMERATE the surviving statuses rather than say
+    // `<> 'rejected'`. `ALTER TYPE … ADD VALUE` and a use of that new value cannot share
+    // a transaction, and drizzle runs every pending migration in one — so the `<>` form
+    // commits on a fresh DB (passing all of CI) and breaks the production deploy with
+    // `unsafe use of new value "rejected"`. Asserting on the rendered SQL, because
+    // `toBeDefined()` alone would happily accept the forbidden form.
     expect(slugUq!.config.where).toBeDefined();
+    const predicate = new PgDialect().sqlToQuery(slugUq!.config.where!).sql;
+    expect(predicate).not.toMatch(/rejected/);
+    for (const status of ['pending', 'active', 'suspended']) {
+      expect(predicate).toContain(`'${status}'`);
+    }
   });
 
   it('defaults multisport_enabled to true so existing clubs are unaffected', () => {
