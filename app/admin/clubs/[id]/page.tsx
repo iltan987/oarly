@@ -82,6 +82,7 @@ export default async function AdminClubDetailPage({ params }: { params: Promise<
             {decided && (
               <ClubStatusButton
                 clubId={club.id}
+                clubName={club.name}
                 targetStatus={club.status === 'active' ? 'suspended' : 'active'}
                 label={club.status === 'active' ? t('suspend') : t('activate')}
               />

@@ -91,6 +91,7 @@ export default async function AdminClubsPage({ searchParams }: {
                   {canToggleStatus ? (
                     <ClubStatusButton
                       clubId={c.id}
+                      clubName={c.name}
                       targetStatus={isActive ? 'suspended' : 'active'}
                       label={isActive ? t('suspend') : t('activate')}
                     />
