@@ -32,12 +32,19 @@ export type MemberVirtualSession = VirtualSession & {
 export type MemberVirtualSlot = Omit<VirtualSlot, 'sessions'> & { sessions: MemberVirtualSession[] };
 export type MemberCalendarDay = Omit<CalendarDay, 'slots'> & { slots: MemberVirtualSlot[] };
 
-function paymentChoicesFor(allowed: AllowedPayment): PaymentType[] {
+/**
+ * When the club has no MultiSport contract, cash is the only choice regardless of
+ * the boat's own allow-list — Task 2 guarantees no `multisport_only` boat survives
+ * at a disabled club, so `both` (and, defensively, `multisport_only`) narrow to cash.
+ */
+function paymentChoicesFor(allowed: AllowedPayment, clubMultisportEnabled: boolean): PaymentType[] {
+  if (!clubMultisportEnabled) return ['regular'];
   if (allowed === 'regular_only') return ['regular'];
   if (allowed === 'multisport_only') return ['multisport'];
   return ['regular', 'multisport'];
 }
-function defaultPaymentFor(allowed: AllowedPayment, pref: PaymentType): PaymentType {
+function defaultPaymentFor(allowed: AllowedPayment, pref: PaymentType, clubMultisportEnabled: boolean): PaymentType {
+  if (!clubMultisportEnabled) return 'regular';
   if (allowed === 'regular_only') return 'regular';
   if (allowed === 'multisport_only') return 'multisport';
   return pref;
@@ -102,7 +109,7 @@ export async function computeMemberCalendar(
       sessions: slot.sessions.map((s): MemberVirtualSession => {
         const seatedCount = s.sessionId ? (seated.get(s.sessionId) ?? 0) : 0;
         const my = s.sessionId ? mine.get(s.sessionId) : undefined;
-        const defaultPayment = defaultPaymentFor(s.allowedPayment, member.paymentType);
+        const defaultPayment = defaultPaymentFor(s.allowedPayment, member.paymentType, club.multisportEnabled);
         return {
           ...s,
           seatsLeft: Math.max(0, s.capacity - seatedCount),
@@ -110,7 +117,7 @@ export async function computeMemberCalendar(
           bookingOpensAt: bookingOpensAt({ startAt: slot.startAt, bookingOpenMode: club.bookingOpenMode, bookingOpenLeadDays: club.bookingOpenLeadDays }),
           eligibility: checkEligibility({ membershipStatus: member.membershipStatus, bannedUntil: member.bannedUntil, memberSkillRank: member.skillRank, boatMinSkillRank: s.minSkillRank, boatAllowedPayment: s.allowedPayment, paymentType: defaultPayment, clubMultisportEnabled: club.multisportEnabled, now }),
           defaultPayment,
-          paymentChoices: paymentChoicesFor(s.allowedPayment),
+          paymentChoices: paymentChoicesFor(s.allowedPayment, club.multisportEnabled),
           myStatus: my?.status ?? 'none',
           myQueuePosition: my?.queuePosition ?? null,
           multisportDayTaken: multisportDays.has(day.dateISO),
