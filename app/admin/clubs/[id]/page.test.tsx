@@ -58,8 +58,8 @@ function detail(overrides: Partial<ClubAdminDetail> = {}, club: Record<string, u
   };
 }
 
-async function renderPage() {
-  render(await AdminClubDetailPage({ params: Promise.resolve({ id: CLUB_ID }) }));
+async function renderPage(id = CLUB_ID) {
+  render(await AdminClubDetailPage({ params: Promise.resolve({ id }) }));
 }
 
 beforeEach(() => {
@@ -83,6 +83,31 @@ describe('AdminClubDetailPage', () => {
   it('404s on an unknown id instead of rendering an empty club', async () => {
     getClubAdminDetail.mockResolvedValue(null);
     await expect(renderPage()).rejects.toBeInstanceOf(NotFound);
+  });
+
+  // `/admin/clubs/foo` was a 500, not a 404: `id` is bound into `clubs.id = $1`
+  // against a uuid PRIMARY KEY, and Postgres raised
+  // `invalid input syntax for type uuid: "foo"` (22P02) out of the render.
+  // `listAuditRows({ clubId: 'foo' })` raised it identically.
+  it.each([
+    ['plain text', 'foo'],
+    ['a short label', 'c1'],
+    ['a uuid with a character missing', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa'],
+    ['a numeric id', '42'],
+    ['SQL in the id slot', "'; DROP TABLE clubs; --"],
+  ])('404s on %s without ever reaching the database', async (_label, id) => {
+    getClubAdminDetail.mockResolvedValue(detail());
+    await expect(renderPage(id)).rejects.toBeInstanceOf(NotFound);
+    // The guard is BEFORE the fetch: reaching either query at all is the 500.
+    expect(getClubAdminDetail).not.toHaveBeenCalled();
+    expect(listAuditRows).not.toHaveBeenCalled();
+  });
+
+  // The guard is on shape, not on case: Postgres accepts either.
+  it('still queries when the id is a well-formed uuid in upper case', async () => {
+    getClubAdminDetail.mockResolvedValue(detail());
+    await renderPage(CLUB_ID.toUpperCase());
+    expect(getClubAdminDetail).toHaveBeenCalledWith({}, CLUB_ID.toUpperCase());
   });
 
   it('hands the transfer control the club name and only the eligible candidates', async () => {

@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { Button } from '@/components/ui/button';
 import { db } from '@/db';
 import { type AuditCursor, listAuditRows } from '@/lib/audit';
+import { isUuid } from '@/lib/uuid';
 
 import { AuditFilters } from './audit-filters';
 import { AuditTable } from './audit-table';
@@ -16,8 +17,6 @@ export const metadata = { robots: { index: false, follow: false } };
  * and a list whose timestamps are each in a different zone cannot be read in order.
  */
 const ADMIN_TIME_ZONE = 'Europe/Istanbul';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * `<createdAtISO>~<uuid>`. `~` cannot appear in either half, so a single split is
@@ -35,7 +34,7 @@ function parseCursor(raw: string | undefined): AuditCursor | null {
   if (sep < 0) return null;
   const when = new Date(raw.slice(0, sep));
   const id = raw.slice(sep + 1);
-  if (Number.isNaN(when.getTime()) || !UUID_RE.test(id)) return null;
+  if (Number.isNaN(when.getTime()) || !isUuid(id)) return null;
   return { createdAt: when, id };
 }
 
@@ -70,7 +69,7 @@ export default async function AdminAuditPage({ searchParams }: {
   // so `abc` was a 500 on the ordinary path. The query is skipped rather than the
   // filter dropped: dropping it would answer "which rows belong to club abc" with the
   // entire unfiltered log, which is a worse answer than none.
-  const clubIdIsUsable = clubId === undefined || UUID_RE.test(clubId);
+  const clubIdIsUsable = clubId === undefined || isUuid(clubId);
   const { rows, nextCursor } = clubIdIsUsable
     ? await listAuditRows(db, { filters: { clubId, actorUserId, actionPrefix }, cursor })
     : { rows: [], nextCursor: null };

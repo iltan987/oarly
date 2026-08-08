@@ -8,6 +8,7 @@ import { db } from '@/db';
 import type { clubs } from '@/db/schema';
 import { listAuditRows } from '@/lib/audit';
 import { getClubAdminDetail } from '@/lib/clubs-admin';
+import { isUuid } from '@/lib/uuid';
 
 import { AuditTable } from '../../audit/audit-table';
 import { ClubStatusButton } from '../../club-status-button';
@@ -34,9 +35,21 @@ const toneByStatus: Record<ClubStatus, BadgeTone> = {
  */
 export default async function AdminClubDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  // Shape FIRST, existence second — they are two different failures and only the
+  // second one is survivable inside the query. `id` is bound into `clubs.id = $1`
+  // against a uuid PRIMARY KEY, so `/admin/clubs/foo` raised
+  // `invalid input syntax for type uuid: "foo"` (22P02) out of the render as a 500,
+  // and `listAuditRows({ clubId: 'foo' })` below raised it identically. Both are a
+  // 404 here: a string that cannot be a club id names no club, which is exactly what
+  // a well-formed id matching nothing means. (`/admin/audit` renders an EMPTY list
+  // for the same bad input instead, because there the id is a filter over a log that
+  // still exists — dropping or 404ing a filter would be the wrong answer there.)
+  if (!isUuid(id)) notFound();
+
   const detail = await getClubAdminDetail(db, id);
-  // A hand-typed or stale id is a 404, not a crash — and `getClubAdminDetail` returns
-  // null rather than throwing precisely so this stays a routing decision.
+  // A stale or guessed-but-well-formed id is the second case: `getClubAdminDetail`
+  // returns null rather than throwing precisely so this stays a routing decision.
   if (!detail) notFound();
 
   const t = await getTranslations('admin');
