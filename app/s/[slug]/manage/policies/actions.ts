@@ -8,7 +8,10 @@ import { schedulingSettingsSchema } from '@/lib/schemas';
 
 export type PoliciesState =
   | { status: 'idle' }
-  | { status: 'ok' }
+  /** `convertedBoats` is the number of MultiSport-only boats this save turned into
+   *  cash-only (spec §5.2) — the page's pre-save estimate is read at render time and
+   *  can be stale, so the form reports THIS count back to the owner. */
+  | { status: 'ok'; convertedBoats: number }
   | { status: 'error'; cause: 'invalid_lead' | 'invalid_input' };
 
 export async function savePoliciesAction(slug: string, _prev: PoliciesState, formData: FormData): Promise<PoliciesState> {
@@ -23,6 +26,7 @@ export async function savePoliciesAction(slug: string, _prev: PoliciesState, for
     cancelCutoffHours: cutoffRaw === '' ? null : cutoffRaw,
     noshowPenalty: formData.get('noshowPenalty'),
     multisportMode: formData.get('multisportMode'),
+    multisportEnabled: formData.get('multisportEnabled') === 'on',
     openOnHolidays: formData.get('openOnHolidays') === 'on',
     waitlistCapacity: waitlistRaw === '' ? null : waitlistRaw,
   });
@@ -31,5 +35,5 @@ export async function savePoliciesAction(slug: string, _prev: PoliciesState, for
   if (!result.ok) return { status: 'error', cause: 'invalid_lead' };
   revalidatePath(`/s/${slug}/manage/policies`);
   revalidatePath(`/s/${slug}/manage`);
-  return { status: 'ok' };
+  return { status: 'ok', convertedBoats: result.convertedBoats };
 }

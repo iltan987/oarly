@@ -28,9 +28,9 @@ describe.skipIf(!url)('computeMemberCalendar', () => {
     sharedMemberId = `mc-member-${Date.now()}-${seq++}`;
     await db.insert(schema.user).values({ id: sharedMemberId, name: 'M', email: `${sharedMemberId}@t.co` });
   });
-  async function setup(allowedPayment: 'regular_only' | 'multisport_only' | 'both' = 'both', minSkillRank?: number) {
+  async function setup(allowedPayment: 'regular_only' | 'multisport_only' | 'both' = 'both', minSkillRank?: number, multisportEnabled = true) {
     const tag = `mc-${Date.now()}-${seq++}`;
-    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, bookingOpenMode: 'always' }).returning();
+    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, bookingOpenMode: 'always', multisportEnabled }).returning();
     let lvl; if (minSkillRank != null) [lvl] = await db.insert(schema.skillLevels).values({ clubId: club.id, name: 'L', rank: minSkillRank }).returning();
     const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: 2, allowedPayment, minSkillLevelId: lvl?.id ?? null }).returning();
     const [w] = await db.insert(schema.scheduleWindows).values({ clubId: club.id, weekday: 1, startTime: '08:00', endTime: '09:00', defaultSessionMinutes: 60 }).returning();
@@ -87,6 +87,22 @@ describe.skipIf(!url)('computeMemberCalendar', () => {
     expect(session.eligibility).toEqual({ ok: false, reason: 'skill_too_low' });
     expect(session.paymentChoices).toEqual(['multisport']);
     expect(session.defaultPayment).toBe('multisport');
+  });
+
+  it('offers only cash when the club has MultiSport disabled, regardless of the boat allow-list', async () => {
+    const both = await setup('both', undefined, false);
+    const bothDays = await computeMemberCalendar(db, both.club.id, ctx('n'), opts);
+    const bothSession = bothDays[0].slots[0].sessions[0];
+    expect(bothSession.paymentChoices).toEqual(['regular']);
+    expect(bothSession.defaultPayment).toBe('regular');
+
+    // Task 2 guarantees no multisport_only boat survives at a disabled club, but
+    // this must narrow defensively too, not just rely on that invariant.
+    const msOnly = await setup('multisport_only', undefined, false);
+    const msDays = await computeMemberCalendar(db, msOnly.club.id, ctx('n'), opts);
+    const msSession = msDays[0].slots[0].sessions[0];
+    expect(msSession.paymentChoices).toEqual(['regular']);
+    expect(msSession.defaultPayment).toBe('regular');
   });
 
   it('flags a day on which the member already holds a multisport seat in another club', async () => {

@@ -92,7 +92,7 @@ describe('windowSchema', () => {
 });
 
 describe('schedulingSettingsSchema', () => {
-  const base = { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', openOnHolidays: false, waitlistCapacity: null } as const;
+  const base = { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', multisportEnabled: true, openOnHolidays: false, waitlistCapacity: null } as const;
   it('accepts always mode with null lead days', () => {
     expect(schedulingSettingsSchema.safeParse(base).success).toBe(true);
   });

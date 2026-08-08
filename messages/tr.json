@@ -330,6 +330,7 @@
       "navLabel": "Kurallar",
       "title": "Rezervasyon kuralları",
       "intro": "Rezervasyonun ne zaman açılacağını, iptal kurallarını, gelmeme cezalarını, MultiSport önceliğini ve tatilleri yönetin.",
+      "introNoMultisport": "Rezervasyonun ne zaman açılacağını, iptal kurallarını, gelmeme cezalarını ve tatilleri yönetin.",
       "save": "Kaydet",
       "bookingOpen": "Rezervasyon açılışı",
       "bookingOpenAlways": "Her zaman açık",
@@ -353,7 +354,14 @@
       "waitlistCapacityHint": "Dolu bir seansın arkasında kaç üye sıraya girebilir. Sınırsız için boş bırakın.",
       "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin.",
       "saved": "Politikalar kaydedildi.",
-      "errorInvalidInput": "Bazı değerler geçerli aralığın dışında. Kontrol edip tekrar deneyin."
+      "savedWithConversions": "Politikalar kaydedildi. Sadece MultiSport kabul eden {count, plural, other {# tekne}} artık sadece nakit kabul ediyor.",
+      "errorInvalidInput": "Bazı değerler geçerli aralığın dışında. Kontrol edip tekrar deneyin.",
+      "multisportEnabled": "MultiSport kabul edilsin",
+      "multisportEnabledHint": "Kulübünüzün MultiSport anlaşması yoksa bunu kapatın — üyeler ve yöneticiler yalnızca nakit rezervasyonu görür.",
+      "cancel": "İptal",
+      "confirmDisableMultisportTitle": "MultiSport kapatılsın mı?",
+      "confirmDisableMultisportBody": "{count, plural, =0 {Şu anda sadece MultiSport kabul eden tekne yok, hiçbiri etkilenmeyecek.} other {Sadece MultiSport kabul eden # tekne artık sadece nakit kabul edecek şekilde değiştirilecek.}} MultiSport'u daha sonra tekrar açmak bu tekneleri eski haline döndürmez.",
+      "confirmDisableMultisportCta": "MultiSport'u kapat"
     },
     "schedulePreview": {
       "title": "Program önizleme",
@@ -389,6 +397,7 @@
       "confirmRemoveBody": "Bu işlem geri alınamaz. Bekleme listesi doluysa sıradaki kişi koltuğu alır.",
       "confirmRemoveCta": "Rezervasyonu kaldır",
       "added": "Üye eklendi.",
+      "multisportDisabled": "Bu kulüpte MultiSport kapalı — bu üyeyi nakit ile ekleyin.",
       "markAbsent": "Katılmadı",
       "undoAbsent": "Geri al",
       "absent": "Katılmadı",

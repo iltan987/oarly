@@ -13,6 +13,13 @@ describe('clubs schema', () => {
     }
   });
 
+  it('defaults multisport_enabled to true so existing clubs are unaffected', () => {
+    const cols = Object.fromEntries(getTableConfig(clubs).columns.map((c) => [c.name, c]));
+    expect(cols['multisport_enabled']).toBeDefined();
+    expect(cols['multisport_enabled'].notNull).toBe(true);
+    expect(cols['multisport_enabled'].default).toBe(true);
+  });
+
   it('memberships enforce one row per (user, club)', () => {
     const cfg = getTableConfig(memberships);
     const uq = cfg.indexes.find((i) => i.config.unique);

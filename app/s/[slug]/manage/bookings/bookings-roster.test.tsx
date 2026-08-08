@@ -92,7 +92,7 @@ describe('BookingsRoster remove flow', () => {
   });
 
   it('clicking Remove opens a confirmation naming the member and does not dispatch the action', () => {
-    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" multisportEnabled />);
 
     const removeButtons = screen.getAllByRole('button', { name: 'remove' });
     fireEvent.click(removeButtons[0]);
@@ -103,7 +103,7 @@ describe('BookingsRoster remove flow', () => {
 
   it('confirming dispatches the remove action with the correct bookingId', async () => {
     vi.mocked(ownerRemoveBookingAction).mockResolvedValue({ ok: true });
-    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" multisportEnabled />);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'remove' })[0]);
     submitRemoveDialog();
@@ -125,7 +125,7 @@ describe('BookingsRoster remove flow', () => {
       () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
     );
 
-    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" multisportEnabled />);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'remove' })[0]);
     submitRemoveDialog();
@@ -153,7 +153,7 @@ describe('BookingsRoster remove flow', () => {
     const session = makeSession({
       seated: [{ bookingId: 'b1', name: 'Alice', paymentType: 'regular', queuePosition: null, status: 'no_show' }],
     });
-    render(<BookingsRoster slug="club" sessions={[session]} timezone="UTC" />);
+    render(<BookingsRoster slug="club" sessions={[session]} timezone="UTC" multisportEnabled />);
 
     const row = screen.getByText('Alice').closest('li');
     expect(row).not.toBeNull();
@@ -191,7 +191,7 @@ describe('BookingsRoster add flow', () => {
       () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
     );
 
-    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" />);
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" multisportEnabled />);
     submitAddForm();
 
     // Still unresolved — this proves the row is optimistic, not server-confirmed.
@@ -225,7 +225,7 @@ describe('BookingsRoster add flow', () => {
       waitlisted: [{ bookingId: 'b3', name: 'Wanda', paymentType: 'regular', queuePosition: 1, status: 'waitlisted' }],
       waitlistCapacity: 2,
     });
-    render(<BookingsRoster slug="club" sessions={[session]} timezone="UTC" />);
+    render(<BookingsRoster slug="club" sessions={[session]} timezone="UTC" multisportEnabled />);
     submitAddForm();
 
     await waitFor(() => expect(screen.getByText('Charlie')).toBeInTheDocument());
@@ -244,6 +244,78 @@ describe('BookingsRoster add flow', () => {
   });
 });
 
+describe('BookingsRoster MultiSport toggle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows the payment picker by default (club has MultiSport enabled)', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" multisportEnabled />);
+    expect(screen.getByRole('combobox')).toBeInTheDocument();
+  });
+
+  it('hides the payment picker when the club has MultiSport disabled', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" multisportEnabled={false} />);
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The `payment` state has to actually be `'multisport'` when the picker disappears,
+   * or this proves nothing: rendered disabled from the start, `payment` is `'regular'`
+   * already and the assertion is satisfied by the initial state — it stays green with
+   * the forcing at `bookings-roster.tsx` deleted outright.
+   *
+   * So: render ENABLED, drive the real Base UI Select to `multisport`, and only then
+   * re-render with the club flag off. `AddMemberFields` keeps its state across that
+   * re-render (its `key` only changes on a confirmed add), so the stale `'multisport'`
+   * is live in state while the picker is unmounted — which is exactly the case the
+   * hidden input's ternary exists for. Change it to `value={payment}` and this fails.
+   */
+  it('forces the add to regular payment when the picker is hidden, even after MultiSport was picked', async () => {
+    vi.mocked(ownerAddBookingAction).mockResolvedValue({ ok: true });
+    const session = makeSession({ freeSeats: 1 });
+    const { rerender } = render(<BookingsRoster slug="club" sessions={[session]} timezone="UTC" multisportEnabled />);
+
+    // Base UI's Select opens on click but commits a choice on the pointer sequence,
+    // not on `click` alone.
+    fireEvent.click(screen.getByRole('combobox'));
+    const option = await screen.findByRole('option', { name: 'paymentMultisport' });
+    fireEvent.pointerDown(option, { pointerType: 'mouse', button: 0 });
+    fireEvent.pointerUp(option, { pointerType: 'mouse', button: 0 });
+    fireEvent.click(option);
+    await waitFor(() => expect(document.querySelector('input[name="paymentType"]')).toHaveValue('multisport'));
+
+    // The club turns MultiSport off; the picker unmounts but the state does not reset.
+    rerender(<BookingsRoster slug="club" sessions={[session]} timezone="UTC" multisportEnabled={false} />);
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick-member' }));
+    const form = screen.getByRole('button', { name: 'add' }).closest('form');
+    if (!form) throw new Error('add form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(ownerAddBookingAction).toHaveBeenCalledTimes(1));
+    const call = vi.mocked(ownerAddBookingAction).mock.calls[0];
+    expect((call[2] as FormData).get('paymentType')).toBe('regular');
+  });
+
+  // Gap this test closes: OwnerAddActionResult's 'multisport_disabled' error was wired
+  // through actions.ts but never consumed here, so a rejected add showed the same
+  // generic toast as any other failure — indistinguishable from a real bug.
+  it('reports a MultiSport-disabled rejection with its own message, not the generic error', async () => {
+    vi.mocked(ownerAddBookingAction).mockResolvedValue({ ok: false, error: 'multisport_disabled' });
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" multisportEnabled />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick-member' }));
+    const form = screen.getByRole('button', { name: 'add' }).closest('form');
+    if (!form) throw new Error('add form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('multisportDisabled'));
+    expect(toast.error).not.toHaveBeenCalledWith('actionError');
+  });
+});
+
 describe('BookingsRoster mark-absent flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -259,7 +331,7 @@ describe('BookingsRoster mark-absent flow', () => {
     );
 
     // startAt in the past so the "mark absent" control renders at all.
-    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" multisportEnabled />);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'markAbsent' })[0]);
     const cta = screen.getByRole('button', { name: /confirmAbsentCta/ });
@@ -279,7 +351,7 @@ describe('BookingsRoster mark-absent flow', () => {
   it('reports a repeat mark as benign info rather than a generic error', async () => {
     vi.mocked(markNoShowAction).mockResolvedValue({ ok: false, error: 'already_marked' });
 
-    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" multisportEnabled />);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'markAbsent' })[0]);
     const form = screen.getByRole('button', { name: /confirmAbsentCta/ }).closest('form');

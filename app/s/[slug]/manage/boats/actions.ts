@@ -2,7 +2,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { db } from '@/db';
-import { createBoat, setBoatActive, updateBoat } from '@/lib/boats';
+import { clampAllowedPayment, createBoat, setBoatActive, updateBoat } from '@/lib/boats';
 import { requireOwner } from '@/lib/membership';
 import { boatSchema } from '@/lib/schemas';
 
@@ -27,7 +27,7 @@ export async function createBoatAction(slug: string, _prev: ManageActionResult |
   const { club } = await requireOwner(slug, '/manage/boats');
   const parsed = parseBoat(formData);
   if (!parsed.success) return { ok: false };
-  const res = await createBoat(db, club.id, parsed.data);
+  const res = await createBoat(db, club.id, clampAllowedPayment(parsed.data, club.multisportEnabled));
   if (!res.ok) return { ok: false };
   refresh(slug);
   return { ok: true };
@@ -37,7 +37,7 @@ export async function updateBoatAction(slug: string, _prev: ManageActionResult |
   const { club } = await requireOwner(slug, '/manage/boats');
   const parsed = parseBoat(formData);
   if (!parsed.success) return { ok: false };
-  const res = await updateBoat(db, { clubId: club.id, boatId: String(formData.get('boatId')), ...parsed.data });
+  const res = await updateBoat(db, { clubId: club.id, boatId: String(formData.get('boatId')), ...clampAllowedPayment(parsed.data, club.multisportEnabled) });
   if (!res.ok) return { ok: false };
   refresh(slug);
   return { ok: true };

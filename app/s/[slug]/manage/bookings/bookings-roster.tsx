@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { RosterSession } from '@/lib/roster';
 import { cn } from '@/lib/utils';
 
-import { type MemberHit, ownerAddBookingAction, ownerRemoveBookingAction, type RemoveActionResult } from './actions';
+import { type MemberHit, type OwnerAddActionResult, ownerAddBookingAction, ownerRemoveBookingAction, type RemoveActionResult } from './actions';
 import { type MarkActionResult, markNoShowAction, type UndoActionResult, undoNoShowAction } from './attendance-actions';
 import { MemberCombobox } from './member-combobox';
 
@@ -25,11 +25,17 @@ export type RosterSessionWithPenalty = RosterSession & {
   banLapsed: boolean;
 };
 
-export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
+export function BookingsRoster({ slug, sessions, timezone, closed = false, multisportEnabled }: {
   slug: string;
   sessions: RosterSessionWithPenalty[];
   timezone: string;
   closed?: boolean;
+  /**
+   * Required, with no default: defaulting it to `true` fails OPEN — a caller that
+   * forgets to thread the club flag through would offer MultiSport at a club that
+   * has none. `BoatsEditor` makes it required for the same reason.
+   */
+  multisportEnabled: boolean;
 }) {
   const t = useTranslations('manage.bookings');
   const tm = useTranslations('manage');
@@ -195,6 +201,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
                 <AddMemberForm
                   session={s}
                   slug={slug}
+                  multisportEnabled={multisportEnabled}
                   onSubmitted={(member) => addPendingMember({ sessionKey, member })}
                 />
               )}
@@ -272,8 +279,8 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
  * forwards the pick to it and remounts `AddMemberFields` (via `key`) on a successful
  * add so the picker resets to empty.
  */
-function AddMemberForm({ session, slug, onSubmitted }: {
-  session: RosterSession; slug: string;
+function AddMemberForm({ session, slug, multisportEnabled, onSubmitted }: {
+  session: RosterSession; slug: string; multisportEnabled: boolean;
   onSubmitted: (member: MemberHit) => void;
 }) {
   const [formKey, setFormKey] = useState(0);
@@ -283,6 +290,7 @@ function AddMemberForm({ session, slug, onSubmitted }: {
       key={formKey}
       session={session}
       slug={slug}
+      multisportEnabled={multisportEnabled}
       onSubmitted={onSubmitted}
       // Post-`await` state update, so it must be wrapped in `startTransition`
       // (spec §4.4) — outside one React warns and applies it synchronously,
@@ -292,8 +300,8 @@ function AddMemberForm({ session, slug, onSubmitted }: {
   );
 }
 
-function AddMemberFields({ session, slug, onSubmitted, onAdded }: {
-  session: RosterSession; slug: string;
+function AddMemberFields({ session, slug, multisportEnabled, onSubmitted, onAdded }: {
+  session: RosterSession; slug: string; multisportEnabled: boolean;
   onSubmitted: (member: MemberHit) => void;
   onAdded: () => void;
 }) {
@@ -315,10 +323,12 @@ function AddMemberFields({ session, slug, onSubmitted, onAdded }: {
   async function handleSubmit(formData: FormData) {
     if (!selected) return;
     onSubmitted(selected);
-    const result = await ownerAddBookingAction(slug, null, formData);
+    const result: OwnerAddActionResult = await ownerAddBookingAction(slug, null, formData);
     if (result.ok) {
       toast.success(t('added'));
       onAdded();
+    } else if (result.error === 'multisport_disabled') {
+      toast.error(t('multisportDisabled'));
     } else {
       toast.error(tm('actionError'));
     }
@@ -330,17 +340,22 @@ function AddMemberFields({ session, slug, onSubmitted, onAdded }: {
       <input type="hidden" name="boatTypeId" value={session.boatTypeId} />
       <input type="hidden" name="startAt" value={session.startAt.toISOString()} />
       <input type="hidden" name="userId" value={selected?.userId ?? ''} />
-      <input type="hidden" name="paymentType" value={payment} />
+      {/* Base UI's <Select> does not serialize to FormData — this hidden input is the
+          source of truth submitted. When the club has no MultiSport contract, the
+          picker below is hidden and this is forced to 'regular' regardless of `payment`. */}
+      <input type="hidden" name="paymentType" value={multisportEnabled ? payment : 'regular'} />
       <MemberCombobox slug={slug} selected={selected} onSelect={setSelected} />
-      <Select value={payment} onValueChange={(v) => setPayment(v as 'regular' | 'multisport')}>
-        <SelectTrigger className="w-32">
-          <SelectValue>{(v) => (v === 'multisport' ? t('paymentMultisport') : t('paymentRegular'))}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="regular">{t('paymentRegular')}</SelectItem>
-          <SelectItem value="multisport">{t('paymentMultisport')}</SelectItem>
-        </SelectContent>
-      </Select>
+      {multisportEnabled && (
+        <Select value={payment} onValueChange={(v) => setPayment(v as 'regular' | 'multisport')}>
+          <SelectTrigger className="w-32">
+            <SelectValue>{(v) => (v === 'multisport' ? t('paymentMultisport') : t('paymentRegular'))}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="regular">{t('paymentRegular')}</SelectItem>
+            <SelectItem value="multisport">{t('paymentMultisport')}</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
       <PendingButton size="sm" disabled={!selected}>{t('add')}</PendingButton>
     </form>
   );

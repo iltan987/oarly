@@ -9,6 +9,7 @@ const base = {
   boatMinSkillRank: null as number | null,
   boatAllowedPayment: 'both' as const,
   paymentType: 'regular' as const,
+  clubMultisportEnabled: true,
   now: new Date('2026-07-17T00:00:00Z'),
 };
 
@@ -52,7 +53,24 @@ describe('checkEligibility', () => {
       boatMinSkillRank: null,
       boatAllowedPayment: 'both',
       paymentType: 'regular',
+      clubMultisportEnabled: true,
       now: new Date('2026-03-10T04:00:00Z'),
     })).toEqual({ ok: false, reason: 'banned' });
+  });
+
+  it('rejects MultiSport when the club has it disabled, on every allowed_payment value', () => {
+    expect(checkEligibility({ ...base, clubMultisportEnabled: false, boatAllowedPayment: 'both', paymentType: 'multisport' })).toEqual({ ok: false, reason: 'payment_not_allowed' });
+    expect(checkEligibility({ ...base, clubMultisportEnabled: false, boatAllowedPayment: 'multisport_only', paymentType: 'multisport' })).toEqual({ ok: false, reason: 'payment_not_allowed' });
+    expect(checkEligibility({ ...base, clubMultisportEnabled: false, boatAllowedPayment: 'regular_only', paymentType: 'multisport' })).toEqual({ ok: false, reason: 'payment_not_allowed' });
+  });
+
+  it('still permits regular payment when the club has MultiSport disabled', () => {
+    expect(checkEligibility({ ...base, clubMultisportEnabled: false, boatAllowedPayment: 'both', paymentType: 'regular' })).toEqual({ ok: true });
+    expect(checkEligibility({ ...base, clubMultisportEnabled: false, boatAllowedPayment: 'regular_only', paymentType: 'regular' })).toEqual({ ok: true });
+  });
+
+  it('changes nothing when the club has MultiSport enabled', () => {
+    expect(checkEligibility({ ...base, clubMultisportEnabled: true, boatAllowedPayment: 'multisport_only', paymentType: 'multisport' })).toEqual({ ok: true });
+    expect(checkEligibility({ ...base, clubMultisportEnabled: true, boatAllowedPayment: 'both', paymentType: 'multisport' })).toEqual({ ok: true });
   });
 });

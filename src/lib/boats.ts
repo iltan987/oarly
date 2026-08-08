@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { boatTypes, skillLevels } from '@/db/schema';
@@ -12,6 +12,21 @@ export interface BoatInput {
   minSkillLevelId: string | null;
   allowedPayment: AllowedPayment;
   minAttendance: number | null;
+}
+
+/**
+ * Spec §5.2's invariant, defended on the write path: no boat may advertise
+ * MultiSport at a club that has MultiSport off, or it becomes unbookable. The
+ * editor hides the payment field when the flag is off, but `allowedPayment`
+ * still arrives from FormData, so a crafted POST could otherwise re-create
+ * exactly the stranded boat disabling the flag exists to prevent.
+ *
+ * `both` is deliberately untouched — it already permits cash, so it is not
+ * stranded, and rewriting it would destroy a setting the owner never saw.
+ */
+export function clampAllowedPayment<T extends { allowedPayment: AllowedPayment }>(input: T, clubMultisportEnabled: boolean): T {
+  if (clubMultisportEnabled || input.allowedPayment !== 'multisport_only') return input;
+  return { ...input, allowedPayment: 'regular_only' };
 }
 
 export function listBoats(db: DB, clubId: string): Promise<BoatType[]> {
@@ -52,4 +67,16 @@ export async function setBoatActive(db: DB, input: { clubId: string; boatId: str
     .where(and(eq(boatTypes.id, input.boatId), eq(boatTypes.clubId, input.clubId)))
     .returning({ id: boatTypes.id });
   return res.length > 0;
+}
+
+/**
+ * How many of this club's boats are currently MultiSport-only — the count the
+ * policies page's disable-confirmation reports, since that many would be
+ * converted to cash-only (see `updateSchedulingSettings`'s `convertedBoats`).
+ * A plain read, so it does not itself change anything.
+ */
+export async function countMultisportOnlyBoats(db: DB, clubId: string): Promise<number> {
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(boatTypes)
+    .where(and(eq(boatTypes.clubId, clubId), eq(boatTypes.allowedPayment, 'multisport_only')));
+  return row?.n ?? 0;
 }

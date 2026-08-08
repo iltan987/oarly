@@ -24,7 +24,7 @@ type Labels = {
 
 const NONE_VALUE = 'none';
 
-function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Level[]; labels: Labels; formId: string }) {
+function BoatFields({ boat, levels, labels, formId, multisportEnabled }: { boat?: Boat; levels: Level[]; labels: Labels; formId: string; multisportEnabled: boolean }) {
   const [minSkillLevelId, setMinSkillLevelId] = useState(boat?.minSkillLevelId ?? NONE_VALUE);
   const [allowedPayment, setAllowedPayment] = useState(boat?.allowedPayment ?? 'both');
 
@@ -45,7 +45,19 @@ function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Lev
         mapped back to '' for the server action.
       */}
       <input type="hidden" name="minSkillLevelId" value={minSkillLevelId === NONE_VALUE ? '' : minSkillLevelId} />
-      <input type="hidden" name="allowedPayment" value={allowedPayment} />
+      {/*
+        With the field hidden the STORED value is echoed straight back, never
+        rewritten. A `both` boat already permits cash, so narrowing it here
+        would silently destroy a setting on any unrelated edit — a rename, a
+        seat count — that the owner was never shown and never agreed to (the
+        disable confirmation only promises to convert MultiSport-ONLY boats).
+        A stale `both` is inert: `paymentChoicesFor` and `checkEligibility`
+        narrow on the club flag alone. `multisport_only` boats were already
+        converted at write time by `updateSchedulingSettings`, and
+        `clampAllowedPayment` re-asserts that invariant server-side. Only a
+        NEW boat defaults to `regular_only` here.
+      */}
+      <input type="hidden" name="allowedPayment" value={multisportEnabled ? allowedPayment : (boat?.allowedPayment ?? 'regular_only')} />
       <Field>
         <FieldLabel htmlFor={`name-${formId}`}>{labels.name}</FieldLabel>
         <Input id={`name-${formId}`} name="name" defaultValue={boat?.name} required />
@@ -66,19 +78,21 @@ function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Lev
           </SelectContent>
         </Select>
       </Field>
-      <Field>
-        <FieldLabel htmlFor={`allowedPayment-${formId}`}>{labels.payment}</FieldLabel>
-        <Select items={paymentItems} value={allowedPayment} onValueChange={(v) => setAllowedPayment(v as Boat['allowedPayment'])}>
-          <SelectTrigger id={`allowedPayment-${formId}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="both">{labels.paymentBoth}</SelectItem>
-            <SelectItem value="regular_only">{labels.paymentRegular}</SelectItem>
-            <SelectItem value="multisport_only">{labels.paymentMultisport}</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
+      {multisportEnabled && (
+        <Field>
+          <FieldLabel htmlFor={`allowedPayment-${formId}`}>{labels.payment}</FieldLabel>
+          <Select items={paymentItems} value={allowedPayment} onValueChange={(v) => setAllowedPayment(v as Boat['allowedPayment'])}>
+            <SelectTrigger id={`allowedPayment-${formId}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="both">{labels.paymentBoth}</SelectItem>
+              <SelectItem value="regular_only">{labels.paymentRegular}</SelectItem>
+              <SelectItem value="multisport_only">{labels.paymentMultisport}</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
       <Field className="col-span-2">
         <FieldLabel htmlFor={`minAttendance-${formId}`}>{labels.minAttendance}</FieldLabel>
         <Input id={`minAttendance-${formId}`} name="minAttendance" type="number" min={1} defaultValue={boat?.minAttendance ?? ''} />
@@ -90,9 +104,9 @@ function BoatFields({ boat, levels, labels, formId }: { boat?: Boat; levels: Lev
 // One boat add/edit form. Closes (via onSuccess) only after the server action
 // reports ok, and toasts success/failure — so a rejected save (validation,
 // skill-not-in-club, missing row) no longer looks like it worked.
-function BoatForm({ slug, boat, levels, labels, action, className, onSuccess, onCancel }: {
+function BoatForm({ slug, boat, levels, labels, action, className, multisportEnabled, onSuccess, onCancel }: {
   slug: string; boat?: Boat; levels: Level[]; labels: Labels; action: BoatAction;
-  className: string; onSuccess: () => void; onCancel: () => void;
+  className: string; multisportEnabled: boolean; onSuccess: () => void; onCancel: () => void;
 }) {
   const t = useTranslations('manage');
   const [state, formAction] = useActionState<ManageActionResult | null, FormData>(action.bind(null, slug), null);
@@ -115,7 +129,7 @@ function BoatForm({ slug, boat, levels, labels, action, className, onSuccess, on
   return (
     <form action={formAction} className={className}>
       {boat && <input type="hidden" name="boatId" value={boat.id} />}
-      <BoatFields boat={boat} levels={levels} labels={labels} formId={boat?.id ?? 'new'} />
+      <BoatFields boat={boat} levels={levels} labels={labels} formId={boat?.id ?? 'new'} multisportEnabled={multisportEnabled} />
       <div className="flex gap-2">
         <PendingButton size="sm">{labels.save}</PendingButton>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>{labels.cancel}</Button>
@@ -152,7 +166,7 @@ function BoatActiveButton({ slug, boatId, active, label, onToggle }: {
   );
 }
 
-export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boats: Boat[]; levels: Level[]; labels: Labels }) {
+export function BoatsEditor({ slug, boats, levels, labels, multisportEnabled }: { slug: string; boats: Boat[]; levels: Level[]; labels: Labels; multisportEnabled: boolean }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -175,7 +189,7 @@ export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boa
               {editing === b.id ? (
                 <BoatForm
                   slug={slug} boat={b} levels={levels} labels={labels}
-                  action={updateBoatAction} className="flex flex-col gap-3"
+                  action={updateBoatAction} className="flex flex-col gap-3" multisportEnabled={multisportEnabled}
                   onSuccess={() => setEditing(null)} onCancel={() => setEditing(null)}
                 />
               ) : (
@@ -197,7 +211,7 @@ export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boa
       {adding ? (
         <BoatForm
           slug={slug} levels={levels} labels={labels}
-          action={createBoatAction} className="flex flex-col gap-3 rounded-lg border p-3"
+          action={createBoatAction} className="flex flex-col gap-3 rounded-lg border p-3" multisportEnabled={multisportEnabled}
           onSuccess={() => setAdding(false)} onCancel={() => setAdding(false)}
         />
       ) : (

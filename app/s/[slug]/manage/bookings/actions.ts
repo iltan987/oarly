@@ -10,8 +10,6 @@ import { ownerAddBooking, ownerRemoveBooking } from '@/lib/booking';
 import { requireOwner } from '@/lib/membership';
 import { notifyBookingConfirmation, notifyOwnerRemoval, notifyWaitlistPromotion } from '@/lib/notify';
 
-import type { ManageActionResult } from '../action-result';
-
 export type MemberHit = { userId: string; name: string; email: string; phone: string | null };
 
 /**
@@ -45,6 +43,8 @@ export async function searchClubMembersAction(slug: string, query: string): Prom
 
 /** Richer than ManageActionResult so the toast can distinguish a benign already-removed race from a generic error. */
 export type RemoveActionResult = { ok: true } | { ok: false; error?: 'not_active' };
+/** Richer than ManageActionResult so the toast can call out a MultiSport add rejected by a disabled club. */
+export type OwnerAddActionResult = { ok: true } | { ok: false; error?: 'multisport_disabled' };
 
 const removeSchema = z.object({ bookingId: z.uuid() });
 const addSchema = z.object({
@@ -72,7 +72,7 @@ export async function ownerRemoveBookingAction(slug: string, _prev: RemoveAction
   return { ok: true };
 }
 
-export async function ownerAddBookingAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
+export async function ownerAddBookingAction(slug: string, _prev: OwnerAddActionResult | null, formData: FormData): Promise<OwnerAddActionResult> {
   const { club } = await requireOwner(slug, '/manage/bookings');
   const parsed = addSchema.safeParse({
     windowId: formData.get('windowId'),
@@ -83,7 +83,7 @@ export async function ownerAddBookingAction(slug: string, _prev: ManageActionRes
   });
   if (!parsed.success) return { ok: false };
   const result = await ownerAddBooking(db, { clubId: club.id, windowId: parsed.data.windowId, boatTypeId: parsed.data.boatTypeId, startAt: new Date(parsed.data.startAt), userId: parsed.data.userId, paymentType: parsed.data.paymentType });
-  if (!result.ok) return { ok: false };
+  if (!result.ok) return result.error === 'multisport_disabled' ? { ok: false, error: 'multisport_disabled' } : { ok: false };
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);
   revalidatePath(`/s/${slug}/bookings`);

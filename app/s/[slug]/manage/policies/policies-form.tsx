@@ -1,8 +1,11 @@
 'use client';
+import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { PendingButton } from '@/components/pending-button';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -16,6 +19,7 @@ type Settings = {
   cancelCutoffHours: number | null;
   noshowPenalty: 'off' | '2d' | '1w' | '2w' | '1m' | 'never';
   multisportMode: 'equal' | 'priority';
+  multisportEnabled: boolean;
   openOnHolidays: boolean;
   waitlistCapacity: number | null;
 };
@@ -25,6 +29,8 @@ type Labels = {
   noshow2w: string; noshow1m: string; noshowNever: string; multisport: string; multisportEqual: string;
   multisportPriority: string; multisportHint: string; openOnHolidays: string; waitlistCapacity: string;
   waitlistCapacityHint: string; errorInvalidLead: string; errorInvalidInput: string; saved: string;
+  multisportEnabled: string; multisportEnabledHint: string; cancel: string;
+  confirmDisableMultisportTitle: string; confirmDisableMultisportBody: string; confirmDisableMultisportCta: string;
 };
 
 const initial: PoliciesState = { status: 'idle' };
@@ -40,6 +46,11 @@ const initial: PoliciesState = { status: 'idle' };
  */
 export function PoliciesForm({ slug, updatedAt, settings, labels }: { slug: string; updatedAt: number; settings: Settings; labels: Labels }) {
   const [state, formAction] = useActionState(savePoliciesAction.bind(null, slug), initial);
+  // Every other string arrives pre-resolved in `labels`, but the converted-boat count
+  // is only known after the save — and a `(count) => t(...)` prop cannot cross the
+  // server/client boundary, so this one message is resolved here (as `boats-editor.tsx`
+  // already does alongside its own `labels`).
+  const t = useTranslations('manage.policies');
 
   // Identity guard: `state` only changes reference when the action actually
   // dispatches, but guard against re-firing on unrelated re-renders anyway
@@ -48,9 +59,12 @@ export function PoliciesForm({ slug, updatedAt, settings, labels }: { slug: stri
   useEffect(() => {
     if (state === handled.current) return;
     handled.current = state;
-    if (state.status === 'ok') toast.success(labels.saved);
+    // The confirmation dialog quotes an estimate read at page render; this is what the
+    // save actually did, so an owner who added a MultiSport-only boat in another tab
+    // still learns the real number.
+    if (state.status === 'ok') toast.success(state.convertedBoats > 0 ? t('savedWithConversions', { count: state.convertedBoats }) : labels.saved);
     else if (state.status === 'error') toast.error(state.cause === 'invalid_lead' ? labels.errorInvalidLead : labels.errorInvalidInput);
-  }, [state, labels.saved, labels.errorInvalidLead, labels.errorInvalidInput]);
+  }, [state, t, labels.saved, labels.errorInvalidLead, labels.errorInvalidInput]);
 
   return <PoliciesFields key={updatedAt} settings={settings} labels={labels} state={state} formAction={formAction} />;
 }
@@ -62,8 +76,19 @@ function PoliciesFields({ settings, labels, state, formAction }: {
   formAction: (formData: FormData) => void;
 }) {
   const [bookingOpenMode, setBookingOpenMode] = useState(settings.bookingOpenMode);
+  const [selfCancelEnabled, setSelfCancelEnabled] = useState(settings.selfCancelEnabled);
+  // Controlled, not `defaultValue`, so the value survives the field unmounting
+  // when self-cancellation is switched off — see the hidden input below.
+  const [cancelCutoffHours, setCancelCutoffHours] = useState(settings.cancelCutoffHours == null ? '' : String(settings.cancelCutoffHours));
   const [noshowPenalty, setNoshowPenalty] = useState(settings.noshowPenalty);
   const [multisportMode, setMultisportMode] = useState(settings.multisportMode);
+  const [multisportEnabled, setMultisportEnabled] = useState(settings.multisportEnabled);
+  // Turning MultiSport off converts multisport_only boats server-side (see
+  // updateSchedulingSettings) — a real edit to the club's boat configuration that
+  // is not reversible by re-toggling, so it gets its own confirmation instead of
+  // silently taking effect on the next Save. The checkbox is controlled (not
+  // `defaultChecked`) specifically so unchecking it can be intercepted here.
+  const [confirmingDisable, setConfirmingDisable] = useState(false);
 
   // Base UI's <Select.Value> renders the raw item VALUE unless the root is given
   // an `items` map — without it the trigger reads "always" instead of the label,
@@ -76,76 +101,130 @@ function PoliciesFields({ settings, labels, state, formAction }: {
   const multisportItems = { equal: labels.multisportEqual, priority: labels.multisportPriority };
 
   return (
-    <form action={formAction} className="flex max-w-md flex-col gap-4">
-      <input type="hidden" name="bookingOpenMode" value={bookingOpenMode} />
-      <input type="hidden" name="noshowPenalty" value={noshowPenalty} />
-      <input type="hidden" name="multisportMode" value={multisportMode} />
-      <Field>
-        <FieldLabel htmlFor="bookingOpenMode">{labels.bookingOpen}</FieldLabel>
-        <Select items={bookingOpenItems} value={bookingOpenMode} onValueChange={(v) => setBookingOpenMode(v as Settings['bookingOpenMode'])}>
-          <SelectTrigger id="bookingOpenMode">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="always">{labels.bookingOpenAlways}</SelectItem>
-            <SelectItem value="lead">{labels.bookingOpenLead}</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="bookingOpenLeadDays">{labels.leadDays}</FieldLabel>
-        <Input id="bookingOpenLeadDays" name="bookingOpenLeadDays" type="number" min={1} max={365} defaultValue={settings.bookingOpenLeadDays ?? ''} />
-      </Field>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="selfCancelEnabled" defaultChecked={settings.selfCancelEnabled} />
-        {labels.selfCancel}
-      </label>
-      <Field>
-        <FieldLabel htmlFor="cancelCutoffHours">{labels.cancelCutoff}</FieldLabel>
-        <Input id="cancelCutoffHours" name="cancelCutoffHours" type="number" min={0} max={720} defaultValue={settings.cancelCutoffHours ?? ''} />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="waitlistCapacity">{labels.waitlistCapacity}</FieldLabel>
-        <Input id="waitlistCapacity" name="waitlistCapacity" type="number" min={0} max={999} defaultValue={settings.waitlistCapacity ?? ''} />
-        <p className="text-xs text-muted-foreground">{labels.waitlistCapacityHint}</p>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="noshowPenalty">{labels.noshow}</FieldLabel>
-        <Select items={noshowItems} value={noshowPenalty} onValueChange={(v) => setNoshowPenalty(v as Settings['noshowPenalty'])}>
-          <SelectTrigger id="noshowPenalty">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="off">{labels.noshowOff}</SelectItem>
-            <SelectItem value="2d">{labels.noshow2d}</SelectItem>
-            <SelectItem value="1w">{labels.noshow1w}</SelectItem>
-            <SelectItem value="2w">{labels.noshow2w}</SelectItem>
-            <SelectItem value="1m">{labels.noshow1m}</SelectItem>
-            <SelectItem value="never">{labels.noshowNever}</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="multisportMode">{labels.multisport}</FieldLabel>
-        <Select items={multisportItems} value={multisportMode} onValueChange={(v) => setMultisportMode(v as Settings['multisportMode'])}>
-          <SelectTrigger id="multisportMode">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="equal">{labels.multisportEqual}</SelectItem>
-            <SelectItem value="priority">{labels.multisportPriority}</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">{labels.multisportHint}</p>
-      </Field>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="openOnHolidays" defaultChecked={settings.openOnHolidays} />
-        {labels.openOnHolidays}
-      </label>
-      {state.status === 'error' && (
-        <p className="text-sm text-destructive">{state.cause === 'invalid_lead' ? labels.errorInvalidLead : labels.errorInvalidInput}</p>
-      )}
-      <PendingButton className="self-start">{labels.save}</PendingButton>
-    </form>
+    <>
+      <form action={formAction} className="flex max-w-md flex-col gap-4">
+        <input type="hidden" name="bookingOpenMode" value={bookingOpenMode} />
+        <input type="hidden" name="noshowPenalty" value={noshowPenalty} />
+        <input type="hidden" name="multisportMode" value={multisportMode} />
+        {/*
+          A field that unmounts submits nothing, and `updateSchedulingSettings`
+          writes `cancelCutoffHours` unconditionally — so without this the cutoff
+          is NULLed the moment self-cancellation is switched off, destroying a
+          value the owner was never shown. Turning self-cancellation back on then
+          reads blank, which means "no cutoff at all". Same idea as
+          `multisportMode` above; rendered only while the real field is hidden so
+          the two never both carry the name.
+        */}
+        {!selfCancelEnabled && <input type="hidden" name="cancelCutoffHours" value={cancelCutoffHours} />}
+        <Field>
+          <FieldLabel htmlFor="bookingOpenMode">{labels.bookingOpen}</FieldLabel>
+          <Select items={bookingOpenItems} value={bookingOpenMode} onValueChange={(v) => setBookingOpenMode(v as Settings['bookingOpenMode'])}>
+            <SelectTrigger id="bookingOpenMode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="always">{labels.bookingOpenAlways}</SelectItem>
+              <SelectItem value="lead">{labels.bookingOpenLead}</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        {bookingOpenMode === 'lead' && (
+          <Field>
+            <FieldLabel htmlFor="bookingOpenLeadDays">{labels.leadDays}</FieldLabel>
+            <Input id="bookingOpenLeadDays" name="bookingOpenLeadDays" type="number" min={1} max={365} defaultValue={settings.bookingOpenLeadDays ?? ''} />
+          </Field>
+        )}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="selfCancelEnabled" checked={selfCancelEnabled} onChange={(e) => setSelfCancelEnabled(e.target.checked)} />
+          {labels.selfCancel}
+        </label>
+        {selfCancelEnabled && (
+          <Field>
+            <FieldLabel htmlFor="cancelCutoffHours">{labels.cancelCutoff}</FieldLabel>
+            <Input id="cancelCutoffHours" name="cancelCutoffHours" type="number" min={0} max={720} value={cancelCutoffHours} onChange={(e) => setCancelCutoffHours(e.target.value)} />
+          </Field>
+        )}
+        <Field>
+          <FieldLabel htmlFor="waitlistCapacity">{labels.waitlistCapacity}</FieldLabel>
+          <Input id="waitlistCapacity" name="waitlistCapacity" type="number" min={0} max={999} defaultValue={settings.waitlistCapacity ?? ''} />
+          <p className="text-xs text-muted-foreground">{labels.waitlistCapacityHint}</p>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="noshowPenalty">{labels.noshow}</FieldLabel>
+          <Select items={noshowItems} value={noshowPenalty} onValueChange={(v) => setNoshowPenalty(v as Settings['noshowPenalty'])}>
+            <SelectTrigger id="noshowPenalty">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">{labels.noshowOff}</SelectItem>
+              <SelectItem value="2d">{labels.noshow2d}</SelectItem>
+              <SelectItem value="1w">{labels.noshow1w}</SelectItem>
+              <SelectItem value="2w">{labels.noshow2w}</SelectItem>
+              <SelectItem value="1m">{labels.noshow1m}</SelectItem>
+              <SelectItem value="never">{labels.noshowNever}</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="multisportEnabled"
+            checked={multisportEnabled}
+            onChange={(e) => {
+              if (e.target.checked) setMultisportEnabled(true);
+              // Don't flip the state yet — the checkbox reverts to checked on the
+              // next render until the dialog below confirms turning it off.
+              else setConfirmingDisable(true);
+            }}
+          />
+          {labels.multisportEnabled}
+        </label>
+        <p className="-mt-2 text-xs text-muted-foreground">{labels.multisportEnabledHint}</p>
+        {multisportEnabled && (
+          <Field>
+            <FieldLabel htmlFor="multisportMode">{labels.multisport}</FieldLabel>
+            <Select items={multisportItems} value={multisportMode} onValueChange={(v) => setMultisportMode(v as Settings['multisportMode'])}>
+              <SelectTrigger id="multisportMode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="equal">{labels.multisportEqual}</SelectItem>
+                <SelectItem value="priority">{labels.multisportPriority}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{labels.multisportHint}</p>
+          </Field>
+        )}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="openOnHolidays" defaultChecked={settings.openOnHolidays} />
+          {labels.openOnHolidays}
+        </label>
+        {state.status === 'error' && (
+          <p className="text-sm text-destructive">{state.cause === 'invalid_lead' ? labels.errorInvalidLead : labels.errorInvalidInput}</p>
+        )}
+        <PendingButton className="self-start">{labels.save}</PendingButton>
+      </form>
+      <Dialog open={confirmingDisable} onOpenChange={(open) => { if (!open) setConfirmingDisable(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{labels.confirmDisableMultisportTitle}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">{labels.confirmDisableMultisportBody}</p>
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="ghost" />}>{labels.cancel}</DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setMultisportEnabled(false);
+                setConfirmingDisable(false);
+              }}
+            >
+              {labels.confirmDisableMultisportCta}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
