@@ -56,6 +56,24 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      # setup-node's `cache: pnpm` covers the pnpm STORE (dependency downloads)
+      # but not Next.js's own build cache, which lives in .next/cache and is what
+      # makes a rebuild incremental. Without this every CI build is cold and Next
+      # emits its "No Cache Detected" warning.
+      #
+      # The source-hash glob is scoped to app/ and src/ on purpose: the upstream
+      # example hashes '**/*.ts', which also walks node_modules — slow, and it
+      # would make the key depend on whether install had already run.
+      - name: Cache Next.js build
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('app/**/*.ts', 'app/**/*.tsx', 'src/**/*.ts', 'src/**/*.tsx') }}
+          # Sources changed but dependencies did not — rebuild on top of the
+          # previous cache instead of starting cold.
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
+
       - name: Build
         run: pnpm build
 
