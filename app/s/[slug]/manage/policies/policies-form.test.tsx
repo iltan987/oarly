@@ -236,10 +236,56 @@ describe('PoliciesForm nested settings', () => {
     await waitFor(() => expect(savePoliciesAction).toHaveBeenCalledTimes(1));
     const formData = vi.mocked(savePoliciesAction).mock.calls[0][2] as FormData;
     expect(formData.get('bookingOpenLeadDays')).toBeNull();
-    expect(formData.get('cancelCutoffHours')).toBeNull();
+    // The cutoff keeps submitting even while hidden (see below) — here there is
+    // nothing stored, so it submits empty, which the schema reads as "no cutoff".
+    expect(formData.get('cancelCutoffHours')).toBe('');
 
     const parsed = parseSubmitted(formData);
     expect(parsed.success).toBe(true);
+  });
+
+  /**
+   * The "a field that unmounts submits nothing" hazard actually biting, and the one
+   * case where it destroys data: `updateSchedulingSettings` writes `cancelCutoffHours`
+   * unconditionally (unlike `bookingOpenLeadDays`, which it normalizes to null under
+   * `always` mode by design). So a club running self-cancel with a 12-hour cutoff that
+   * turns self-cancel off and saves would lose the 12 — and on turning it back on the
+   * field reads blank, which means "members may cancel one minute before the start".
+   *
+   * Asserting that the payload merely PARSES is not enough; null parses fine. This
+   * asserts the stored value itself round-trips. Delete the top-level hidden input in
+   * policies-form.tsx and this fails on `null`.
+   */
+  it('keeps submitting the stored cancel cutoff after self-cancel is switched off', async () => {
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, selfCancelEnabled: true, cancelCutoffHours: 12 }} labels={labels} />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: labels.selfCancel }));
+    expect(screen.queryByText(labels.cancelCutoff)).not.toBeInTheDocument();
+
+    submit();
+    await waitFor(() => expect(savePoliciesAction).toHaveBeenCalledTimes(1));
+    const formData = vi.mocked(savePoliciesAction).mock.calls[0][2] as FormData;
+    expect(formData.get('cancelCutoffHours')).toBe('12');
+
+    expect(parseSubmitted(formData)).toMatchObject({
+      success: true,
+      data: { cancelCutoffHours: 12, selfCancelEnabled: false },
+    });
+  });
+
+  // …and an edit made before switching self-cancel off is what survives, not the
+  // value the page was rendered with — the hidden input carries the live state.
+  it('carries an unsaved cutoff edit through the field unmounting', async () => {
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, selfCancelEnabled: true, cancelCutoffHours: 12 }} labels={labels} />);
+
+    fireEvent.change(screen.getByLabelText(labels.cancelCutoff), { target: { value: '6' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: labels.selfCancel }));
+
+    submit();
+    await waitFor(() => expect(savePoliciesAction).toHaveBeenCalledTimes(1));
+    expect((vi.mocked(savePoliciesAction).mock.calls[0][2] as FormData).get('cancelCutoffHours')).toBe('6');
   });
 
   // The other side: lead mode WITH the field visible must still parse, so the

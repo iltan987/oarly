@@ -68,6 +68,9 @@ function PoliciesFields({ settings, labels, state, formAction }: {
 }) {
   const [bookingOpenMode, setBookingOpenMode] = useState(settings.bookingOpenMode);
   const [selfCancelEnabled, setSelfCancelEnabled] = useState(settings.selfCancelEnabled);
+  // Controlled, not `defaultValue`, so the value survives the field unmounting
+  // when self-cancellation is switched off — see the hidden input below.
+  const [cancelCutoffHours, setCancelCutoffHours] = useState(settings.cancelCutoffHours == null ? '' : String(settings.cancelCutoffHours));
   const [noshowPenalty, setNoshowPenalty] = useState(settings.noshowPenalty);
   const [multisportMode, setMultisportMode] = useState(settings.multisportMode);
   const [multisportEnabled, setMultisportEnabled] = useState(settings.multisportEnabled);
@@ -94,6 +97,16 @@ function PoliciesFields({ settings, labels, state, formAction }: {
         <input type="hidden" name="bookingOpenMode" value={bookingOpenMode} />
         <input type="hidden" name="noshowPenalty" value={noshowPenalty} />
         <input type="hidden" name="multisportMode" value={multisportMode} />
+        {/*
+          A field that unmounts submits nothing, and `updateSchedulingSettings`
+          writes `cancelCutoffHours` unconditionally — so without this the cutoff
+          is NULLed the moment self-cancellation is switched off, destroying a
+          value the owner was never shown. Turning self-cancellation back on then
+          reads blank, which means "no cutoff at all". Same idea as
+          `multisportMode` above; rendered only while the real field is hidden so
+          the two never both carry the name.
+        */}
+        {!selfCancelEnabled && <input type="hidden" name="cancelCutoffHours" value={cancelCutoffHours} />}
         <Field>
           <FieldLabel htmlFor="bookingOpenMode">{labels.bookingOpen}</FieldLabel>
           <Select items={bookingOpenItems} value={bookingOpenMode} onValueChange={(v) => setBookingOpenMode(v as Settings['bookingOpenMode'])}>
@@ -119,7 +132,7 @@ function PoliciesFields({ settings, labels, state, formAction }: {
         {selfCancelEnabled && (
           <Field>
             <FieldLabel htmlFor="cancelCutoffHours">{labels.cancelCutoff}</FieldLabel>
-            <Input id="cancelCutoffHours" name="cancelCutoffHours" type="number" min={0} max={720} defaultValue={settings.cancelCutoffHours ?? ''} />
+            <Input id="cancelCutoffHours" name="cancelCutoffHours" type="number" min={0} max={720} value={cancelCutoffHours} onChange={(e) => setCancelCutoffHours(e.target.value)} />
           </Field>
         )}
         <Field>
