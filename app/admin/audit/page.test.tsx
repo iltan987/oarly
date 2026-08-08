@@ -33,9 +33,12 @@ function result(nextCursor: AuditCursor | null) {
   return Promise.resolve({ rows: [], nextCursor });
 }
 
-async function renderPage(sp: Record<string, string>) {
+async function renderPage(sp: Record<string, string | string[]>) {
   render(await AdminAuditPage({ searchParams: Promise.resolve(sp) }));
 }
+
+const UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const NO_FILTERS = { clubId: undefined, actorUserId: undefined, actionPrefix: undefined };
 
 beforeEach(() => {
   listAuditRows.mockReset();
@@ -44,11 +47,11 @@ beforeEach(() => {
 
 describe('AdminAuditPage', () => {
   it('parses the cursor out of the URL and passes the trimmed filters through', async () => {
-    await renderPage({ clubId: ' c1 ', actorUserId: 'u1', action: 'boat.', cursor: '2026-08-08T09:00:00.000Z~abc' });
+    await renderPage({ clubId: ' c1 ', actorUserId: 'u1', action: 'boat.', cursor: `2026-08-08T09:00:00.000Z~${UUID}` });
 
     expect(listAuditRows).toHaveBeenCalledWith({}, {
       filters: { clubId: 'c1', actorUserId: 'u1', actionPrefix: 'boat.' },
-      cursor: { createdAt: new Date('2026-08-08T09:00:00.000Z'), id: 'abc' },
+      cursor: { createdAt: new Date('2026-08-08T09:00:00.000Z'), id: UUID },
     });
   });
 
@@ -74,28 +77,47 @@ describe('AdminAuditPage', () => {
   });
 
   it('drops the cursor from the Newest link so it lands on the head of the filtered log', async () => {
-    await renderPage({ clubId: 'c1', cursor: '2026-08-08T09:00:00.000Z~abc' });
+    await renderPage({ clubId: 'c1', cursor: `2026-08-08T09:00:00.000Z~${UUID}` });
     const first = screen.getByRole('link', { name: 'auditFirst' });
     expect(first.getAttribute('href')).toBe('/admin/audit?clubId=c1');
   });
 
   // "Clear" submits the form, so the browser resends every field it still holds.
   it('ignores the resubmitted filters and the cursor when reset=1', async () => {
-    await renderPage({ reset: '1', clubId: 'c1', actorUserId: 'u1', action: 'boat.', cursor: '2026-08-08T09:00:00.000Z~abc' });
+    await renderPage({ reset: '1', clubId: 'c1', actorUserId: 'u1', action: 'boat.', cursor: `2026-08-08T09:00:00.000Z~${UUID}` });
 
-    expect(listAuditRows).toHaveBeenCalledWith({}, {
-      filters: { clubId: undefined, actorUserId: undefined, actionPrefix: undefined },
-      cursor: null,
-    });
+    expect(listAuditRows).toHaveBeenCalledWith({}, { filters: NO_FILTERS, cursor: null });
   });
 
   // A malformed cursor is operator- or bot-supplied text, not a crash and not an
   // excuse to fall through to an unfiltered query.
-  it('treats an unparseable cursor as the first page', async () => {
-    await renderPage({ cursor: 'not-a-cursor' });
+  it.each([
+    ['no separator', 'not-a-cursor'],
+    ['an unparseable timestamp', `nonsense~${UUID}`],
+    // The id half is interpolated into `… < ($ts, $id::uuid)`. Anything that is not
+    // uuid-shaped makes Postgres raise `invalid input syntax for type uuid`, which
+    // escapes the render as a 500 — a hand-edited URL should not be able to do that.
+    ['an id that is not a uuid', '2026-08-08T09:00:00.000Z~abc'],
+    ['an empty id', '2026-08-08T09:00:00.000Z~'],
+  ])('treats a cursor with %s as the first page', async (_label, cursor) => {
+    await renderPage({ cursor });
+    expect(listAuditRows).toHaveBeenCalledWith({}, { filters: NO_FILTERS, cursor: null });
+  });
+
+  // Next's searchParams are `string | string[]`: any key can repeat. Every filter
+  // here is read with a string method, so a repeated key used to throw a TypeError
+  // out of the render before a single row was fetched.
+  it('survives a repeated query parameter and reads the first occurrence', async () => {
+    await renderPage({ clubId: ['c1', 'c2'], actorUserId: ['u1'], action: ['boat.', 'club.'], cursor: ['x', 'y'] });
+
     expect(listAuditRows).toHaveBeenCalledWith({}, {
-      filters: { clubId: undefined, actorUserId: undefined, actionPrefix: undefined },
+      filters: { clubId: 'c1', actorUserId: 'u1', actionPrefix: 'boat.' },
       cursor: null,
     });
+  });
+
+  it('honours a repeated reset parameter', async () => {
+    await renderPage({ reset: ['1', '0'], clubId: 'c1' });
+    expect(listAuditRows).toHaveBeenCalledWith({}, { filters: NO_FILTERS, cursor: null });
   });
 });

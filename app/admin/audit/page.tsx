@@ -17,30 +17,52 @@ export const metadata = { robots: { index: false, follow: false } };
  */
 const ADMIN_TIME_ZONE = 'Europe/Istanbul';
 
-/** `<createdAtISO>~<uuid>`. `~` cannot appear in either half, so a single split is unambiguous. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `<createdAtISO>~<uuid>`. `~` cannot appear in either half, so a single split is
+ * unambiguous.
+ *
+ * The id half is bound into `… < ($ts, $id::uuid)`, so it is checked for uuid SHAPE
+ * here rather than handed to Postgres to reject: `?cursor=…~abc` otherwise raises
+ * `invalid input syntax for type uuid` from inside the render, which reaches the
+ * user as a 500 on a URL anyone can hand-edit. A cursor that cannot be trusted is
+ * not an error condition — it just means "start at the newest page".
+ */
 function parseCursor(raw: string | undefined): AuditCursor | null {
   if (!raw) return null;
   const sep = raw.indexOf('~');
   if (sep < 0) return null;
   const when = new Date(raw.slice(0, sep));
   const id = raw.slice(sep + 1);
-  if (Number.isNaN(when.getTime()) || !id) return null;
+  if (Number.isNaN(when.getTime()) || !UUID_RE.test(id)) return null;
   return { createdAt: when, id };
 }
 
+/**
+ * Any query parameter can repeat — `?clubId=a&clubId=b` arrives as an array, and
+ * every filter on this page is read with a string method, so an unguarded value
+ * throws a TypeError out of the render before a row is ever fetched. First
+ * occurrence wins, matching `URLSearchParams.get`, which is what builds these
+ * links on the way back out.
+ */
+function one(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export default async function AdminAuditPage({ searchParams }: {
-  searchParams: Promise<{ clubId?: string; actorUserId?: string; action?: string; cursor?: string; reset?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
   const t = await getTranslations('admin');
   const locale = await getLocale();
   // "Clear" is a submit inside the filter form, so the browser still sends the old
   // field values alongside `reset=1`. Ignoring them here is what makes the button work.
-  const reset = sp.reset === '1';
-  const clubId = reset ? undefined : sp.clubId?.trim() || undefined;
-  const actorUserId = reset ? undefined : sp.actorUserId?.trim() || undefined;
-  const actionPrefix = reset ? undefined : sp.action?.trim() || undefined;
-  const cursor = reset ? null : parseCursor(sp.cursor);
+  const reset = one(sp.reset) === '1';
+  const clubId = reset ? undefined : one(sp.clubId)?.trim() || undefined;
+  const actorUserId = reset ? undefined : one(sp.actorUserId)?.trim() || undefined;
+  const actionPrefix = reset ? undefined : one(sp.action)?.trim() || undefined;
+  const cursor = reset ? null : parseCursor(one(sp.cursor));
 
   const { rows, nextCursor } = await listAuditRows(db, {
     filters: { clubId, actorUserId, actionPrefix },

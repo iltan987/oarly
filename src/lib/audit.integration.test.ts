@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
-import { listAuditRows, logAudit } from './audit';
+import { type AuditCursor, listAuditRows, logAudit } from './audit';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -63,6 +63,52 @@ describe.skipIf(!url)('listAuditRows', () => {
     expect(third.nextCursor).toBeNull();
   });
 
+  /**
+   * The precision trap, pinned deterministically.
+   *
+   * `AuditCursor.createdAt` is a JS `Date`, which carries MILLISECONDS. While
+   * `created_at` was declared without a precision it stored MICROSECONDS, so the
+   * cursor of a row written at `…748926` came back as `…748` and
+   * `(created_at, id) < ($ts, $id)` then excluded every row between `…748000` and
+   * `…748926`. Those rows were unreachable forever — no duplicates, pure silent
+   * loss, and invisible to a test whose rows happen to land in different
+   * milliseconds.
+   *
+   * The fix is `precision: 3` on the column, which makes the published cursor
+   * contract lossless by construction. This test writes rows at explicit
+   * SUB-millisecond offsets — the exact case that used to disappear.
+   */
+  it('pages through rows written inside one millisecond without losing any', async () => {
+    const actor = await mkUser();
+    const club = await mkClub('Precision');
+    // 100–400µs past the same millisecond: with `precision: 3` all four land on
+    // `…049.000` and `id` is what separates them, which is what the keyset comment
+    // in `listAuditRows` has always claimed.
+    const written: string[] = [];
+    for (const micros of ['000100', '000200', '000300', '000400']) {
+      const [row] = await db.insert(schema.auditLog).values({
+        actorUserId: actor.id, clubId: club.id, action: 'boat.update',
+        target: `us-${micros}`, actingAsRole: 'owner',
+        createdAt: sql`${`2026-08-08 20:11:49.${micros}+00`}::timestamptz`,
+      }).returning();
+      written.push(row.id);
+    }
+
+    const seen: string[] = [];
+    let cursor: AuditCursor | null = null;
+    // Bounded so a cursor that fails to advance fails the assertion instead of
+    // hanging the suite.
+    for (let page = 0; page < 6; page++) {
+      const res: { rows: { id: string }[]; nextCursor: AuditCursor | null } =
+        await listAuditRows(db, { filters: { clubId: club.id }, cursor, limit: 2 });
+      seen.push(...res.rows.map((r) => r.id));
+      cursor = res.nextCursor;
+      if (!cursor) break;
+    }
+
+    expect(seen.slice().sort()).toEqual(written.slice().sort());
+  });
+
   it('filters by action prefix and by actor', async () => {
     const actor = await mkUser();
     const other = await mkUser();
@@ -95,14 +141,25 @@ describe.skipIf(!url)('listAuditRows', () => {
   });
 
   // An action prefix is operator-typed free text, so `_` and `%` must match
-  // themselves — otherwise `skill_level.` also matches `skillXlevel.`.
+  // themselves. `_` is the one that matters in practice: a third of the vocabulary
+  // contains one (`skill_level.`, `date_override.`), so an unescaped prefix
+  // silently widens into a wildcard the operator never typed.
   it('treats LIKE metacharacters in the action prefix literally', async () => {
     const actor = await mkUser();
     const club = await mkClub('L');
     await logAudit(db, { actorUserId: actor.id, clubId: club.id, action: 'skill_level.create', target: 's1', actingAsRole: 'owner' });
+    // Written straight to the table rather than through `logAudit`: the decoy is
+    // deliberately NOT a member of `AuditAction`, which is exactly the point — it
+    // is the row an unescaped `_` would wrongly drag into a `skill_level.` filter.
+    await db.insert(schema.auditLog).values({
+      actorUserId: actor.id, clubId: club.id, action: 'skillXlevel.create', target: 'decoy', actingAsRole: 'owner',
+    });
 
-    const escaped = await listAuditRows(db, { filters: { clubId: club.id, actionPrefix: 'skill%' } });
-    expect(escaped.rows).toHaveLength(0);
+    const underscore = await listAuditRows(db, { filters: { clubId: club.id, actionPrefix: 'skill_level.' } });
+    expect(underscore.rows.map((r) => r.action)).toEqual(['skill_level.create']);
+
+    const percent = await listAuditRows(db, { filters: { clubId: club.id, actionPrefix: 'skill%' } });
+    expect(percent.rows).toHaveLength(0);
   });
 
   it('returns a row whose actor and club have both been deleted', async () => {
