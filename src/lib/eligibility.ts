@@ -15,6 +15,8 @@ export function checkEligibility(input: {
   boatMinSkillRank: number | null;
   boatAllowedPayment: 'regular_only' | 'multisport_only' | 'both';
   paymentType: 'regular' | 'multisport';
+  /** Whether the club has a MultiSport contract at all; false rejects the card regardless of the boat's allow-list. */
+  clubMultisportEnabled: boolean;
   now: Date;
 }): EligibilityResult {
   // Checked ahead of the generic status test so a permanent ban reports itself
@@ -30,5 +32,8 @@ export function checkEligibility(input: {
   }
   if (input.boatAllowedPayment === 'regular_only' && input.paymentType !== 'regular') return { ok: false, reason: 'payment_not_allowed' };
   if (input.boatAllowedPayment === 'multisport_only' && input.paymentType !== 'multisport') return { ok: false, reason: 'payment_not_allowed' };
+  // A club with no MultiSport contract accepts the card on no boat, regardless of
+  // what that boat's own allow-list says.
+  if (input.paymentType === 'multisport' && !input.clubMultisportEnabled) return { ok: false, reason: 'payment_not_allowed' };
   return { ok: true };
 }

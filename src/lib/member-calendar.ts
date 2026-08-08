@@ -58,7 +58,7 @@ export async function computeMemberCalendar(
   const now = opts.now ?? new Date();
   const days = await computeCalendar(db, clubId, opts);
 
-  const [club] = await db.select({ bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays, waitlistCapacity: clubs.waitlistCapacity }).from(clubs).where(eq(clubs.id, clubId));
+  const [club] = await db.select({ bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays, waitlistCapacity: clubs.waitlistCapacity, multisportEnabled: clubs.multisportEnabled }).from(clubs).where(eq(clubs.id, clubId));
   if (!club) throw new Error(`club not found: ${clubId}`);
 
   const persistedIds = days.flatMap((d) => d.slots).flatMap((s) => s.sessions).filter((x) => x.persisted && x.sessionId).map((x) => x.sessionId!) as string[];
@@ -108,7 +108,7 @@ export async function computeMemberCalendar(
           seatsLeft: Math.max(0, s.capacity - seatedCount),
           bookingOpen: isBookingOpen({ now, startAt: slot.startAt, bookingOpenMode: club.bookingOpenMode, bookingOpenLeadDays: club.bookingOpenLeadDays }),
           bookingOpensAt: bookingOpensAt({ startAt: slot.startAt, bookingOpenMode: club.bookingOpenMode, bookingOpenLeadDays: club.bookingOpenLeadDays }),
-          eligibility: checkEligibility({ membershipStatus: member.membershipStatus, bannedUntil: member.bannedUntil, memberSkillRank: member.skillRank, boatMinSkillRank: s.minSkillRank, boatAllowedPayment: s.allowedPayment, paymentType: defaultPayment, now }),
+          eligibility: checkEligibility({ membershipStatus: member.membershipStatus, bannedUntil: member.bannedUntil, memberSkillRank: member.skillRank, boatMinSkillRank: s.minSkillRank, boatAllowedPayment: s.allowedPayment, paymentType: defaultPayment, clubMultisportEnabled: club.multisportEnabled, now }),
           defaultPayment,
           paymentChoices: paymentChoicesFor(s.allowedPayment),
           myStatus: my?.status ?? 'none',

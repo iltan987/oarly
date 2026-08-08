@@ -79,7 +79,7 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
     return await db.transaction(async (tx) => {
       // 1. Club + window, scoped to clubId.
       const [club] = await tx
-        .select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode, openOnHolidays: clubs.openOnHolidays, bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays, waitlistCapacity: clubs.waitlistCapacity })
+        .select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode, multisportEnabled: clubs.multisportEnabled, openOnHolidays: clubs.openOnHolidays, bookingOpenMode: clubs.bookingOpenMode, bookingOpenLeadDays: clubs.bookingOpenLeadDays, waitlistCapacity: clubs.waitlistCapacity })
         .from(clubs)
         .where(eq(clubs.id, input.clubId));
       if (!club) return { ok: false, error: 'no_session' };
@@ -137,6 +137,7 @@ export async function bookSeat(db: DB, input: BookInput): Promise<BookResult> {
         boatMinSkillRank: chosen.minSkillRank,
         boatAllowedPayment: chosen.allowedPayment,
         paymentType: input.paymentType,
+        clubMultisportEnabled: club.multisportEnabled,
         now,
       });
       if (!elig.ok) return { ok: false, error: 'ineligible', reason: elig.reason };
