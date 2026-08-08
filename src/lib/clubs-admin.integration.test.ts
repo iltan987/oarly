@@ -74,7 +74,11 @@ describe.skipIf(!url)('clubs-admin', () => {
       .values({ slug: `ap-${Date.now()}`, name: 'Ap', status: 'pending', createdBy: requester.id }).returning();
 
     const res = await decideClubRequest(db, { clubId: club.id, decision: 'approve', note: null, actorId: admin.id });
-    expect(res).toMatchObject({ ok: true, status: 'active', requesterId: requester.id, clubName: 'Ap' });
+    // `clubSlug` is asserted because Task 3's decision email builds the club's URL from
+    // it: a wrong-but-present value sends the requester to someone else's club.
+    expect(res).toMatchObject({
+      ok: true, status: 'active', requesterId: requester.id, clubName: 'Ap', clubSlug: club.slug,
+    });
 
     const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
     expect(after.status).toBe('active');
@@ -126,6 +130,43 @@ describe.skipIf(!url)('clubs-admin', () => {
       .values({ slug: `np-${Date.now()}`, name: 'Np', status: 'active' }).returning();
     expect(await decideClubRequest(db, { clubId: club.id, decision: 'approve', note: null, actorId: admin.id }))
       .toMatchObject({ ok: false, error: 'not_pending' });
+  });
+
+  // Two admins clearing the queue at once. Without `FOR UPDATE` on the SELECT, READ
+  // COMMITTED lets both transactions read `pending`, both pass the guard, and both
+  // write — the audit log then says the club was approved AND rejected, and the
+  // requester gets both emails. Exactly one decision may win.
+  it('lets only one of two concurrent decisions win', async () => {
+    const admin = await mkUser();
+    const other = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `rc-${Date.now()}`, name: 'Rc', status: 'pending' }).returning();
+
+    // Warm two pool connections FIRST. `db.transaction` calls `pool.connect()`, and on a
+    // cold pool the second call spends its first milliseconds on a TCP handshake and
+    // auth — by which time the first transaction has already committed, and the race
+    // this test exists to catch cannot occur. Without this, the test passes with the
+    // row lock removed.
+    const warm = await Promise.all([pool.connect(), pool.connect()]);
+    for (const c of warm) c.release();
+
+    const [a, b] = await Promise.all([
+      decideClubRequest(db, { clubId: club.id, decision: 'approve', note: null, actorId: admin.id }),
+      decideClubRequest(db, { clubId: club.id, decision: 'reject', note: 'Duplicate', actorId: other.id }),
+    ]);
+
+    const winners = [a, b].filter((r) => r.ok);
+    expect(winners).toHaveLength(1);
+    expect([a, b].find((r) => !r.ok)).toMatchObject({ ok: false, error: 'not_pending' });
+
+    // One decision, one audit row, and the row must agree with the audit row — a
+    // status that contradicts the audit trail is the failure this lock prevents.
+    const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id));
+    expect(audit).toHaveLength(1);
+    const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
+    expect(after.status).toBe(audit[0].action === 'club.approve' ? 'active' : 'rejected');
+    expect(after.reviewNote).toBe(audit[0].action === 'club.approve' ? null : 'Duplicate');
+    expect(after.reviewedBy).toBe(audit[0].actorUserId);
   });
 
   // The un-reject hole: `setClubStatus` is id-keyed, so without a status precondition it

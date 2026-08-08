@@ -61,11 +61,20 @@ export async function decideClubRequest(
   if (input.decision === 'reject' && !note) return { ok: false, error: 'note_required' };
 
   return db.transaction(async (tx) => {
+    // `.for('update')` is load-bearing, not defensive. READ COMMITTED gives this
+    // transaction a snapshot taken at each statement, so without the row lock two
+    // admins clearing the queue in the same second both read `pending`, both pass the
+    // guard below, and both write: the audit log then records the club as BOTH
+    // approved and rejected, `reviewedBy`/`reviewNote` reflect whichever committed
+    // last regardless of audit order, and the requester is emailed both decisions.
+    // The lock makes the loser block until the winner commits, re-read `active` or
+    // `rejected`, and refuse with `not_pending`.
     const [club] = await tx
       .select({ id: clubs.id, status: clubs.status, name: clubs.name, slug: clubs.slug, createdBy: clubs.createdBy })
       .from(clubs)
       .where(eq(clubs.id, input.clubId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!club) return { ok: false, error: 'not_found' };
     if (club.status !== 'pending') return { ok: false, error: 'not_pending' };
 
@@ -105,8 +114,19 @@ export async function setClubStatus(
   input: { clubId: string; status: 'active' | 'suspended'; actorId: string },
 ): Promise<SetClubStatusResult> {
   return db.transaction(async (tx) => {
+    // Same lock as `decideClubRequest`, for the same reason: a guard is only worth as
+    // much as the read it guards, and an unlocked read under READ COMMITTED can be
+    // stale by the time the UPDATE lands.
+    //
+    // Honest scope: today no verb can move a DECIDED club back to `pending` or
+    // `rejected` — `decideClubRequest` only touches `pending` rows — so no currently
+    // reachable interleaving makes this guard read the wrong status, and no test here
+    // fails without this lock. It is defence in depth for the next writer (an archive
+    // or delete verb), and it costs one clause. The alternative is that the two
+    // decision paths in this file disagree about whether a status check needs a lock,
+    // which is how the next one gets written without one.
     const [club] = await tx.select({ id: clubs.id, status: clubs.status })
-      .from(clubs).where(eq(clubs.id, input.clubId)).limit(1);
+      .from(clubs).where(eq(clubs.id, input.clubId)).limit(1).for('update');
     if (!club) return { ok: false, error: 'not_found' };
     if (club.status !== 'active' && club.status !== 'suspended') return { ok: false, error: 'not_decided' };
 

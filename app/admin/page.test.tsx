@@ -46,10 +46,16 @@ describe('AdminClubsPage status controls', () => {
   });
 
   // The other half of the same regression: with no `rejected` entry in the label map the
-  // pill renders `undefined` — a visibly empty badge next to a real club name.
-  it('labels a rejected club instead of rendering an empty pill', async () => {
+  // pill renders `undefined` — a visibly empty badge next to a real club name. The tone
+  // is asserted alongside the label because it is the same bug's visual half: a
+  // `rejected` pill painted with the `ok` tone is a green badge reading "Rejected".
+  it('labels a rejected club instead of rendering an empty pill, in a non-affirmative tone', async () => {
     await renderClub('rejected');
-    expect(screen.getByText('statusRejected')).toBeInTheDocument();
+    const pill = screen.getByText('statusRejected');
+    expect(pill).toBeInTheDocument();
+    // `neutral` — see `toneClass` in booking-status-badge.
+    expect(pill).toHaveClass('bg-muted', 'text-muted-foreground');
+    expect(pill).not.toHaveClass('bg-ok-bg');
   });
 
   // A pending club is decided in the requests queue, never by this toggle: offering
