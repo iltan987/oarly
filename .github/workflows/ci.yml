@@ -1,0 +1,162 @@
+name: CI
+
+# Vercel owns deployment — it builds and promotes from this same repo on its own.
+# This workflow is purely a quality gate on pull requests and on `main`, so it
+# deliberately does NOT deploy, and `scripts/deploy-migrate.mjs` no-ops here
+# because VERCEL_ENV is unset (see that file's header).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch supersedes an in-flight run. `main` is excluded
+# from cancellation so every commit that lands keeps a complete result.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  # `next build` boots src/env.ts, which requires these four. Dummy values are
+  # deliberate — env validation is part of what the build step proves, so
+  # SKIP_ENV_VALIDATION is intentionally not set. Nothing here reaches a real
+  # service: the build never opens a database connection.
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/oarly_ci
+  BETTER_AUTH_SECRET: ci-secret-not-used-for-signing
+  BETTER_AUTH_URL: http://localhost:3000
+  APP_URL: http://localhost:3000
+
+jobs:
+  check:
+    name: Lint, types, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Mirrors docker-compose.yml. The integration suites migrate the database
+    # themselves (`migrate(db, { migrationsFolder: './drizzle' })` in each
+    # beforeAll), so there is no separate migrate step here.
+    #
+    # `postgres:18` and `redis:8-alpine` are floating MAJOR tags, deliberately:
+    # they resolve to the newest patch (18.4 / 8.10.x today) and keep picking up
+    # security fixes without an edit. Pinning a patch here would go stale
+    # silently. The major matters and is chosen, not defaulted — production is
+    # Neon, which has had Postgres 18 GA since 2026-05-01.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: oarly_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      # @upstash/redis speaks Upstash's REST protocol, so a vanilla redis
+      # container is not enough — srh is the REST shim in front of it. Service
+      # containers share a network and resolve each other by label, which is how
+      # SRH_CONNECTION_STRING reaches `redis` below.
+      redis:
+        image: redis:8-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      # Pinned, not `:latest`. Unlike the two images above, srh's `latest` tag is
+      # not a moving target that picks up fixes — it has pointed at 0.0.10 since
+      # 2024-05-11, so `:latest` buys no freshness and only costs reproducibility.
+      redis-http:
+        image: hiett/serverless-redis-http:0.0.10
+        env:
+          SRH_MODE: env
+          SRH_TOKEN: local-dev-token
+          SRH_CONNECTION_STRING: redis://redis:6379
+        ports:
+          - 8079:80
+
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/oarly_test
+      TEST_KV_REST_API_URL: http://localhost:8079
+      TEST_KV_REST_API_TOKEN: local-dev-token
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Both suites gate themselves on their env var being set AND usable
+      # (`describe.skipIf(!url)`), so a wrong port, database name, or token
+      # produces a fully green run with the coverage silently gone. These two
+      # preflights exercise the exact connection strings the tests will use and
+      # fail the job instead. Do not replace them with a check that the variables
+      # are merely non-empty — they are set literally above, so that proves
+      # nothing.
+      - name: Preflight — Postgres reachable at TEST_DATABASE_URL
+        run: psql "$TEST_DATABASE_URL" -c 'select 1' > /dev/null
+
+      # srh ships no healthcheck and implements no /ping, so the container can be
+      # "started" while still refusing commands. This issues a real Upstash REST
+      # command; a wrong token answers 401, which `--fail` turns into a failure.
+      - name: Preflight — serverless-redis-http answers a command
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS -X POST "$TEST_KV_REST_API_URL/" \
+                 -H "Authorization: Bearer $TEST_KV_REST_API_TOKEN" \
+                 -H 'Content-Type: application/json' \
+                 -d '["SET","ci-preflight","1"]' | grep -q '"result":"OK"'; then
+              echo "srh answered a write command"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "serverless-redis-http never answered a command" >&2
+          exit 1
+
+      - name: Integration tests
+        run: pnpm test:integration
