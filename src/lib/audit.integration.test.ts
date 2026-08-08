@@ -67,9 +67,9 @@ describe.skipIf(!url)('listAuditRows', () => {
     const actor = await mkUser();
     const other = await mkUser();
     const club = await mkClub('F');
-    await logAudit(db, { actorUserId: actor.id, clubId: club.id, action: 'skill_level.create', target: 's1' });
-    await logAudit(db, { actorUserId: actor.id, clubId: club.id, action: 'boat.create', target: 'b1' });
-    await logAudit(db, { actorUserId: other.id, clubId: club.id, action: 'boat.update', target: 'b2' });
+    await logAudit(db, { actorUserId: actor.id, clubId: club.id, action: 'skill_level.create', target: 's1', actingAsRole: 'owner' });
+    await logAudit(db, { actorUserId: actor.id, clubId: club.id, action: 'boat.create', target: 'b1', actingAsRole: 'owner' });
+    await logAudit(db, { actorUserId: other.id, clubId: club.id, action: 'boat.update', target: 'b2', actingAsRole: 'owner' });
 
     const byPrefix = await listAuditRows(db, { filters: { clubId: club.id, actionPrefix: 'boat.' } });
     expect(byPrefix.rows.map((r) => r.action).sort()).toEqual(['boat.create', 'boat.update']);
@@ -86,8 +86,8 @@ describe.skipIf(!url)('listAuditRows', () => {
     const a = await mkClub('A');
     const b = await mkClub('B');
     const day = '2026-08-08';
-    await logAudit(db, { actorUserId: actor.id, clubId: a.id, action: 'date_override.set', target: day });
-    await logAudit(db, { actorUserId: actor.id, clubId: b.id, action: 'date_override.clear', target: day });
+    await logAudit(db, { actorUserId: actor.id, clubId: a.id, action: 'date_override.set', target: day, actingAsRole: 'owner' });
+    await logAudit(db, { actorUserId: actor.id, clubId: b.id, action: 'date_override.clear', target: day, actingAsRole: 'owner' });
 
     const forA = await listAuditRows(db, { filters: { clubId: a.id, actionPrefix: 'date_override.' } });
     expect(forA.rows.map((r) => r.action)).toEqual(['date_override.set']);
@@ -99,7 +99,7 @@ describe.skipIf(!url)('listAuditRows', () => {
   it('treats LIKE metacharacters in the action prefix literally', async () => {
     const actor = await mkUser();
     const club = await mkClub('L');
-    await logAudit(db, { actorUserId: actor.id, clubId: club.id, action: 'skill_level.create', target: 's1' });
+    await logAudit(db, { actorUserId: actor.id, clubId: club.id, action: 'skill_level.create', target: 's1', actingAsRole: 'owner' });
 
     const escaped = await listAuditRows(db, { filters: { clubId: club.id, actionPrefix: 'skill%' } });
     expect(escaped.rows).toHaveLength(0);

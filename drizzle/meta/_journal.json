@@ -71,6 +71,13 @@
       "when": 1786212680031,
       "tag": "0009_bouncy_grim_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786219740228,
+      "tag": "0010_silly_galactus",
+      "breakpoints": true
     }
   ]
 }

@@ -55,10 +55,24 @@ export type AuditAction =
 
 export type AuditEntry = {
   actorUserId: string;
+  /**
+   * Optional on purpose: platform-level actions (`user.admin_grant`,
+   * `user.admin_revoke`) belong to no club. Every club-scoped action must pass
+   * one, and must have proven the target belongs to it before doing so — an
+   * unproven `clubId` would attribute an action to a club the caller has no
+   * authority over.
+   */
   clubId?: string;
   action: AuditAction;
   target?: string;
-  actingAsRole?: ActingAsRole;
+  /**
+   * Required, not optional. Every audited mutation is performed in some role, so
+   * omitting it is always a mistake — and while it was optional it silently
+   * coalesced to null, which is what a pre-cycle row looks like. Making it
+   * required is what turns "the caller forgot" into a compile error rather than
+   * a row whose actor role is unknowable after the fact.
+   */
+  actingAsRole: ActingAsRole;
 };
 
 /**
