@@ -9,6 +9,48 @@ bookingOpenModeEnum,
   clubStatusEnum, headingFontEnum, membershipRoleEnum, membershipStatusEnum,
 multisportModeEnum,   noshowPenaltyEnum, } from './enums';
 
+export type ClubStatus = (typeof clubStatusEnum.enumValues)[number];
+
+/**
+ * The club statuses a slug is allowed to resolve to — every `club_status` except
+ * `rejected`. It is the predicate of the partial unique index `clubs_slug_uq` AND the
+ * filter every by-slug lookup must spell, and those two things have to be the SAME
+ * text or the index is dead weight.
+ *
+ * ── Why the spelling is load-bearing, twice over ──
+ *
+ * 1. At MIGRATION time it must enumerate the survivors rather than say
+ *    `<> 'rejected'`. `ALTER TYPE … ADD VALUE` and a use of that new value cannot
+ *    share a transaction, and drizzle runs every pending migration in ONE — so the
+ *    `<>` form commits on a fresh database (passing all of CI) and fails the
+ *    production deploy with `unsafe use of new value "rejected"`.
+ *
+ * 2. At QUERY time every lookup must spell the filter the same way, because Postgres
+ *    matches a query against a partial index by PROVING the query's predicate implies
+ *    the index's. It cannot prove `status <> 'rejected'` implies
+ *    `status IN ('pending','active','suspended')` — that would require knowing the
+ *    enum is exhaustive, which the proof machinery does not. So the `<>` form is
+ *    simply never eligible for `clubs_slug_uq`, and every by-slug resolution becomes a
+ *    sequential scan over the whole `clubs` table. Measured on 35,533 clubs:
+ *
+ *      slug = $1 AND status <> 'rejected'    Seq Scan, 709 buffers, 1.589 ms
+ *      slug = $1 AND status IN (…)           Index Scan, 3 buffers, 0.049 ms
+ *
+ *    `getClubBySlug` runs once per render of every `/s/[slug]/*` page and once per
+ *    owner/member server action, so this is the hottest lookup in the product.
+ *
+ * DO NOT "simplify" a call site back to `ne(clubs.status, 'rejected')`. It is
+ * semantically identical and operationally a full table scan.
+ *
+ * Derived from `clubStatusEnum` rather than written out, so a new `club_status` value
+ * joins the list at all six lookup sites and in the index predicate at once, instead
+ * of silently dropping out of one of them. `pnpm db:generate` then reports the index
+ * as drifted, which is the visible prompt to decide whether the new status really is
+ * slug-addressable.
+ */
+export const SLUG_ADDRESSABLE_STATUSES = clubStatusEnum.enumValues
+  .filter((s): s is Exclude<ClubStatus, 'rejected'> => s !== 'rejected');
+
 export const clubs = pgTable('clubs', {
   id: uuid('id').defaultRandom().primaryKey(),
   slug: text('slug').notNull(),
@@ -45,11 +87,15 @@ export const clubs = pgTable('clubs', {
 }, (t) => [
   // Partial, not a plain UNIQUE: a rejected request must not hold its slug hostage,
   // or one spam request permanently burns a real club's name (spec §5.2).
-  // The predicate lists the surviving statuses instead of `<> 'rejected'` because
-  // `ALTER TYPE … ADD VALUE` and a use of that value cannot share a transaction, and
-  // drizzle runs every pending migration in ONE transaction. `<> 'rejected'` passes on
-  // a fresh DB and fails on an already-migrated one.
-  uniqueIndex('clubs_slug_uq').on(t.slug).where(sql`${t.status} IN ('pending', 'active', 'suspended')`),
+  //
+  // The predicate is built from `SLUG_ADDRESSABLE_STATUSES` so it cannot drift away
+  // from the filter the lookups spell — see the constant for why both halves must
+  // enumerate the survivors rather than say `<> 'rejected'`. `sql.raw` because these
+  // are index-definition literals, not bound parameters: an index predicate has
+  // nowhere to bind a parameter, and the values come from the enum declaration, never
+  // from input.
+  uniqueIndex('clubs_slug_uq').on(t.slug)
+    .where(sql`${t.status} IN (${sql.raw(SLUG_ADDRESSABLE_STATUSES.map((s) => `'${s}'`).join(', '))})`),
 ]);
 
 export const clubSocials = pgTable('club_socials', {

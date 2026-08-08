@@ -1,9 +1,9 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
 
 import { db as appDb, type DbOrTx } from '@/db';
-import { clubs } from '@/db/schema';
+import { clubs, SLUG_ADDRESSABLE_STATUSES } from '@/db/schema';
 
 export type Club = typeof clubs.$inferSelect;
 
@@ -17,6 +17,11 @@ export type Club = typeof clubs.$inferSelect;
  * discretion and intermittently 404 a live club. Invariant: a rejected club is not
  * addressable by slug.
  *
+ * `inArray(SLUG_ADDRESSABLE_STATUSES)` and NOT `ne(status, 'rejected')`: the two are
+ * semantically identical, but only the first can use `clubs_slug_uq`, whose predicate
+ * is built from the same constant. See `SLUG_ADDRESSABLE_STATUSES` — this is the
+ * hottest lookup in the product and the `<>` form makes it a sequential scan.
+ *
  * Takes a handle so integration tests can exercise it against the test database;
  * `getClubBySlug` is the request-memoized app-wide entry point.
  */
@@ -24,7 +29,7 @@ export async function findClubBySlug(db: DbOrTx, slug: string): Promise<Club | n
   const [club] = await db
     .select()
     .from(clubs)
-    .where(and(eq(clubs.slug, slug), ne(clubs.status, 'rejected')))
+    .where(and(eq(clubs.slug, slug), inArray(clubs.status, SLUG_ADDRESSABLE_STATUSES)))
     .limit(1);
   return club ?? null;
 }

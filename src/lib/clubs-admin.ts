@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, ilike, inArray, ne, or, type SQL, sql } from 'drizzle-orm';
 
 import type { DbOrTx } from '@/db';
-import { boatTypes, clubs, memberships, scheduleWindows, user } from '@/db/schema';
+import { boatTypes, clubs, memberships, scheduleWindows, SLUG_ADDRESSABLE_STATUSES, user } from '@/db/schema';
 import { logAudit } from '@/lib/audit';
 import type { DB } from '@/lib/membership';
 import { clampPage } from '@/lib/pagination';
@@ -22,10 +22,12 @@ export async function createClub(
   const [owner] = await db.select().from(user).where(eq(user.email, input.ownerEmail.trim().toLowerCase())).limit(1);
   if (!owner) return { ok: false, error: 'owner_not_found' };
 
-  // `ne(status, 'rejected')` mirrors the partial index `clubs_slug_uq`: a rejected
-  // request no longer holds its slug, so it must not report `slug_taken` either.
+  // Mirrors the partial index `clubs_slug_uq` — literally, via the same constant: a
+  // rejected request no longer holds its slug, so it must not report `slug_taken`
+  // either, and spelling the filter the index's own way is what lets this pre-check
+  // use it instead of scanning `clubs`.
   const [existing] = await db.select({ id: clubs.id }).from(clubs)
-    .where(and(eq(clubs.slug, input.slug), ne(clubs.status, 'rejected'))).limit(1);
+    .where(and(eq(clubs.slug, input.slug), inArray(clubs.status, SLUG_ADDRESSABLE_STATUSES))).limit(1);
   if (existing) return { ok: false, error: 'slug_taken' };
 
   return db.transaction(async (tx) => {

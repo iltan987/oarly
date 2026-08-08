@@ -1,7 +1,8 @@
 import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 
-import { clubs, memberships, skillLevels } from '@/db/schema/clubs';
+import { clubs, memberships, skillLevels, SLUG_ADDRESSABLE_STATUSES } from '@/db/schema/clubs';
+import { clubStatusEnum } from '@/db/schema/enums';
 
 describe('clubs schema', () => {
   it('clubs has policy columns and a slug unique only among non-rejected rows', () => {
@@ -30,6 +31,23 @@ describe('clubs schema', () => {
     for (const status of ['pending', 'active', 'suspended']) {
       expect(predicate).toContain(`'${status}'`);
     }
+  });
+
+  it('builds the slug predicate from SLUG_ADDRESSABLE_STATUSES, which covers every non-rejected status', () => {
+    // The constant is the single source the six by-slug lookups bind into `IN (…)`.
+    // If it ever stops matching the index predicate, Postgres can no longer prove the
+    // implication and every by-slug resolution silently becomes a sequential scan —
+    // a performance cliff with no functional symptom, which is why it is asserted here
+    // rather than left to be noticed.
+    expect(SLUG_ADDRESSABLE_STATUSES).toEqual(clubStatusEnum.enumValues.filter((s) => s !== 'rejected'));
+    expect(SLUG_ADDRESSABLE_STATUSES).not.toContain('rejected');
+
+    const slugUq = getTableConfig(clubs).indexes.find((i) => i.config.name === 'clubs_slug_uq');
+    const predicate = new PgDialect().sqlToQuery(slugUq!.config.where!).sql;
+    // Rendered from the constant, in order, with nothing else in the list.
+    expect(predicate).toBe(
+      `"clubs"."status" IN (${SLUG_ADDRESSABLE_STATUSES.map((s) => `'${s}'`).join(', ')})`,
+    );
   });
 
   it('defaults multisport_enabled to true so existing clubs are unaffected', () => {

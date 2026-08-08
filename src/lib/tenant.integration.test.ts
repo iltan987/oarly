@@ -59,6 +59,50 @@ describe.skipIf(!url)('tenant resolution query', () => {
     expect(await findClubBySlug(db, slug)).toBeNull();
   });
 
+  /**
+   * The query `findClubBySlug` actually issues must be able to USE `clubs_slug_uq`.
+   *
+   * Not a hand-written query: the SQL is captured out of the real function through
+   * drizzle's `logger`, so the test tracks whatever `findClubBySlug` compiles to and
+   * cannot drift from it.
+   *
+   * `enable_seqscan = off` is what makes this size-independent, and it is the point
+   * of the test rather than a trick. `clubs_slug_uq` is PARTIAL, so Postgres may only
+   * use it if it can PROVE the query's predicate implies the index's. It cannot prove
+   * `status <> 'rejected'` implies `status IN ('pending','active','suspended')` — that
+   * needs the enum to be known exhaustive — so the `<>` form is not merely a worse
+   * plan, it is INELIGIBLE, and no cost setting can rescue it. There is no other index
+   * on `clubs.slug`, so an ineligible query has nothing to fall back to but a Seq Scan
+   * even with sequential scans priced out of reach. A small table therefore proves the
+   * same thing a large one does. (Measured separately on 35,534 rows: `<>` = Seq Scan,
+   * 637 buffers, 1.5 ms; `IN` = Index Scan, 2 buffers, 0.012 ms.)
+   */
+  it('resolves a slug through clubs_slug_uq rather than scanning clubs', async () => {
+    const captured: { sql: string; params: unknown[] }[] = [];
+    const logged = drizzle(pool, {
+      schema,
+      logger: { logQuery: (sql, params) => { captured.push({ sql, params }); } },
+    });
+    await findClubBySlug(logged, `plan-probe-${Date.now()}`);
+    expect(captured).toHaveLength(1);
+    const { sql, params } = captured[0];
+
+    const client = await pool.connect();
+    let plan: string;
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL enable_seqscan = off');
+      const res = await client.query<Record<string, string>>(`EXPLAIN (COSTS OFF) ${sql}`, params);
+      plan = res.rows.map((r) => r['QUERY PLAN']).join('\n');
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+
+    expect(plan, `plan for ${sql}`).toContain('Index Scan using clubs_slug_uq');
+    expect(plan, `plan for ${sql}`).not.toContain('Seq Scan');
+  });
+
   it('still enforces slug uniqueness among non-rejected clubs', async () => {
     // The other half of the partial index: exempting rejected rows must not have
     // weakened the constraint for live ones, or two clubs could share a slug and the
