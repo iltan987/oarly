@@ -38,7 +38,9 @@ export function AdminToggle({ userId, userName, isAdmin }: { userId: string; use
     // they are reported verbatim instead of as the generic "try again".
     else if (state.error === 'self_revoke') toast.error(t('usersErrorSelfRevoke'));
     else if (state.error === 'last_admin') toast.error(t('usersErrorLastAdmin'));
-    else toast.error(t('actionError'));
+    // `actionError` reads "Couldn't update the club" — the wrong noun on a page whose
+    // subject is a person, so this page carries its own generic failure.
+    else toast.error(t('usersActionError'));
   }, [state, t]);
 
   const next = !isAdmin;

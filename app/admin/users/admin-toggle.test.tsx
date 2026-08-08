@@ -61,6 +61,18 @@ describe('AdminToggle', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'confirmRevokeCta' }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message));
+    expect(toast.error).not.toHaveBeenCalledWith('usersActionError');
+  });
+
+  // The shared `actionError` reads "Couldn't update the club" — the wrong noun on a
+  // page whose subject is a person.
+  it('reports a generic failure with the users-page message, not the club one', async () => {
+    vi.mocked(setPlatformAdminAction).mockResolvedValue({ ok: false, error: 'failed' });
+    render(<AdminToggle userId="u1" userName="Ada" isAdmin />);
+    fireEvent.click(screen.getByRole('button', { name: 'usersRevoke' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'confirmRevokeCta' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('usersActionError'));
     expect(toast.error).not.toHaveBeenCalledWith('actionError');
   });
 });
@@ -72,11 +84,18 @@ describe('admin user message catalogs', () => {
     for (const key of [
       'usersSearch', 'usersSearchCta', 'usersEmpty', 'usersAdminBadge', 'usersGrant', 'usersRevoke',
       'usersNoMemberships', 'usersGranted', 'usersRevoked', 'usersErrorSelfRevoke', 'usersErrorLastAdmin',
+      'usersActionError',
       'confirmGrantTitle', 'confirmGrantBody', 'confirmGrantCta', 'confirmRevokeTitle', 'confirmRevokeBody',
       'confirmRevokeCta', 'cancel', 'paginationPrev', 'paginationNext', 'paginationRange',
     ] as const) {
       expect(messages.admin[key]).toBeTruthy();
     }
+  });
+
+  // If these two ever become the same string again, the users page is back to telling
+  // the operator it couldn't update "the club".
+  it.each([['en', en], ['tr', tr]] as const)('%s keeps the users failure distinct from the club one', (_locale, messages) => {
+    expect(messages.admin.usersActionError).not.toBe(messages.admin.actionError);
   });
 
   it.each([['en', en], ['tr', tr]] as const)('%s interpolates the subject name into both confirmations', (_locale, messages) => {

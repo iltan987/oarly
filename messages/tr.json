@@ -214,6 +214,7 @@
     "usersRevoked": "Platform yöneticiliği kaldırıldı.",
     "usersErrorSelfRevoke": "Kendi yönetici yetkini kaldıramazsın.",
     "usersErrorLastAdmin": "Bu son platform yöneticisi. Önce başka birine yöneticilik ver.",
+    "usersActionError": "Kullanıcı güncellenemedi. Tekrar dene.",
     "confirmGrantTitle": "{name} platform yöneticisi yapılsın mı?",
     "confirmGrantBody": "Her kulübe ve bu konsola tam erişimi olacak.",
     "confirmGrantCta": "Evet, yönetici yap",

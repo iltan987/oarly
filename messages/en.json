@@ -214,6 +214,7 @@
     "usersRevoked": "Platform admin removed.",
     "usersErrorSelfRevoke": "You can't remove your own admin access.",
     "usersErrorLastAdmin": "This is the last platform admin. Grant admin to someone else first.",
+    "usersActionError": "Couldn't update the user. Try again.",
     "confirmGrantTitle": "Make {name} a platform admin?",
     "confirmGrantBody": "They will get full access to every club and to this console.",
     "confirmGrantCta": "Yes, make admin",
