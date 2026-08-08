@@ -25,12 +25,17 @@ export type RosterSessionWithPenalty = RosterSession & {
   banLapsed: boolean;
 };
 
-export function BookingsRoster({ slug, sessions, timezone, closed = false, multisportEnabled = true }: {
+export function BookingsRoster({ slug, sessions, timezone, closed = false, multisportEnabled }: {
   slug: string;
   sessions: RosterSessionWithPenalty[];
   timezone: string;
   closed?: boolean;
-  multisportEnabled?: boolean;
+  /**
+   * Required, with no default: defaulting it to `true` fails OPEN — a caller that
+   * forgets to thread the club flag through would offer MultiSport at a club that
+   * has none. `BoatsEditor` makes it required for the same reason.
+   */
+  multisportEnabled: boolean;
 }) {
   const t = useTranslations('manage.bookings');
   const tm = useTranslations('manage');
