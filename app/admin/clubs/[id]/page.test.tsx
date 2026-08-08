@@ -81,6 +81,17 @@ describe('AdminClubDetailPage', () => {
     expect(listAuditRows).toHaveBeenCalledWith({}, { filters: { clubId: CLUB_ID }, limit: 20 });
   });
 
+  // "No audit entries match these filters" under a heading that reads "Recent
+  // activity", on a page with no filters and no filter UI. It is the /admin/audit
+  // string, and the only reason it fits there is that /admin/audit HAS filters.
+  it('says this club has no activity yet, not that no rows match a filter', async () => {
+    getClubAdminDetail.mockResolvedValue(detail());
+    listAuditRows.mockReturnValue(Promise.resolve({ rows: [], nextCursor: null }));
+    await renderPage();
+    expect(screen.getByText('detailNoAudit')).toBeInTheDocument();
+    expect(screen.queryByText('auditEmpty')).toBeNull();
+  });
+
   it('404s on an unknown id instead of rendering an empty club', async () => {
     getClubAdminDetail.mockResolvedValue(null);
     await expect(renderPage()).rejects.toBeInstanceOf(NotFound);

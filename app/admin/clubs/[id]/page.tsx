@@ -146,7 +146,10 @@ export default async function AdminClubDetailPage({ params }: { params: Promise<
           labels={{
             when: t('auditWhen'), actor: t('auditActor'), club: t('auditClub'),
             action: t('auditAction'), target: t('auditTarget'),
-            empty: t('auditEmpty'), unknown: t('auditUnknown'),
+            role: t('auditRole'),
+            roles: { owner: t('roleOwner'), member: t('roleMember'), admin: t('roleAdmin') },
+            cascadeNote: t('auditCascadeNote'),
+            empty: t('detailNoAudit'), unknown: t('auditUnknown'),
           }}
         />
       </section>

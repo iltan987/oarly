@@ -67,7 +67,10 @@ export default async function AdminClubsPage({ searchParams }: {
       </form>
 
       {rows.length === 0 ? (
-        <p className="text-muted-foreground">{t('noClubs')}</p>
+        // Two different facts, two different sentences. "No clubs yet." under a search
+        // that matched nothing is a flat false statement about a platform with hundreds
+        // of clubs — and `/admin/users`, one nav tab away, already gets this right.
+        <p className="text-muted-foreground">{q ? t('clubsNoMatch') : t('noClubs')}</p>
       ) : (
         <Card className="gap-0 divide-y divide-border py-0">
           {rows.map((c) => {

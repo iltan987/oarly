@@ -163,10 +163,27 @@ describe('AdminClubsPage search and pagination', () => {
     expect(screen.getByRole('link', { name: 'paginationNext' })).toHaveAttribute('href', '/admin?q=bo%C4%9Faz&page=2');
   });
 
-  it('shows the empty state without a pagination bar when nothing matches', async () => {
+  // "No clubs yet." under a search that matched nothing is a flat false statement
+  // about a platform with hundreds of clubs. Two facts, two sentences — as
+  // /admin/users already does one nav tab away.
+  it('says nothing MATCHED when a search returned nothing', async () => {
     await renderPage([], { q: 'nothing' });
-    expect(screen.getByText('noClubs')).toBeInTheDocument();
+    expect(screen.getByText('clubsNoMatch')).toBeInTheDocument();
+    expect(screen.queryByText('noClubs')).toBeNull();
     expect(screen.queryByRole('link', { name: 'paginationNext' })).toBeNull();
+  });
+
+  it('says there are no clubs YET only when there is no search', async () => {
+    await renderPage([], {});
+    expect(screen.getByText('noClubs')).toBeInTheDocument();
+    expect(screen.queryByText('clubsNoMatch')).toBeNull();
+  });
+
+  // A whitespace-only `?q=` is normalised away by the route, so it is the no-search
+  // case and must not claim a search matched nothing.
+  it('treats a blank search as no search', async () => {
+    await renderPage([], { q: '   ' });
+    expect(screen.getByText('noClubs')).toBeInTheDocument();
   });
 });
 

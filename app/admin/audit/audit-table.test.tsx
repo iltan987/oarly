@@ -10,6 +10,8 @@ import { AuditTable } from './audit-table';
 
 const labels = {
   when: 'when', actor: 'actor', club: 'club', action: 'action', target: 'target', empty: 'empty', unknown: '—',
+  role: 'role', roles: { owner: 'Club owner', member: 'Member', admin: 'Platform admin' },
+  cascadeNote: 'cascade-note',
 };
 
 function row(overrides: Partial<AuditRow>): AuditRow {
@@ -69,6 +71,41 @@ describe('AuditTable', () => {
     render(<AuditTable rows={[]} labels={labels} locale="en" timeZone="UTC" />);
     expect(screen.getByText('empty')).toBeInTheDocument();
   });
+
+  // Spec §4.1 spent an `ALTER TYPE … ADD VALUE` migration so this column can say
+  // `admin`. It was written on every row and rendered on none, so the page showed
+  // "member.approve — actor: Ayşe" about someone who is both a club owner and a
+  // platform admin, and refused to say which authority she used.
+  it('renders which role the actor was acting in', () => {
+    render(<AuditTable rows={[row({ actingAsRole: 'admin' })]} labels={labels} locale="en" timeZone="UTC" />);
+    expect(screen.getByText('Platform admin')).toBeInTheDocument();
+  });
+
+  it('renders the same action performed as an owner differently', () => {
+    render(<AuditTable rows={[row({ action: 'member.approve', actingAsRole: 'owner' })]} labels={labels} locale="en" timeZone="UTC" />);
+    expect(screen.getByText('Club owner')).toBeInTheDocument();
+    expect(screen.queryByText('Platform admin')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the raw role value rather than blank, and to the placeholder for null', () => {
+    // A pre-cycle row has a null `acting_as_role`; a row written by a future version
+    // may carry a value this catalog does not know. Both are still evidence (§4.4).
+    render(<AuditTable rows={[row({ actingAsRole: null })]} labels={labels} locale="en" timeZone="UTC" />);
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
+  // One `attendance.noshow` row stands for the ban, every booking the ban cancelled,
+  // and every waitlister promoted into the seats it freed. Spec §4.2 mandates one row
+  // per function, so the note says what the row means instead of inventing more rows.
+  it('marks a cascade-capable action so one row is not read as one change', () => {
+    render(<AuditTable rows={[row({ action: 'attendance.noshow' })]} labels={labels} locale="en" timeZone="UTC" />);
+    expect(screen.getByText('cascade-note')).toBeInTheDocument();
+  });
+
+  it('does not mark an action that changes exactly one thing', () => {
+    render(<AuditTable rows={[row({ action: 'club.suspend' })]} labels={labels} locale="en" timeZone="UTC" />);
+    expect(screen.queryByText('cascade-note')).not.toBeInTheDocument();
+  });
 });
 
 describe('audit message catalogs', () => {
@@ -79,6 +116,8 @@ describe('audit message catalogs', () => {
     'audit', 'users', 'auditWhen', 'auditActor', 'auditClub', 'auditAction', 'auditTarget',
     'auditEmpty', 'auditUnknown', 'auditFilterClub', 'auditFilterActor', 'auditFilterAction',
     'auditApply', 'auditClear', 'auditNext', 'auditFirst',
+    'auditRole', 'auditCascadeNote', 'roleOwner', 'roleMember', 'roleAdmin',
+    'detailNoAudit', 'clubsNoMatch',
   ] as const;
 
   it.each([['en', en], ['tr', tr]] as const)('%s carries every audit key', (_locale, messages) => {

@@ -82,6 +82,9 @@ export default async function AdminAuditPage({ searchParams }: {
         labels={{
           when: t('auditWhen'), actor: t('auditActor'), club: t('auditClub'),
           action: t('auditAction'), target: t('auditTarget'),
+          role: t('auditRole'),
+          roles: { owner: t('roleOwner'), member: t('roleMember'), admin: t('roleAdmin') },
+          cascadeNote: t('auditCascadeNote'),
           empty: t('auditEmpty'), unknown: t('auditUnknown'),
         }}
       />
