@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The translation keys are asserted on directly (with interpolated values appended)
 // rather than resolved through real message files — this test is about wiring, not copy.
@@ -39,6 +39,21 @@ import { toast } from 'sonner';
 import { ownerAddBookingAction, ownerRemoveBookingAction } from './actions';
 import { markNoShowAction, undoNoShowAction } from './attendance-actions';
 import { BookingsRoster, type RosterSessionWithPenalty } from './bookings-roster';
+
+// React entangles in-flight async actions on a module-global lane, so a promise
+// left unresolved when a test ends blocks state updates in every LATER test in
+// this file — and it survives React Testing Library's per-test unmount. Tests
+// below that defer an action's resolution push the resolver here instead of
+// relying solely on their own trailing `resolve?.(...)` call: if an assertion
+// throws before that call runs, the promise would otherwise hang forever and
+// cascade failures into unrelated later tests. This afterEach is the safety
+// net — resolving an already-resolved promise is a no-op, so it's harmless
+// when a test's own resolve call already ran.
+const pendingResolvers: Array<() => void> = [];
+
+afterEach(() => {
+  pendingResolvers.splice(0).forEach((r) => r());
+});
 
 function makeSession(overrides: Partial<RosterSessionWithPenalty> = {}): RosterSessionWithPenalty {
   return {
@@ -107,7 +122,7 @@ describe('BookingsRoster remove flow', () => {
   it('keeps the removed row mounted (fade in place, not optimistic removal) while the removal is in flight', async () => {
     let resolve: ((r: { ok: true }) => void) | undefined;
     vi.mocked(ownerRemoveBookingAction).mockImplementation(
-      () => new Promise((r) => { resolve = r; }),
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
     );
 
     render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
@@ -132,7 +147,7 @@ describe('BookingsRoster remove flow', () => {
   it('carries has-data-pending:opacity-40 on the seated row so an in-flight undo dims it', async () => {
     let resolve: ((r: { ok: true }) => void) | undefined;
     vi.mocked(undoNoShowAction).mockImplementation(
-      () => new Promise((r) => { resolve = r; }),
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
     );
 
     const session = makeSession({
@@ -173,7 +188,7 @@ describe('BookingsRoster add flow', () => {
   it('shows the added member immediately, dimmed, and drops the optimistic row once the action resolves', async () => {
     let resolve: ((r: { ok: true }) => void) | undefined;
     vi.mocked(ownerAddBookingAction).mockImplementation(
-      () => new Promise((r) => { resolve = r; }),
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
     );
 
     render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" />);
@@ -198,12 +213,11 @@ describe('BookingsRoster add flow', () => {
   // round-trip completion, the delayed reflow of §1.2. As a trailing seated row,
   // confirmation replaces it in place and nothing moves.
   it('renders the optimistic row as a trailing seated row, above the waitlist', async () => {
-    // Always resolve before the test ends: React entangles in-flight async actions on
-    // a module-global lane, so a promise left hanging here blocks state updates in
-    // every LATER test in this file.
+    // Resolved explicitly below, with the module-level afterEach (see top of file)
+    // as a safety net in case an assertion throws first.
     let resolve: ((r: { ok: true }) => void) | undefined;
     vi.mocked(ownerAddBookingAction).mockImplementation(
-      () => new Promise((r) => { resolve = r; }),
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
     );
 
     const session = makeSession({
@@ -241,7 +255,7 @@ describe('BookingsRoster mark-absent flow', () => {
   it('dims the row while the mark is in flight and clears the dim when it resolves', async () => {
     let resolve: ((r: { ok: true; cancelled: number }) => void) | undefined;
     vi.mocked(markNoShowAction).mockImplementation(
-      () => new Promise((r) => { resolve = r; }),
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true, cancelled: 0 })); }),
     );
 
     // startAt in the past so the "mark absent" control renders at all.

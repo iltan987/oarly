@@ -157,7 +157,12 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false }: {
                     one — no row above or below it moves.
                   */}
                   {pending.map((p) => (
-                    <li key={p.member.userId} className="flex items-center justify-between gap-2 text-sm text-muted-foreground opacity-50">
+                    // min-h-7 matches the h-7 size="sm" buttons a confirmed seated row
+                    // carries (src/components/ui/button.tsx). This row is text-only and
+                    // would otherwise sit shorter, so confirmation would grow the row and
+                    // shift every waitlisted row's Remove control below it — do not remove
+                    // this as cosmetic.
+                    <li key={p.member.userId} className="flex min-h-7 items-center justify-between gap-2 text-sm text-muted-foreground opacity-50">
                       <span className="min-w-0 truncate">{p.member.name}</span>
                     </li>
                   ))}
