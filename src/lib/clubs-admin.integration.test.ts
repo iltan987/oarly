@@ -304,6 +304,53 @@ describe.skipIf(!url)('clubs-admin', () => {
     expect(audit.map((a) => a.action).sort()).toEqual(['club.activate', 'club.suspend']);
   });
 
+  it('setClubStatus writes no audit row when the club is already in that status', async () => {
+    const admin = await mkUser();
+    const other = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `snoop-${Date.now()}`, name: 'Snoop', status: 'active' }).returning();
+
+    expect(await setClubStatus(db, { clubId: club.id, status: 'suspended', actorId: admin.id })).toMatchObject({ ok: true });
+    // The stale-page click: a second admin suspending a club the first already did.
+    // `{ ok: true }` — the state asked for is the state that holds — but no second row.
+    expect(await setClubStatus(db, { clubId: club.id, status: 'suspended', actorId: other.id })).toMatchObject({ ok: true });
+    // And reinstating an already-active club is not an activation either.
+    const [live] = await db.insert(schema.clubs)
+      .values({ slug: `snoop2-${Date.now()}`, name: 'Snoop2', status: 'active' }).returning();
+    expect(await setClubStatus(db, { clubId: live.id, status: 'active', actorId: admin.id })).toMatchObject({ ok: true });
+
+    expect(await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id)))
+      .toHaveLength(1);
+    expect(await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, live.id)))
+      .toHaveLength(0);
+  });
+
+  /**
+   * The guard checked the club's CURRENT status and never the REQUESTED one, while the
+   * audit action was derived as `status === 'active' ? activate : suspend`. So a
+   * `'rejected'` request wrote `rejected` — releasing the slug irreversibly — and
+   * logged it as `club.suspend`. Unreachable over HTTP because `app/admin/actions.ts`
+   * narrows the form value first, but the docstring claimed this defence existed.
+   *
+   * Cast, because the parameter type already forbids it: the point is that TypeScript
+   * is gone by the time a FormData string arrives, so the runtime must refuse too.
+   */
+  it('setClubStatus refuses a status it is not allowed to write, instead of mislabelling it', async () => {
+    const admin = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `sbad-${Date.now()}`, name: 'Sbad', status: 'active' }).returning();
+
+    const res = await setClubStatus(db, {
+      clubId: club.id,
+      status: 'rejected' as unknown as 'active' | 'suspended',
+      actorId: admin.id,
+    });
+    expect(res).toMatchObject({ ok: false, error: 'invalid_status' });
+    const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
+    expect(after.status).toBe('active');
+    expect(await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id))).toHaveLength(0);
+  });
+
   it('reports not_found for an unknown club id', async () => {
     const admin = await mkUser();
     const missing = '00000000-0000-0000-0000-000000000000';

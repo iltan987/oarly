@@ -127,24 +127,47 @@ export async function decideClubRequest(
 
 export type SetClubStatusResult =
   | { ok: true; status: 'active' | 'suspended' }
-  | { ok: false; error: 'not_found' | 'not_decided' };
+  | { ok: false; error: 'not_found' | 'not_decided' | 'invalid_status' };
+
+/** The only two statuses `setClubStatus` may WRITE. */
+const SETTABLE_CLUB_STATUSES = ['active', 'suspended'] as const;
+type SettableClubStatus = (typeof SETTABLE_CLUB_STATUSES)[number];
 
 /**
  * Suspend or reinstate an ALREADY-DECIDED club. `pending` and `rejected` are
- * unreachable through here: a request is decided by `decideClubRequest`, and a
- * rejection is final. Reaching either through this function is a typed error,
- * not a silent write — that refusal is what stops the requests queue and the
- * clubs list from sharing one control again (spec §5.3).
+ * unreachable through here — in BOTH directions: a request is decided by
+ * `decideClubRequest`, and a rejection is final. Reaching either through this
+ * function is a typed error, not a silent write — that refusal is what stops the
+ * requests queue and the clubs list from sharing one control again (spec §5.3).
  *
  * The `rejected` half is not merely tidy. Slug uniqueness is a PARTIAL index that
  * exempts rejected rows, so a live club may already hold a rejected club's slug;
  * walking that rejected row back to `active` would hit `clubs_slug_uq` at best,
  * and shadow a live club at worst.
+ *
+ * BOTH directions is the correction. The guard used to check only the club's CURRENT
+ * status; the REQUESTED one was typed but never validated, and the audit action was
+ * derived as `status === 'active' ? activate : suspend`. So `setClubStatus(db, {
+ * status: 'rejected' })` wrote `rejected` — releasing the slug irreversibly — and
+ * logged it as `club.suspend`. Unreachable over HTTP today, because
+ * `app/admin/actions.ts` narrows the form value first; but the docstring above claimed
+ * this defence existed, and it did not. A comment asserting a guarantee the code does
+ * not provide is worse than no comment.
+ *
+ * COMPARE-AND-SWAP for the same reason `setMembershipStatus` and `setPlatformAdmin`
+ * are: suspending an already-suspended club is not a suspension, and a `club.suspend`
+ * row for it is a state transition the log records as having happened. A no-op returns
+ * `{ ok: true }` — the state asked for is the state that holds — and writes nothing.
  */
 export async function setClubStatus(
   db: DB,
-  input: { clubId: string; status: 'active' | 'suspended'; actorId: string },
+  input: { clubId: string; status: SettableClubStatus; actorId: string },
 ): Promise<SetClubStatusResult> {
+  // Runtime, not merely the parameter type: a server action reads its status out of a
+  // FormData, and TypeScript is gone by then.
+  if (!(SETTABLE_CLUB_STATUSES as readonly string[]).includes(input.status)) {
+    return { ok: false, error: 'invalid_status' };
+  }
   return db.transaction(async (tx) => {
     // Same lock as `decideClubRequest`, for the same reason: a guard is only worth as
     // much as the read it guards, and an unlocked read under READ COMMITTED can be
@@ -161,8 +184,16 @@ export async function setClubStatus(
       .from(clubs).where(eq(clubs.id, input.clubId)).limit(1).for('update');
     if (!club) return { ok: false, error: 'not_found' };
     if (club.status !== 'active' && club.status !== 'suspended') return { ok: false, error: 'not_decided' };
+    // Already there. No write, and — the point — no audit row.
+    if (club.status === input.status) return { ok: true, status: input.status };
 
-    await tx.update(clubs).set({ status: input.status }).where(eq(clubs.id, input.clubId));
+    const changed = await tx.update(clubs).set({ status: input.status })
+      .where(and(eq(clubs.id, input.clubId), ne(clubs.status, input.status)))
+      .returning({ id: clubs.id });
+    // Belt and braces behind the row lock above: if a concurrent transaction has
+    // already made this exact transition, its audit row is the true one.
+    if (changed.length === 0) return { ok: true, status: input.status };
+
     await logAudit(tx, {
       actorUserId: input.actorId,
       clubId: input.clubId,

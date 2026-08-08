@@ -151,6 +151,92 @@ describe.skipIf(!url)('members-admin', () => {
     expect(after.skillLevelId).toBeNull();
   });
 
+  // ── No-op writes must not log a transition that did not occur ──────────────────
+  //
+  // The audit log's whole value is that a row means the thing happened. A second
+  // `member.approve` on an already-approved membership names an actor who took no
+  // action, which in a membership dispute is precisely the lie the log exists to
+  // prevent. Same argument as `setPlatformAdmin`'s docstring.
+
+  it('does not log a second member.approve when the membership is already approved', async () => {
+    const first = await mkUser();
+    const second = await mkUser();
+    const { clubId, membershipId } = await mkPendingMembership();
+
+    expect(await setMembershipStatus(db, { membershipId, clubId, status: 'approved', actorId: first.id })).toBe(true);
+    // The stale-page click: a second owner approving a member the first already did.
+    // `true`, because the state asked for is the state that holds — but no row.
+    expect(await setMembershipStatus(db, { membershipId, clubId, status: 'approved', actorId: second.id })).toBe(true);
+
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, membershipId));
+    expect(rows.map((a) => a.action)).toEqual(['member.approve']);
+    expect(rows[0].actorUserId).toBe(first.id);
+  });
+
+  it('does not log a second member.reject when the membership is already rejected', async () => {
+    const owner = await mkUser();
+    const { clubId, membershipId } = await mkPendingMembership();
+    expect(await setMembershipStatus(db, { membershipId, clubId, status: 'rejected', actorId: owner.id })).toBe(true);
+    expect(await setMembershipStatus(db, { membershipId, clubId, status: 'rejected', actorId: owner.id })).toBe(true);
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, membershipId));
+    expect(rows.map((a) => a.action)).toEqual(['member.reject']);
+  });
+
+  it('writes one audit row, naming one actor, when two owners approve the same member at once', async () => {
+    const ownerA = await mkUser();
+    const ownerB = await mkUser();
+    const { clubId, membershipId } = await mkPendingMembership();
+
+    // Warm two pool connections FIRST. `db.transaction` calls `pool.connect()`, and on
+    // a cold pool the second call spends its first milliseconds on a TCP handshake and
+    // auth — by which time the first transaction has committed and the race cannot
+    // occur. Without this the test passes even with the compare-and-swap removed.
+    const warm = await Promise.all([pool.connect(), pool.connect()]);
+    for (const c of warm) c.release();
+
+    const [a, b] = await Promise.all([
+      setMembershipStatus(db, { membershipId, clubId, status: 'approved', actorId: ownerA.id }),
+      setMembershipStatus(db, { membershipId, clubId, status: 'approved', actorId: ownerB.id }),
+    ]);
+    // Both report success: the membership IS approved, for both callers.
+    expect([a, b]).toEqual([true, true]);
+
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, membershipId));
+    expect(rows).toHaveLength(1);
+    expect([ownerA.id, ownerB.id]).toContain(rows[0].actorUserId);
+  });
+
+  it('does not log a member.skill_assign when the member already has that level', async () => {
+    const owner = await mkUser();
+    const { clubId, membershipId, skillLevelId } = await mkApprovedMembershipWithSkill();
+    expect(await assignSkillLevel(db, { membershipId, clubId, skillLevelId, actorId: owner.id })).toBe(true);
+    expect(await assignSkillLevel(db, { membershipId, clubId, skillLevelId, actorId: owner.id })).toBe(true);
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, membershipId));
+    expect(rows.map((a) => a.action)).toEqual(['member.skill_assign']);
+  });
+
+  it('does not log a member.skill_assign when clearing a level the member never had', async () => {
+    const owner = await mkUser();
+    const { clubId, membershipId } = await mkApprovedMembershipWithSkill();
+    expect(await assignSkillLevel(db, { membershipId, clubId, skillLevelId: null, actorId: owner.id })).toBe(true);
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, membershipId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('still logs a REAL clear, which the null-safe distinctness guard is there for', async () => {
+    // `ne(skill_level_id, null)` is `col <> NULL` — NULL, matching nothing — so a
+    // naive guard would make "clear this member's level" silently unwritable. This is
+    // the test that catches that.
+    const owner = await mkUser();
+    const { clubId, membershipId, skillLevelId } = await mkApprovedMembershipWithSkill();
+    expect(await assignSkillLevel(db, { membershipId, clubId, skillLevelId, actorId: owner.id })).toBe(true);
+    expect(await assignSkillLevel(db, { membershipId, clubId, skillLevelId: null, actorId: owner.id })).toBe(true);
+    const [after] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, membershipId));
+    expect(after.skillLevelId).toBeNull();
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, membershipId));
+    expect(rows.map((a) => a.action)).toEqual(['member.skill_assign', 'member.skill_assign']);
+  });
+
   it('writes no audit row for a membership that does not match the club', async () => {
     const owner = await mkUser();
     const { clubId } = await mkPendingMembership();
