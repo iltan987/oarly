@@ -1,9 +1,10 @@
-import { and, asc, eq, ne, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, ne, or, type SQL, sql } from 'drizzle-orm';
 
 import type { DbOrTx } from '@/db';
 import { boatTypes, clubs, memberships, scheduleWindows, user } from '@/db/schema';
 import { logAudit } from '@/lib/audit';
 import type { DB } from '@/lib/membership';
+import { clampPage } from '@/lib/pagination';
 import { validateSlug } from '@/lib/slug';
 
 // Better Auth's internal adapter lowercases `email` on both `createUser` and
@@ -323,4 +324,132 @@ export async function getClubAdminDetail(db: DbOrTx, clubId: string): Promise<Cl
     boatCount: boats[0]?.n ?? 0,
     windowCount: windows[0]?.n ?? 0,
   };
+}
+
+export const CLUBS_PAGE_SIZE = 25;
+
+export type AdminClubRow = {
+  id: string;
+  slug: string;
+  name: string;
+  status: typeof clubs.$inferSelect['status'];
+  createdAt: Date;
+  memberCount: number;
+};
+
+/**
+ * Paged, searchable club list. Replaces the unbounded `db.select().from(clubs)` the
+ * admin index used to run (spec §6.4) — no list page in the console may issue an
+ * unbounded select, and there is no unbounded branch here either: an empty search is
+ * still capped at `pageSize`.
+ *
+ * `page` is clamped HERE rather than only at the route, for the same reason
+ * `searchUsers` clamps: it is interpolated into `OFFSET`, which Postgres parses as
+ * `bigint`, so `?page=1.5`, `?page=Infinity` and `?page=1e20` each raised
+ * `invalid input syntax for type bigint` out of the render on a URL anyone can
+ * hand-edit. Putting the clamp in the library is what makes a new caller inherit it
+ * instead of repeating the bug. The returned `page` is the one actually shown —
+ * pulled back to the last page that exists — so the rows, the row range and the
+ * pagination links all describe the same page.
+ */
+export async function listClubsForAdmin(
+  db: DbOrTx,
+  opts: { q?: string; page?: number; pageSize?: number } = {},
+): Promise<{ rows: AdminClubRow[]; total: number; page: number; pageSize: number }> {
+  const pageSize = opts.pageSize ?? CLUBS_PAGE_SIZE;
+  const q = opts.q?.trim();
+  // Escape LIKE metacharacters so a literal `%`, `_` or `\` in the search box matches
+  // itself. Unescaped, `_` is a single-character wildcard: searching `a_b` would
+  // quietly also return `axb`, widening the result set with nothing on screen to
+  // explain why.
+  const pattern = q ? `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+  const where = pattern ? or(ilike(clubs.name, pattern), ilike(clubs.slug, pattern)) : undefined;
+
+  const [countRow] = await db.select({ n: sql<number>`count(*)::int` }).from(clubs).where(where);
+  const total = countRow?.n ?? 0;
+  // Counted before the page is resolved on purpose: the clamp needs the total.
+  const page = clampPage(opts.page, total, pageSize);
+
+  const pageRows = await db
+    .select({
+      id: clubs.id,
+      slug: clubs.slug,
+      name: clubs.name,
+      status: clubs.status,
+      createdAt: clubs.createdAt,
+    })
+    .from(clubs)
+    .where(where)
+    // `id` breaks the tie so the order is total: two clubs created in the same
+    // microsecond would otherwise be free to swap places between pages, which is how
+    // offset pages start overlapping and dropping rows.
+    .orderBy(desc(clubs.createdAt), desc(clubs.id))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  // Member counts in ONE follow-up query keyed by the page's ids, exactly as
+  // `searchUsers` fetches memberships. Not a join into the select above — that would
+  // multiply the club rows by their membership count and break both LIMIT and `total`.
+  //
+  // And deliberately NOT a correlated `sql` subquery in the selection either. Drizzle
+  // strips the table prefix from a Column interpolated into a raw `sql` SELECT field
+  // whenever the query has a single table (`buildSelection`'s `isSingleTable`), so
+  // `where ${memberships.clubId} = ${clubs.id}` compiles to `where "club_id" = "id"` —
+  // which Postgres happily resolves against the SUBQUERY's own table, comparing
+  // `memberships.club_id` to `memberships.id`. It matches nothing, raises nothing, and
+  // reports every club as having zero members.
+  const ids = pageRows.map((c) => c.id);
+  const counts = ids.length
+    ? await db
+        .select({ clubId: memberships.clubId, n: sql<number>`count(*)::int` })
+        .from(memberships)
+        .where(inArray(memberships.clubId, ids))
+        .groupBy(memberships.clubId)
+    : [];
+  const countByClub = new Map(counts.map((c) => [c.clubId, c.n]));
+
+  return {
+    rows: pageRows.map((c) => ({ ...c, memberCount: countByClub.get(c.id) ?? 0 })),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+export type PendingClubRequest = {
+  id: string;
+  slug: string;
+  name: string;
+  createdAt: Date;
+  requesterName: string | null;
+  requesterEmail: string | null;
+};
+
+/**
+ * The requests queue: every club still awaiting a decision.
+ *
+ * LEFT join on the requester, not inner. `clubs.created_by` is `on delete set null`,
+ * so a requester who deleted their account leaves a live request with a null author —
+ * and an inner join would drop that request out of the queue entirely, where nobody
+ * could ever approve or reject it. The club would sit `pending` forever, holding its
+ * slug against the partial unique index.
+ *
+ * Unpaginated but bounded in practice by the queue's own nature: a request leaves this
+ * list the moment it is decided. It is the one console list whose length is an
+ * operational signal rather than a data volume.
+ */
+export async function listPendingClubRequests(db: DbOrTx): Promise<PendingClubRequest[]> {
+  return db
+    .select({
+      id: clubs.id,
+      slug: clubs.slug,
+      name: clubs.name,
+      createdAt: clubs.createdAt,
+      requesterName: user.name,
+      requesterEmail: user.email,
+    })
+    .from(clubs)
+    .leftJoin(user, eq(user.id, clubs.createdBy))
+    .where(eq(clubs.status, 'pending'))
+    .orderBy(desc(clubs.createdAt), desc(clubs.id));
 }

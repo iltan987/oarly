@@ -1,24 +1,36 @@
 // @vitest-environment jsdom
+import { randomUUID } from 'node:crypto';
+
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import en from '../../messages/en.json';
 import tr from '../../messages/tr.json';
 
-type Row = { id: string; name: string; slug: string; status: string };
+type Row = {
+  id: string; name: string; slug: string;
+  status: 'active' | 'pending' | 'suspended' | 'rejected';
+  createdAt: Date; memberCount: number;
+};
 
-// One mutable row list so each test renders exactly one club and can query globally.
-let rows: Row[] = [];
+// One mutable result so each test renders exactly the list it cares about. `total`
+// tracks `rows` unless a test sets it, so the pagination arithmetic is exercised with
+// numbers that agree with each other.
+let result: { rows: Row[]; total: number; page: number; pageSize: number };
+// `vi.hoisted`, because `vi.mock`'s factory is lifted above every other statement in
+// the file and would otherwise read the spy before it exists.
+const { listClubsForAdmin } = vi.hoisted(() => ({ listClubsForAdmin: vi.fn() }));
 
-vi.mock('@/db', () => ({
-  db: { select: () => ({ from: () => ({ orderBy: () => Promise.resolve(rows) }) }) },
-}));
+vi.mock('@/db', () => ({ db: {} }));
+vi.mock('@/lib/clubs-admin', () => ({ CLUBS_PAGE_SIZE: 25, listClubsForAdmin }));
 
 // Keys are asserted on directly rather than resolved through the real catalogs — this
-// test is about which controls render, not about copy. The catalogs are checked
-// separately below.
+// test is about which controls render and what the page asks the query for, not about
+// copy. The catalogs are checked separately below. Interpolated values are echoed so a
+// count or a row range that never reaches the message is visible.
 vi.mock('next-intl/server', () => ({
-  getTranslations: () => Promise.resolve((key: string) => key),
+  getTranslations: () => Promise.resolve((key: string, values?: Record<string, unknown>) =>
+    (values ? `${key}:${JSON.stringify(values)}` : key)),
 }));
 
 vi.mock('./club-status-button', () => ({
@@ -29,12 +41,26 @@ vi.mock('./created-toast', () => ({ CreatedToast: () => null }));
 
 import AdminClubsPage from './page';
 
-async function renderClub(status: string) {
-  rows = [{ id: 'c1', name: 'Boğaziçi Kürek', slug: 'bogazici', status }];
-  render(await AdminClubsPage({ searchParams: Promise.resolve({}) }));
+// Real uuids: `clubs.id` is a `uuid` column and every id this page renders came out of
+// it, so a fixture like `c1` is a value the production page cannot serve.
+function mkRow(status: Row['status'], over: Partial<Row> = {}): Row {
+  return {
+    id: randomUUID(), name: 'Boğaziçi Kürek', slug: 'bogazici', status,
+    createdAt: new Date('2026-01-01T00:00:00Z'), memberCount: 0, ...over,
+  };
 }
 
+async function renderPage(rows: Row[], searchParams: Record<string, string | string[] | undefined> = {}, total = rows.length) {
+  result = { rows, total, page: 1, pageSize: 25 };
+  listClubsForAdmin.mockResolvedValue(result);
+  render(await AdminClubsPage({ searchParams: Promise.resolve(searchParams) }));
+}
+
+const renderClub = (status: Row['status']) => renderPage([mkRow(status)]);
+
 describe('AdminClubsPage status controls', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
   // The un-reject hole. `setClubStatus` is id-keyed and now refuses a rejected row, but
   // this page is what decides whether an admin is ever offered the button — and a
   // rejected club may share its slug with a live one, so "Activate" here is a control
@@ -78,11 +104,80 @@ describe('AdminClubsPage status controls', () => {
   });
 });
 
+describe('AdminClubsPage search and pagination', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  // The whole point of the rewrite (spec §6.4): this page used to run
+  // `db.select().from(clubs)` with no limit, so a growing platform turned the console's
+  // front door into a full-table render.
+  it('asks the library for one page, never for the whole table', async () => {
+    await renderPage([mkRow('active')]);
+    expect(listClubsForAdmin).toHaveBeenCalledWith({}, { q: undefined, page: 1, pageSize: 25 });
+  });
+
+  it('passes the trimmed search term through and keeps it in the box', async () => {
+    await renderPage([mkRow('active')], { q: '  boğaz  ' });
+    expect(listClubsForAdmin).toHaveBeenCalledWith({}, { q: 'boğaz', page: 1, pageSize: 25 });
+    expect(screen.getByRole('textbox', { name: 'clubsSearch' })).toHaveValue('boğaz');
+  });
+
+  it('treats a blank search as no search rather than as an empty pattern', async () => {
+    await renderPage([mkRow('active')], { q: '   ' });
+    expect(listClubsForAdmin).toHaveBeenCalledWith({}, { q: undefined, page: 1, pageSize: 25 });
+  });
+
+  // `?page=1.5`, `Infinity` and `1e20` each reached `OFFSET` as a `bigint` and raised
+  // `invalid input syntax for type bigint` out of the render — a 500 on a URL anyone
+  // can hand-edit. `Math.floor` alone does not save `1e20`.
+  it.each(['1.5', 'Infinity', '1e20', '-4', 'abc'])('normalizes ?page=%s before the query', async (page) => {
+    await renderPage([mkRow('active')], { page });
+    const [, opts] = listClubsForAdmin.mock.calls[0] as unknown as [unknown, { page: number }];
+    expect(Number.isSafeInteger(opts.page)).toBe(true);
+    expect(opts.page).toBeGreaterThanOrEqual(1);
+  });
+
+  // A repeated parameter arrives as `string[]`, and `.trim()` on an array is a
+  // TypeError out of the render before a single row is fetched.
+  it('survives repeated query parameters', async () => {
+    await renderPage([mkRow('active')], { q: ['a', 'b'], page: ['2', '3'], created: ['1', '1'] });
+    expect(listClubsForAdmin).toHaveBeenCalledWith({}, { q: 'a', page: 2, pageSize: 25 });
+  });
+
+  it('renders the member count and links each club to its detail page', async () => {
+    const row = mkRow('active', { memberCount: 7 });
+    await renderPage([row]);
+    expect(screen.getByText('clubsMemberCount:{"count":7}')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Boğaziçi Kürek' })).toHaveAttribute('href', `/admin/clubs/${row.id}`);
+  });
+
+  it('describes the row range using the page the library actually returned', async () => {
+    listClubsForAdmin.mockResolvedValue({ rows: [mkRow('active')], total: 60, page: 3, pageSize: 25 });
+    render(await AdminClubsPage({ searchParams: Promise.resolve({ page: '3' }) }));
+    // 51–60 of 60, not 51–75: the range must not promise rows past the end.
+    expect(screen.getByText('paginationRange:{"from":51,"to":60,"total":60}')).toBeInTheDocument();
+  });
+
+  it('carries the search term into the pagination links', async () => {
+    listClubsForAdmin.mockResolvedValue({ rows: [mkRow('active')], total: 60, page: 1, pageSize: 25 });
+    render(await AdminClubsPage({ searchParams: Promise.resolve({ q: 'boğaz' }) }));
+    expect(screen.getByRole('link', { name: 'paginationNext' })).toHaveAttribute('href', '/admin?q=bo%C4%9Faz&page=2');
+  });
+
+  it('shows the empty state without a pagination bar when nothing matches', async () => {
+    await renderPage([], { q: 'nothing' });
+    expect(screen.getByText('noClubs')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'paginationNext' })).toBeNull();
+  });
+});
+
 describe('admin message catalogs', () => {
   // Turkish is the app default, so an English-only key ships as a missing-message
   // warning to every real user.
   it.each([['en', en], ['tr', tr]] as const)('%s carries the new admin keys', (_locale, messages) => {
     expect(messages.admin.statusRejected).toBeTruthy();
     expect(messages.admin.errorNotDecided).toBeTruthy();
+    expect(messages.admin.clubsSearch).toBeTruthy();
+    expect(messages.admin.clubsSearchCta).toBeTruthy();
+    expect(messages.admin.clubsMemberCount).toBeTruthy();
   });
 });

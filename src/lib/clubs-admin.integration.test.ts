@@ -9,8 +9,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as schema from '@/db/schema';
 
 import {
-  createClub, decideClubRequest, getClubAdminDetail, setClubStatus,
-  TRANSFER_CANDIDATE_LIMIT, transferOwnership,
+  createClub, decideClubRequest, getClubAdminDetail, listClubsForAdmin, listPendingClubRequests,
+  setClubStatus, TRANSFER_CANDIDATE_LIMIT, transferOwnership,
 } from './clubs-admin';
 
 const url = process.env.TEST_DATABASE_URL;
@@ -548,5 +548,110 @@ describe.skipIf(!url)('clubs-admin', () => {
 
   it('getClubAdminDetail returns null for an unknown id', async () => {
     expect(await getClubAdminDetail(db, '00000000-0000-0000-0000-000000000000')).toBeNull();
+  });
+
+  it('listClubsForAdmin searches case-insensitively on name and slug, and paginates', async () => {
+    const stamp = `lc${randomUUID().slice(0, 8)}`;
+    for (let i = 0; i < 3; i++) {
+      await db.insert(schema.clubs).values({ slug: `${stamp}-${i}`, name: `Club ${stamp} ${i}`, status: 'active' });
+    }
+    const first = await listClubsForAdmin(db, { q: stamp.toUpperCase(), page: 1, pageSize: 2 });
+    expect(first.rows).toHaveLength(2);
+    expect(first.total).toBe(3);
+    const second = await listClubsForAdmin(db, { q: stamp, page: 2, pageSize: 2 });
+    expect(second.rows).toHaveLength(1);
+    expect(new Set([...first.rows, ...second.rows].map((r) => r.id)).size).toBe(3);
+  });
+
+  it('listClubsForAdmin never returns more rows than the page size', async () => {
+    const { rows } = await listClubsForAdmin(db, { pageSize: 3 });
+    expect(rows.length).toBeLessThanOrEqual(3);
+  });
+
+  // `_` is the decoy. A test that only covers `%` passes with a half-written escape,
+  // and an unescaped `_` is the worse of the two failures: it silently WIDENS the
+  // result set with no wildcard character on screen to explain why.
+  it('listClubsForAdmin treats LIKE metacharacters in the search term as literals', async () => {
+    const stamp = randomUUID().slice(0, 8);
+    const [underscore] = await db.insert(schema.clubs)
+      .values({ slug: `u_${stamp}`, name: `Lit_${stamp}`, status: 'active' }).returning();
+    // Matches `Lit_<stamp>` only if `_` is left as a single-character wildcard.
+    await db.insert(schema.clubs).values({ slug: `ux${stamp}`, name: `LitX${stamp}`, status: 'active' });
+    const [percent] = await db.insert(schema.clubs)
+      .values({ slug: `p-${stamp}`, name: `Pct%${stamp}`, status: 'active' }).returning();
+    // Matches `Pct%<stamp>` only if `%` is left as a multi-character wildcard.
+    await db.insert(schema.clubs).values({ slug: `pz-${stamp}`, name: `PctZZ${stamp}`, status: 'active' });
+
+    const underscoreHit = await listClubsForAdmin(db, { q: `Lit_${stamp}` });
+    expect(underscoreHit.total).toBe(1);
+    expect(underscoreHit.rows.map((r) => r.id)).toEqual([underscore.id]);
+
+    const percentHit = await listClubsForAdmin(db, { q: `Pct%${stamp}` });
+    expect(percentHit.total).toBe(1);
+    expect(percentHit.rows.map((r) => r.id)).toEqual([percent.id]);
+
+    // A lone backslash is the third metacharacter: unescaped it consumes the next
+    // character's meaning, so `Lit\_` would match nothing at all.
+    const backslash = await listClubsForAdmin(db, { q: `Lit\\_${stamp}` });
+    expect(backslash.total).toBe(0);
+  });
+
+  // The page number is interpolated into OFFSET, which Postgres parses as `bigint`.
+  // Every one of these raised `invalid input syntax for type bigint` out of the render
+  // before the clamp moved into this function; `Math.floor` alone does not save `1e20`.
+  it('listClubsForAdmin clamps a hostile page number instead of handing it to OFFSET', async () => {
+    // Crashing values first, so a regression surfaces as the `bigint` error it really
+    // is rather than as a tidier assertion failure on `1.5` before we ever get there.
+    for (const page of [1e20, Number.POSITIVE_INFINITY, Number.NaN, 1.5, 0, -3]) {
+      const res = await listClubsForAdmin(db, { page, pageSize: 2 });
+      expect(Number.isSafeInteger(res.page)).toBe(true);
+      expect(res.page).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('listClubsForAdmin counts this club\'s members and not a neighbour\'s', async () => {
+    const stamp = randomUUID().slice(0, 8);
+    const [mine] = await db.insert(schema.clubs)
+      .values({ slug: `mc-${stamp}`, name: `Counted ${stamp}`, status: 'active' }).returning();
+    const [neighbour] = await db.insert(schema.clubs)
+      .values({ slug: `nc-${stamp}`, name: `Counted ${stamp} neighbour`, status: 'active' }).returning();
+    const a = await mkUser();
+    const b = await mkUser();
+    await db.insert(schema.memberships).values([
+      { userId: a.id, clubId: mine.id, role: 'owner' as const, status: 'approved' as const },
+      { userId: b.id, clubId: neighbour.id, role: 'member' as const, status: 'approved' as const },
+    ]);
+
+    const { rows } = await listClubsForAdmin(db, { q: `Counted ${stamp}` });
+    expect(rows.find((r) => r.id === mine.id)?.memberCount).toBe(1);
+    expect(rows.find((r) => r.id === neighbour.id)?.memberCount).toBe(1);
+  });
+
+  it('listPendingClubRequests returns only pending clubs, with the requester attached', async () => {
+    const requester = await mkUser();
+    const stamp = randomUUID().slice(0, 8);
+    const [pendingClub] = await db.insert(schema.clubs)
+      .values({ slug: `pq-${stamp}`, name: 'Pending Q', status: 'pending', createdBy: requester.id }).returning();
+    await db.insert(schema.clubs).values({ slug: `aq-${stamp}`, name: 'Active Q', status: 'active' });
+    await db.insert(schema.clubs).values({ slug: `rq-${stamp}`, name: 'Rejected Q', status: 'rejected' });
+
+    const rows = await listPendingClubRequests(db);
+    const ids = rows.map((r) => r.id);
+    expect(ids).toContain(pendingClub.id);
+    expect(rows.find((r) => r.id === pendingClub.id)?.requesterEmail).toBe(requester.email);
+    expect(rows.every((r) => r.name !== 'Active Q' && r.name !== 'Rejected Q')).toBe(true);
+  });
+
+  it('listPendingClubRequests keeps a request whose requester account is gone', async () => {
+    const requester = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `orph-${randomUUID().slice(0, 8)}`, name: 'Orphaned Request', status: 'pending', createdBy: requester.id })
+      .returning();
+    await db.delete(schema.user).where(eq(schema.user.id, requester.id));
+
+    const rows = await listPendingClubRequests(db);
+    const hit = rows.find((r) => r.id === club.id);
+    expect(hit).toBeDefined();
+    expect(hit?.requesterEmail).toBeNull();
   });
 });

@@ -7,21 +7,12 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { db } from '@/db';
 import { normalizePage } from '@/lib/pagination';
+import { one } from '@/lib/search-params';
 import { searchUsers, USERS_PAGE_SIZE } from '@/lib/users-admin';
 
 import { AdminToggle } from './admin-toggle';
 
 export const metadata = { robots: { index: false, follow: false } };
-
-/**
- * Any query parameter can repeat — `?q=a&q=b` arrives as an array, and every value
- * here is read with a string method, so an unguarded value throws a TypeError out of
- * the render before a row is fetched. First occurrence wins, matching
- * `URLSearchParams.get`, which is what builds these links on the way back out.
- */
-function one(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export default async function AdminUsersPage({ searchParams }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;

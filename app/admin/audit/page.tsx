@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { Button } from '@/components/ui/button';
 import { db } from '@/db';
 import { type AuditCursor, listAuditRows } from '@/lib/audit';
+import { one } from '@/lib/search-params';
 import { isUuid } from '@/lib/uuid';
 
 import { AuditFilters } from './audit-filters';
@@ -38,16 +39,6 @@ function parseCursor(raw: string | undefined): AuditCursor | null {
   return { createdAt: when, id };
 }
 
-/**
- * Any query parameter can repeat — `?clubId=a&clubId=b` arrives as an array, and
- * every filter on this page is read with a string method, so an unguarded value
- * throws a TypeError out of the render before a row is ever fetched. First
- * occurrence wins, matching `URLSearchParams.get`, which is what builds these
- * links on the way back out.
- */
-function one(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export default async function AdminAuditPage({ searchParams }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
