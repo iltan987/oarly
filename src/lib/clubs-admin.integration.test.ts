@@ -37,6 +37,20 @@ describe.skipIf(!url)('createClub', () => {
     expect(m.status).toBe('approved');
     const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, res.clubId));
     expect(audit.length).toBeGreaterThan(0);
+    // The audit row must be written with the caller's own transaction (no `as unknown as
+    // DB` cast) and attributed to the admin who acted.
+    expect(audit.find((a) => a.action === 'club.create')).toMatchObject({ actingAsRole: 'admin' });
+  });
+
+  it('lets an admin create a club on a slug that a rejected club still holds', async () => {
+    const admin = await mkUser();
+    const owner = await mkUser();
+    const slug = `freed-${Date.now()}-${Math.floor(performance.now())}`;
+    // The partial index `clubs_slug_uq` frees a rejected slug in the database; the
+    // application's `slug_taken` pre-check must agree, or the slug is dead in practice.
+    await db.insert(schema.clubs).values({ slug, name: 'Spam', status: 'rejected' });
+    expect(await createClub(db, { name: 'Real', slug, ownerEmail: owner.email, createdBy: admin.id }))
+      .toMatchObject({ ok: true });
   });
 
   it('rejects reserved and duplicate slugs, and a missing owner', async () => {
@@ -61,5 +75,6 @@ describe.skipIf(!url)('createClub', () => {
     expect(after.status).toBe('active');
     const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id));
     expect(audit.some((a) => a.action === 'club.activate')).toBe(true);
+    expect(audit.find((a) => a.action === 'club.activate')).toMatchObject({ actingAsRole: 'admin' });
   });
 });

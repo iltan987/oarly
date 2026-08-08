@@ -80,4 +80,17 @@ describe.skipIf(!url)('club-profile', () => {
     expect(await ownedClubId(db, pendingOwner, c.slug)).toBeNull();
     expect(await ownedClubId(db, owner, 'no-such-slug')).toBeNull();
   });
+
+  it('does not grant ownership over a rejected club via its slug', async () => {
+    const slug = `cp-rej-${Date.now()}`;
+    const [rejected] = await db.insert(schema.clubs)
+      .values({ slug, name: 'Rejected', status: 'rejected' }).returning();
+    const owner = `ro-${Date.now()}`;
+    await db.insert(schema.user).values({ id: owner, name: 'RO', email: `${owner}@t.co` });
+    // requestClub gives the requester an approved owner membership, which survives
+    // rejection — so the only thing standing between them and a write is the status filter.
+    await db.insert(schema.memberships)
+      .values({ userId: owner, clubId: rejected.id, role: 'owner', status: 'approved' });
+    expect(await ownedClubId(db, owner, slug)).toBeNull();
+  });
 });

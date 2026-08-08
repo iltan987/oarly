@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, ne } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { clubs, clubSocials, memberships } from '@/db/schema';
@@ -52,6 +52,12 @@ export async function ownedClubId(db: DB, userId: string, slug: string): Promise
     .innerJoin(memberships, eq(memberships.clubId, clubs.id))
     .where(and(
       eq(clubs.slug, slug),
+      // Same invariant as `findClubBySlug`: a rejected club is not addressable by slug.
+      // `clubs_slug_uq` is partial, so a rejected `bogazici` and a live `bogazici`
+      // coexist — and this is a write-authorization path, so an unfiltered `limit 1`
+      // would let the rejected request's owner act under a slug at the planner's
+      // discretion (spec §5.2).
+      ne(clubs.status, 'rejected'),
       eq(memberships.userId, userId),
       eq(memberships.role, 'owner'),
       eq(memberships.status, 'approved'),
