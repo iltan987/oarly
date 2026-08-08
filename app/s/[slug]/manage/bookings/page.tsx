@@ -5,6 +5,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { buttonVariants } from '@/components/ui/button';
 import { db } from '@/db';
+import { isDateISO } from '@/lib/date-iso';
 import { addDaysISO, utcToClubDate } from '@/lib/date-tz';
 import { requireOwner } from '@/lib/membership';
 import { penaltyEndsAt } from '@/lib/penalty';
@@ -15,8 +16,6 @@ import { DateJump } from './date-jump';
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
-const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-
 export default async function ManageBookingsPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ date?: string }> }) {
   const { slug } = await params;
   const { club } = await requireOwner(slug, '/manage/bookings');
@@ -24,7 +23,11 @@ export default async function ManageBookingsPage({ params, searchParams }: { par
   const sp = await searchParams;
 
   const today = utcToClubDate(new Date(), club.timezone).dateISO;
-  const dateISO = sp.date && dateRe.test(sp.date) ? sp.date : today;
+  // Validity, not shape. `/^\d{4}-\d{2}-\d{2}$/` accepted `2026-02-31`, which is a
+  // 22008 at the `date` column, and `2026-13-45`, which `addDaysISO` turned into
+  // "NaN-NaN-NaN" in this page's own prev/next links. A stale bookmark is enough to
+  // reach it — no crafted POST (see `isDateISO`).
+  const dateISO = isDateISO(sp.date) ? sp.date : today;
 
   const roster = await getDayRoster(db, { clubId: club.id, dateISO });
 

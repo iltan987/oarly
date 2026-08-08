@@ -1,5 +1,7 @@
 import * as z from 'zod';
 
+import { isDateISO } from '@/lib/date-iso';
+
 // --- auth (client-side UX; Better Auth is the server authority) ---
 export const signInSchema = z.object({
   email: z.email(),
@@ -102,6 +104,8 @@ export const schedulingSettingsSchema = z
   });
 
 export const dateOverrideSchema = z.object({
-  dateISO: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
+  // `refine(isDateISO)` and not a bare shape regex: the value is bound into a `date`
+  // column, and `2026-02-31` matches the regex, is not a date, and raises 22008.
+  dateISO: z.string().refine(isDateISO, 'YYYY-MM-DD'),
   isOpen: z.boolean(),
 });

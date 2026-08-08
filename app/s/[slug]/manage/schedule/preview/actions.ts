@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { db } from '@/db';
+import { isDateISO } from '@/lib/date-iso';
 import { clearDateOverride, setDateOverride } from '@/lib/date-overrides';
 import { requireOwner } from '@/lib/membership';
 import { dateOverrideSchema } from '@/lib/schemas';
@@ -20,7 +21,9 @@ export async function setOverrideAction(slug: string, formData: FormData): Promi
 export async function clearOverrideAction(slug: string, formData: FormData): Promise<void> {
   const { club, user } = await requireOwner(slug, '/manage/schedule');
   const dateISO = String(formData.get('dateISO') ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return;
+  // Validity, not shape: `date_overrides.date` is a `date` column, so `2026-02-31`
+  // reached it as a 22008 that escaped this action to the error boundary.
+  if (!isDateISO(dateISO)) return;
   await clearDateOverride(db, club.id, dateISO, user.id);
   revalidatePath(`/s/${slug}/manage/schedule/preview`);
 }

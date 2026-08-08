@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { addSocial, removeSocial, updateClubProfile } from '@/lib/club-profile';
 import { requireOwner } from '@/lib/membership';
 import { clubProfileSchema, socialSchema } from '@/lib/schemas';
+import { isUuid } from '@/lib/uuid';
 
 import type { ManageActionResult } from '../action-result';
 
@@ -55,7 +56,9 @@ export async function addSocialAction(slug: string, _prev: ManageActionResult | 
 
 export async function removeSocialAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club } = await requireOwner(slug, '/manage/profile');
-  const ok = await removeSocial(db, { clubId: club.id, socialId: String(formData.get('socialId')) });
+  const socialId = String(formData.get('socialId'));
+  if (!isUuid(socialId)) return { ok: false };
+  const ok = await removeSocial(db, { clubId: club.id, socialId });
   if (ok) refresh(slug);
   return { ok };
 }

@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { clampAllowedPayment, createBoat, setBoatActive, updateBoat } from '@/lib/boats';
 import { requireOwner } from '@/lib/membership';
 import { boatSchema } from '@/lib/schemas';
+import { isUuid } from '@/lib/uuid';
 
 import type { ManageActionResult } from '../action-result';
 
@@ -37,7 +38,9 @@ export async function updateBoatAction(slug: string, _prev: ManageActionResult |
   const { club, user } = await requireOwner(slug, '/manage/boats');
   const parsed = parseBoat(formData);
   if (!parsed.success) return { ok: false };
-  const res = await updateBoat(db, { clubId: club.id, boatId: String(formData.get('boatId')), actorId: user.id, ...clampAllowedPayment(parsed.data, club.multisportEnabled) });
+  const boatId = String(formData.get('boatId'));
+  if (!isUuid(boatId)) return { ok: false };
+  const res = await updateBoat(db, { clubId: club.id, boatId, actorId: user.id, ...clampAllowedPayment(parsed.data, club.multisportEnabled) });
   if (!res.ok) return { ok: false };
   refresh(slug);
   return { ok: true };
@@ -45,7 +48,9 @@ export async function updateBoatAction(slug: string, _prev: ManageActionResult |
 
 export async function setBoatActiveAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club, user } = await requireOwner(slug, '/manage/boats');
-  const ok = await setBoatActive(db, { clubId: club.id, boatId: String(formData.get('boatId')), active: formData.get('active') === 'true', actorId: user.id });
+  const boatId = String(formData.get('boatId'));
+  if (!isUuid(boatId)) return { ok: false };
+  const ok = await setBoatActive(db, { clubId: club.id, boatId, active: formData.get('active') === 'true', actorId: user.id });
   if (ok) refresh(slug);
   return { ok };
 }
