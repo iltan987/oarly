@@ -21,11 +21,11 @@ export type UndoActionResult = { ok: true } | { ok: false; error?: 'restore_conf
 const bookingSchema = z.object({ bookingId: z.uuid() });
 
 export async function markNoShowAction(slug: string, _prev: MarkActionResult | null, formData: FormData): Promise<MarkActionResult> {
-  const { club } = await requireOwner(slug, '/manage/bookings');
+  const { club, user } = await requireOwner(slug, '/manage/bookings');
   const parsed = bookingSchema.safeParse({ bookingId: formData.get('bookingId') });
   if (!parsed.success) return { ok: false };
 
-  const result = await markNoShow(db, { clubId: club.id, bookingId: parsed.data.bookingId });
+  const result = await markNoShow(db, { clubId: club.id, bookingId: parsed.data.bookingId, actorId: user.id });
   if (!result.ok) return result.error === 'already_marked' ? { ok: false, error: 'already_marked' } : { ok: false };
 
   revalidatePath(`/s/${slug}/manage/bookings`);
@@ -45,11 +45,11 @@ export async function markNoShowAction(slug: string, _prev: MarkActionResult | n
 }
 
 export async function undoNoShowAction(slug: string, _prev: UndoActionResult | null, formData: FormData): Promise<UndoActionResult> {
-  const { club } = await requireOwner(slug, '/manage/bookings');
+  const { club, user } = await requireOwner(slug, '/manage/bookings');
   const parsed = bookingSchema.safeParse({ bookingId: formData.get('bookingId') });
   if (!parsed.success) return { ok: false };
 
-  const result = await undoNoShow(db, { clubId: club.id, bookingId: parsed.data.bookingId });
+  const result = await undoNoShow(db, { clubId: club.id, bookingId: parsed.data.bookingId, actorId: user.id });
   if (!result.ok) return result.error === 'restore_conflict' ? { ok: false, error: 'restore_conflict' } : { ok: false };
 
   revalidatePath(`/s/${slug}/manage/bookings`);

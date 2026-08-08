@@ -56,10 +56,10 @@ const addSchema = z.object({
 });
 
 export async function ownerRemoveBookingAction(slug: string, _prev: RemoveActionResult | null, formData: FormData): Promise<RemoveActionResult> {
-  const { club } = await requireOwner(slug, '/manage/bookings');
+  const { club, user } = await requireOwner(slug, '/manage/bookings');
   const parsed = removeSchema.safeParse({ bookingId: formData.get('bookingId') });
   if (!parsed.success) return { ok: false };
-  const result = await ownerRemoveBooking(db, { clubId: club.id, bookingId: parsed.data.bookingId });
+  const result = await ownerRemoveBooking(db, { clubId: club.id, bookingId: parsed.data.bookingId, actorId: user.id });
   if (!result.ok) return result.error === 'not_active' ? { ok: false, error: 'not_active' } : { ok: false };
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);
@@ -73,7 +73,7 @@ export async function ownerRemoveBookingAction(slug: string, _prev: RemoveAction
 }
 
 export async function ownerAddBookingAction(slug: string, _prev: OwnerAddActionResult | null, formData: FormData): Promise<OwnerAddActionResult> {
-  const { club } = await requireOwner(slug, '/manage/bookings');
+  const { club, user } = await requireOwner(slug, '/manage/bookings');
   const parsed = addSchema.safeParse({
     windowId: formData.get('windowId'),
     boatTypeId: formData.get('boatTypeId'),
@@ -82,7 +82,7 @@ export async function ownerAddBookingAction(slug: string, _prev: OwnerAddActionR
     paymentType: formData.get('paymentType'),
   });
   if (!parsed.success) return { ok: false };
-  const result = await ownerAddBooking(db, { clubId: club.id, windowId: parsed.data.windowId, boatTypeId: parsed.data.boatTypeId, startAt: new Date(parsed.data.startAt), userId: parsed.data.userId, paymentType: parsed.data.paymentType });
+  const result = await ownerAddBooking(db, { clubId: club.id, windowId: parsed.data.windowId, boatTypeId: parsed.data.boatTypeId, startAt: new Date(parsed.data.startAt), userId: parsed.data.userId, paymentType: parsed.data.paymentType, actorId: user.id });
   if (!result.ok) return result.error === 'multisport_disabled' ? { ok: false, error: 'multisport_disabled' } : { ok: false };
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);

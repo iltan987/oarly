@@ -2,6 +2,7 @@ import { and, asc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { bookings, clubs, memberships, penalties, sessions, slots } from '@/db/schema';
+import { logAudit } from '@/lib/audit';
 
 import { applySeating, type Tx } from './booking';
 import { penaltyEndsAt, resolveBan } from './penalty';
@@ -57,7 +58,7 @@ async function recomputeBan(tx: Tx, membershipId: string, currentStatus: string)
  * taken in ascending start-time order because the cascade holds several at once
  * — unordered acquisition lets two owners marking concurrently deadlock.
  */
-export async function markNoShow(db: DB, input: { clubId: string; bookingId: string; now?: Date }): Promise<MarkNoShowResult> {
+export async function markNoShow(db: DB, input: { clubId: string; bookingId: string; actorId: string; now?: Date }): Promise<MarkNoShowResult> {
   const now = input.now ?? new Date();
   try {
     return await markNoShowTx(db, input, now);
@@ -70,7 +71,7 @@ export async function markNoShow(db: DB, input: { clubId: string; bookingId: str
   }
 }
 
-async function markNoShowTx(db: DB, input: { clubId: string; bookingId: string }, now: Date): Promise<MarkNoShowResult> {
+async function markNoShowTx(db: DB, input: { clubId: string; bookingId: string; actorId: string }, now: Date): Promise<MarkNoShowResult> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({
@@ -162,6 +163,17 @@ async function markNoShowTx(db: DB, input: { clubId: string; bookingId: string }
       }
     }
 
+    // Success path only: every early `return { ok: false, … }` above leaves no
+    // audit row, and this insert shares the transaction so the absence and its
+    // record commit together or not at all (spec §4.3).
+    await logAudit(tx, {
+      actorUserId: input.actorId,
+      clubId: input.clubId,
+      action: 'attendance.noshow',
+      target: input.bookingId,
+      actingAsRole: 'owner',
+    });
+
     return { ok: true, bannedUntil: ban.bannedUntil, permanent: ban.permanent, alreadyLapsed, cancelled, promoted };
   });
 }
@@ -182,7 +194,7 @@ export type UndoNoShowResult =
  * genuinely hold that seat, and evicting them to repair the owner's slip only
  * moves the injustice. The owner re-seats by hand from the Bookings view.
  */
-export async function undoNoShow(db: DB, input: { clubId: string; bookingId: string }): Promise<UndoNoShowResult> {
+export async function undoNoShow(db: DB, input: { clubId: string; bookingId: string; actorId: string }): Promise<UndoNoShowResult> {
   try {
     return await undoNoShowTx(db, input);
   } catch (err) {
@@ -198,7 +210,7 @@ export async function undoNoShow(db: DB, input: { clubId: string; bookingId: str
   }
 }
 
-async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string }): Promise<UndoNoShowResult> {
+async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string; actorId: string }): Promise<UndoNoShowResult> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({ id: bookings.id, userId: bookings.userId, clubId: bookings.clubId, status: bookings.status, sessionId: bookings.sessionId, slotStartAt: slots.startAt, capacity: sessions.capacity })
@@ -257,6 +269,15 @@ async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string }
     await tx.delete(penalties).where(and(eq(penalties.bookingId, row.id), eq(penalties.membershipId, membership.id)));
 
     const ban = await recomputeBan(tx, membership.id, membership.status);
+
+    await logAudit(tx, {
+      actorUserId: input.actorId,
+      clubId: input.clubId,
+      action: 'attendance.noshow_undo',
+      target: input.bookingId,
+      actingAsRole: 'owner',
+    });
+
     return { ok: true, bannedUntil: ban.bannedUntil, permanent: ban.permanent };
   });
 }

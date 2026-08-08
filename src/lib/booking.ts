@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { boatTypes, bookings, clubHolidayOverrides, clubs, holidays, memberships, scheduleWindows, sessions, skillLevels, slots, windowBoats } from '@/db/schema';
+import { logAudit } from '@/lib/audit';
 
 import { isBookingOpen, resolveDateOpen } from './calendar-rules';
 import { toMinutes, utcToClubDate, zonedWallClockToUtc } from './date-tz';
@@ -239,7 +240,7 @@ export type OwnerRemoveResult =
   | { ok: false; error: 'not_found' | 'not_active' };
 
 /** Owner force-removes any booking in their club, bypassing self-cancel/cutoff gates. */
-export async function ownerRemoveBooking(db: DB, input: { clubId: string; bookingId: string }): Promise<OwnerRemoveResult> {
+export async function ownerRemoveBooking(db: DB, input: { clubId: string; bookingId: string; actorId: string }): Promise<OwnerRemoveResult> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({ clubId: bookings.clubId, status: bookings.status, sessionId: bookings.sessionId, capacity: sessions.capacity, slotStartAt: slots.startAt, multisportMode: clubs.multisportMode })
@@ -254,11 +255,20 @@ export async function ownerRemoveBooking(db: DB, input: { clubId: string; bookin
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${row.slotStartAt.toISOString()}))`);
     await tx.update(bookings).set({ status: 'cancelled', queuePosition: null }).where(eq(bookings.id, input.bookingId));
     const { promotedUserId } = await applySeating(tx, row.sessionId, row.capacity, row.multisportMode);
+    // Inside the transaction: the removal and its record commit together or not
+    // at all. The early `not_found` / `not_active` returns above leave no row.
+    await logAudit(tx, {
+      actorUserId: input.actorId,
+      clubId: input.clubId,
+      action: 'booking.owner_remove',
+      target: input.bookingId,
+      actingAsRole: 'owner',
+    });
     return promotedUserId ? { ok: true, promoted: { userId: promotedUserId, sessionId: row.sessionId } } : { ok: true };
   });
 }
 
-export type OwnerAddInput = { clubId: string; windowId: string; boatTypeId: string; startAt: Date; userId: string; paymentType: 'regular' | 'multisport'; now?: Date };
+export type OwnerAddInput = { clubId: string; windowId: string; boatTypeId: string; startAt: Date; userId: string; paymentType: 'regular' | 'multisport'; actorId: string; now?: Date };
 export type OwnerAddResult =
   | { ok: true; bookingId: string }
   | { ok: false; error: 'no_session' | 'not_a_member' | 'already_booked_this_slot' | 'session_full' | 'multisport_day_taken' | 'multisport_disabled' };
@@ -346,6 +356,13 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
 
       const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'booked', effectiveAt: now, source: 'owner', bookingDate: dateISO }).returning({ id: bookings.id });
       await applySeating(tx, target.id, target.capacity, club.multisportMode);
+      await logAudit(tx, {
+        actorUserId: input.actorId,
+        clubId: input.clubId,
+        action: 'booking.owner_add',
+        target: inserted.id,
+        actingAsRole: 'owner',
+      });
       return { ok: true, bookingId: inserted.id };
     });
   } catch (err) {
