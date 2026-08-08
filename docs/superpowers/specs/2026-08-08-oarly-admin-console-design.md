@@ -174,8 +174,29 @@ Replace the constraint with a partial unique index that excludes rejected rows:
 
 ```sql
 ALTER TABLE "clubs" DROP CONSTRAINT "clubs_slug_unique";
-CREATE UNIQUE INDEX "clubs_slug_uq" ON "clubs" ("slug") WHERE "status" <> 'rejected';
+CREATE UNIQUE INDEX "clubs_slug_uq" ON "clubs" ("slug")
+  WHERE "status" IN ('pending', 'active', 'suspended');
 ```
+
+**The predicate must enumerate the surviving values — it may not say
+`WHERE status <> 'rejected'`.** Postgres forbids *using* an enum value in the same
+transaction that added it, and Drizzle's migrator runs all pending migrations inside one
+transaction. Measured against `postgres:18`:
+
+| Predicate | Fresh database | Already-migrated database |
+|---|---|---|
+| `status <> 'rejected'` | ✅ commits | ❌ `unsafe use of new value "rejected" of enum type club_status` |
+| `status::text <> 'rejected'` | ❌ `functions in index predicate must be marked IMMUTABLE` | ❌ same |
+| `status IN ('pending','active','suspended')` | ✅ commits | ✅ commits |
+
+The first row is the trap. On a fresh database the enum type is *created* in that same
+transaction, which Postgres does permit — so the `<>` form passes every integration test
+and every CI run, then fails on production, where the type already exists. It would surface
+as a failed Vercel production build inside `scripts/deploy-migrate.mjs`.
+
+The `IN` form is semantically identical today. If `club_status` ever gains another value,
+that predicate must be extended — which is the correct failure mode, since a new status
+needs a deliberate decision about whether it holds a slug.
 
 **The trap this creates, which is the single most dangerous item in this cycle.** Once
 rejected rows are exempt, a rejected `bogazici` and a live `bogazici` can coexist.
