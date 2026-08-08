@@ -1,4 +1,4 @@
-import { and, asc, eq, ne } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { clubs, clubSocials, memberships } from '@/db/schema';
@@ -56,18 +56,37 @@ export async function removeSocial(db: DB, input: { clubId: string; socialId: st
   return res.length > 0;
 }
 
+/**
+ * The id of the club `slug` names, if `userId` is its approved owner AND the club is
+ * ACTIVE — otherwise null.
+ *
+ * This is the TERMINAL authorization decision for `/api/club-logo/upload` and
+ * `/api/club-logo/save`. Those are Route Handlers, not server actions: they never pass
+ * through `requireOwner` or `requireActiveClub`, so whatever this function returns is
+ * the whole of the check. It therefore has to encode the same rule those guards do,
+ * and `active` is that rule — not merely "not rejected".
+ *
+ * `eq(status, 'active')`, not `inArray(SLUG_ADDRESSABLE_STATUSES)`, because a SUSPENDED
+ * club's owner must not be able to drive a mutation by POSTing directly (spec §2). With
+ * the not-rejected form, a suspended club's legitimate owner got a 200 from
+ * `POST /api/club-logo/save` and the row's `logo_url` changed — and `setClubLogo` is
+ * deliberately unaudited, so that write left no trace anywhere. Every other owner
+ * mutation goes through a server action and refuses; this pair was the only leak.
+ *
+ * A `pending` club is excluded for the same reason: it has not been approved, so its
+ * requester is not yet an operator of anything.
+ *
+ * `= 'active'` still uses `clubs_slug_uq`. The partial index's predicate is
+ * `status IN (SLUG_ADDRESSABLE_STATUSES)` and Postgres can prove a single-value
+ * equality implies membership of that list, so narrowing the filter costs no plan.
+ */
 export async function ownedClubId(db: DB, userId: string, slug: string): Promise<string | null> {
   const [row] = await db.select({ clubId: clubs.id })
     .from(clubs)
     .innerJoin(memberships, eq(memberships.clubId, clubs.id))
     .where(and(
       eq(clubs.slug, slug),
-      // Same invariant as `findClubBySlug`: a rejected club is not addressable by slug.
-      // `clubs_slug_uq` is partial, so a rejected `bogazici` and a live `bogazici`
-      // coexist — and this is a write-authorization path, so an unfiltered `limit 1`
-      // would let the rejected request's owner act under a slug at the planner's
-      // discretion (spec §5.2).
-      ne(clubs.status, 'rejected'),
+      eq(clubs.status, 'active'),
       eq(memberships.userId, userId),
       eq(memberships.role, 'owner'),
       eq(memberships.status, 'approved'),

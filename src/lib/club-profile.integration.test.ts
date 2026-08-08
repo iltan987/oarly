@@ -101,6 +101,34 @@ describe.skipIf(!url)('club-profile', () => {
     expect(await ownedClubId(db, owner, slug)).toBeNull();
   });
 
+  /**
+   * `ownedClubId` is the TERMINAL authorization decision for the two club-logo Route
+   * Handlers — they never pass through `requireOwner`/`requireActiveClub` — so a
+   * suspended club's owner must not get an id back from it. With the old
+   * "not rejected" filter, `POST /api/club-logo/save` returned 200 for a suspended
+   * club and changed `logo_url`, and `setClubLogo` is deliberately unaudited, so the
+   * write left no trace (spec §2).
+   */
+  it.each(['suspended', 'pending', 'rejected'] as const)(
+    'refuses ownedClubId for the legitimate owner of a %s club',
+    async (status) => {
+      const slug = `cp-inactive-${status}-${Date.now()}-${Math.round(performance.now())}`;
+      const [club] = await db.insert(schema.clubs)
+        .values({ slug, name: `Inactive ${status}`, status }).returning();
+      const owner = await newUser();
+      await db.insert(schema.memberships)
+        .values({ userId: owner, clubId: club.id, role: 'owner', status: 'approved' });
+      expect(await ownedClubId(db, owner, slug)).toBeNull();
+    },
+  );
+
+  it('still allows the owner of an ACTIVE club through', async () => {
+    const c = await newClub('cp-active-ok');
+    const owner = await newUser();
+    await db.insert(schema.memberships).values({ userId: owner, clubId: c.id, role: 'owner', status: 'approved' });
+    expect(await ownedClubId(db, owner, c.slug)).toBe(c.id);
+  });
+
   it('audits club.profile_update against the club itself', async () => {
     const c = await newClub('cp-audit');
     const owner = await newUser();
