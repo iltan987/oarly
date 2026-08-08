@@ -67,6 +67,7 @@ function PoliciesFields({ settings, labels, state, formAction }: {
   formAction: (formData: FormData) => void;
 }) {
   const [bookingOpenMode, setBookingOpenMode] = useState(settings.bookingOpenMode);
+  const [selfCancelEnabled, setSelfCancelEnabled] = useState(settings.selfCancelEnabled);
   const [noshowPenalty, setNoshowPenalty] = useState(settings.noshowPenalty);
   const [multisportMode, setMultisportMode] = useState(settings.multisportMode);
   const [multisportEnabled, setMultisportEnabled] = useState(settings.multisportEnabled);
@@ -105,18 +106,22 @@ function PoliciesFields({ settings, labels, state, formAction }: {
             </SelectContent>
           </Select>
         </Field>
-        <Field>
-          <FieldLabel htmlFor="bookingOpenLeadDays">{labels.leadDays}</FieldLabel>
-          <Input id="bookingOpenLeadDays" name="bookingOpenLeadDays" type="number" min={1} max={365} defaultValue={settings.bookingOpenLeadDays ?? ''} />
-        </Field>
+        {bookingOpenMode === 'lead' && (
+          <Field>
+            <FieldLabel htmlFor="bookingOpenLeadDays">{labels.leadDays}</FieldLabel>
+            <Input id="bookingOpenLeadDays" name="bookingOpenLeadDays" type="number" min={1} max={365} defaultValue={settings.bookingOpenLeadDays ?? ''} />
+          </Field>
+        )}
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="selfCancelEnabled" defaultChecked={settings.selfCancelEnabled} />
+          <input type="checkbox" name="selfCancelEnabled" checked={selfCancelEnabled} onChange={(e) => setSelfCancelEnabled(e.target.checked)} />
           {labels.selfCancel}
         </label>
-        <Field>
-          <FieldLabel htmlFor="cancelCutoffHours">{labels.cancelCutoff}</FieldLabel>
-          <Input id="cancelCutoffHours" name="cancelCutoffHours" type="number" min={0} max={720} defaultValue={settings.cancelCutoffHours ?? ''} />
-        </Field>
+        {selfCancelEnabled && (
+          <Field>
+            <FieldLabel htmlFor="cancelCutoffHours">{labels.cancelCutoff}</FieldLabel>
+            <Input id="cancelCutoffHours" name="cancelCutoffHours" type="number" min={0} max={720} defaultValue={settings.cancelCutoffHours ?? ''} />
+          </Field>
+        )}
         <Field>
           <FieldLabel htmlFor="waitlistCapacity">{labels.waitlistCapacity}</FieldLabel>
           <Input id="waitlistCapacity" name="waitlistCapacity" type="number" min={0} max={999} defaultValue={settings.waitlistCapacity ?? ''} />

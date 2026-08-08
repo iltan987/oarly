@@ -12,6 +12,8 @@ vi.mock('./actions', () => ({
 
 import { toast } from 'sonner';
 
+import { schedulingSettingsSchema } from '@/lib/schemas';
+
 import { savePoliciesAction } from './actions';
 import { PoliciesForm } from './policies-form';
 
@@ -28,8 +30,8 @@ const settings = {
 };
 
 const labels = {
-  save: 'Save', bookingOpen: 'Booking opens', bookingOpenAlways: 'Always open', bookingOpenLead: 'Lead days',
-  leadDays: 'Lead days', selfCancel: 'Allow self-cancel', cancelCutoff: 'Cutoff', noshow: 'No-show penalty',
+  save: 'Save', bookingOpen: 'Booking opens', bookingOpenAlways: 'Always open', bookingOpenLead: 'A set number of days before',
+  leadDays: 'Lead days count', selfCancel: 'Allow self-cancel', cancelCutoff: 'Cutoff', noshow: 'No-show penalty',
   noshowOff: 'Off', noshow2d: '2 days', noshow1w: '1 week', noshow2w: '2 weeks', noshow1m: '1 month',
   noshowNever: 'Never', multisport: 'MultiSport mode', multisportEqual: 'Equal', multisportPriority: 'Priority',
   multisportHint: 'hint', openOnHolidays: 'Open on holidays', waitlistCapacity: 'Waitlist capacity',
@@ -177,5 +179,83 @@ describe('PoliciesForm MultiSport toggle', () => {
     expect(screen.queryByText(labels.confirmDisableMultisportTitle)).not.toBeInTheDocument();
     expect(toggle).toBeChecked();
     expect(screen.getByText(labels.multisport)).toBeInTheDocument();
+  });
+});
+
+// Extracts the FormData the same way actions.ts's (unmocked) savePoliciesAction
+// does, so the resulting object can be checked against the REAL schema — a
+// mocked action's call args tell us nothing about whether the payload it would
+// have received actually parses.
+function parseSubmitted(formData: FormData) {
+  const leadRaw = String(formData.get('bookingOpenLeadDays') ?? '').trim();
+  const cutoffRaw = String(formData.get('cancelCutoffHours') ?? '').trim();
+  const waitlistRaw = String(formData.get('waitlistCapacity') ?? '').trim();
+  return schedulingSettingsSchema.safeParse({
+    bookingOpenMode: formData.get('bookingOpenMode'),
+    bookingOpenLeadDays: leadRaw === '' ? null : leadRaw,
+    selfCancelEnabled: formData.get('selfCancelEnabled') === 'on',
+    cancelCutoffHours: cutoffRaw === '' ? null : cutoffRaw,
+    noshowPenalty: formData.get('noshowPenalty'),
+    multisportMode: formData.get('multisportMode'),
+    multisportEnabled: formData.get('multisportEnabled') === 'on',
+    openOnHolidays: formData.get('openOnHolidays') === 'on',
+    waitlistCapacity: waitlistRaw === '' ? null : waitlistRaw,
+  });
+}
+
+describe('PoliciesForm nested settings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows the lead-days field only in lead mode', () => {
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
+    expect(screen.queryByText(labels.leadDays)).not.toBeInTheDocument();
+  });
+
+  it('shows the cancel-cutoff field only when self-cancel is on', () => {
+    const off = render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, selfCancelEnabled: false }} labels={labels} />);
+    expect(screen.queryByText(labels.cancelCutoff)).not.toBeInTheDocument();
+    off.unmount();
+
+    render(<PoliciesForm slug="test-club" updatedAt={2} settings={{ ...settings, selfCancelEnabled: true }} labels={labels} />);
+    expect(screen.getByText(labels.cancelCutoff)).toBeInTheDocument();
+  });
+
+  // Task 7's actual risk: a field that unmounts submits nothing, and the schema
+  // must still parse — asserted here against the REAL (unmocked) schema, not
+  // assumed from the component compiling.
+  it('still produces a schema-valid payload with both nested fields hidden', async () => {
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, bookingOpenMode: 'always', selfCancelEnabled: false }} labels={labels} />);
+
+    expect(screen.queryByText(labels.leadDays)).not.toBeInTheDocument();
+    expect(screen.queryByText(labels.cancelCutoff)).not.toBeInTheDocument();
+
+    submit();
+    await waitFor(() => expect(savePoliciesAction).toHaveBeenCalledTimes(1));
+    const formData = vi.mocked(savePoliciesAction).mock.calls[0][2] as FormData;
+    expect(formData.get('bookingOpenLeadDays')).toBeNull();
+    expect(formData.get('cancelCutoffHours')).toBeNull();
+
+    const parsed = parseSubmitted(formData);
+    expect(parsed.success).toBe(true);
+  });
+
+  // The other side: lead mode WITH the field visible must still parse, so the
+  // above isn't passing merely because the schema no longer checks anything.
+  it('still parses when lead mode is on and the lead-days field is visible and filled', async () => {
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'ok' });
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={{ ...settings, bookingOpenMode: 'lead', bookingOpenLeadDays: 3 }} labels={labels} />);
+
+    expect(screen.getByText(labels.leadDays)).toBeInTheDocument();
+
+    submit();
+    await waitFor(() => expect(savePoliciesAction).toHaveBeenCalledTimes(1));
+    const formData = vi.mocked(savePoliciesAction).mock.calls[0][2] as FormData;
+    expect(formData.get('bookingOpenLeadDays')).toBe('3');
+
+    const parsed = parseSubmitted(formData);
+    expect(parsed.success).toBe(true);
   });
 });
