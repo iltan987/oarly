@@ -35,11 +35,81 @@ export async function createClub(
   });
 }
 
+export type DecideClubRequestResult =
+  | { ok: true; status: 'active' | 'rejected'; requesterId: string | null; clubName: string; clubSlug: string }
+  | { ok: false; error: 'not_found' | 'not_pending' | 'note_required' };
+
+/**
+ * Decide a club REQUEST. Valid only on a row that is currently `pending`.
+ *
+ * Deliberately not `setClubStatus`: approving a new club and reinstating a
+ * suspended one were indistinguishable to the audit trail when they shared one
+ * function (spec §5.3). The note is required when rejecting so the requester's
+ * email can say why, and optional when approving. That requirement cannot live in
+ * the schema — `review_note` is nullable because an approval has none — so this
+ * check is the only thing enforcing it.
+ *
+ * Returns the requester and club identity on success so the caller can send the
+ * decision email AFTER the transaction commits — mail is best-effort and must
+ * never roll back the decision (spec §5.4).
+ */
+export async function decideClubRequest(
+  db: DB,
+  input: { clubId: string; decision: 'approve' | 'reject'; note: string | null; actorId: string },
+): Promise<DecideClubRequestResult> {
+  const note = input.note?.trim() ? input.note.trim() : null;
+  if (input.decision === 'reject' && !note) return { ok: false, error: 'note_required' };
+
+  return db.transaction(async (tx) => {
+    const [club] = await tx
+      .select({ id: clubs.id, status: clubs.status, name: clubs.name, slug: clubs.slug, createdBy: clubs.createdBy })
+      .from(clubs)
+      .where(eq(clubs.id, input.clubId))
+      .limit(1);
+    if (!club) return { ok: false, error: 'not_found' };
+    if (club.status !== 'pending') return { ok: false, error: 'not_pending' };
+
+    const status = input.decision === 'approve' ? ('active' as const) : ('rejected' as const);
+    await tx.update(clubs)
+      .set({ status, reviewedAt: new Date(), reviewedBy: input.actorId, reviewNote: note })
+      .where(eq(clubs.id, club.id));
+    await logAudit(tx, {
+      actorUserId: input.actorId,
+      clubId: club.id,
+      action: input.decision === 'approve' ? 'club.approve' : 'club.reject',
+      target: club.id,
+      actingAsRole: 'admin',
+    });
+    return { ok: true, status, requesterId: club.createdBy, clubName: club.name, clubSlug: club.slug };
+  });
+}
+
+export type SetClubStatusResult =
+  | { ok: true; status: 'active' | 'suspended' }
+  | { ok: false; error: 'not_found' | 'not_decided' };
+
+/**
+ * Suspend or reinstate an ALREADY-DECIDED club. `pending` and `rejected` are
+ * unreachable through here: a request is decided by `decideClubRequest`, and a
+ * rejection is final. Reaching either through this function is a typed error,
+ * not a silent write — that refusal is what stops the requests queue and the
+ * clubs list from sharing one control again (spec §5.3).
+ *
+ * The `rejected` half is not merely tidy. Slug uniqueness is a PARTIAL index that
+ * exempts rejected rows, so a live club may already hold a rejected club's slug;
+ * walking that rejected row back to `active` would hit `clubs_slug_uq` at best,
+ * and shadow a live club at worst.
+ */
 export async function setClubStatus(
   db: DB,
   input: { clubId: string; status: 'active' | 'suspended'; actorId: string },
-): Promise<void> {
-  await db.transaction(async (tx) => {
+): Promise<SetClubStatusResult> {
+  return db.transaction(async (tx) => {
+    const [club] = await tx.select({ id: clubs.id, status: clubs.status })
+      .from(clubs).where(eq(clubs.id, input.clubId)).limit(1);
+    if (!club) return { ok: false, error: 'not_found' };
+    if (club.status !== 'active' && club.status !== 'suspended') return { ok: false, error: 'not_decided' };
+
     await tx.update(clubs).set({ status: input.status }).where(eq(clubs.id, input.clubId));
     await logAudit(tx, {
       actorUserId: input.actorId,
@@ -48,5 +118,6 @@ export async function setClubStatus(
       target: input.clubId,
       actingAsRole: 'admin',
     });
+    return { ok: true, status: input.status };
   });
 }

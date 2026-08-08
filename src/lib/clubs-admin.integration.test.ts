@@ -6,11 +6,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
-import { createClub, setClubStatus } from './clubs-admin';
+import { createClub, decideClubRequest, setClubStatus } from './clubs-admin';
 
 const url = process.env.TEST_DATABASE_URL;
 
-describe.skipIf(!url)('createClub', () => {
+describe.skipIf(!url)('clubs-admin', () => {
   let pool: Pool;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   beforeAll(async () => { pool = new Pool({ connectionString: url }); db = drizzle(pool, { schema }); await migrate(db, { migrationsFolder: './drizzle' }); });
@@ -67,14 +67,107 @@ describe.skipIf(!url)('createClub', () => {
       .toMatchObject({ ok: false, error: 'slug_taken' });
   });
 
-  it('setClubStatus flips status and audits', async () => {
+  it('approves a pending club: status active, review stamped, club.approve audited', async () => {
     const admin = await mkUser();
-    const [club] = await db.insert(schema.clubs).values({ slug: `st-${Date.now()}`, name: 'S', status: 'pending' }).returning();
-    await setClubStatus(db, { clubId: club.id, status: 'active', actorId: admin.id });
+    const requester = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `ap-${Date.now()}`, name: 'Ap', status: 'pending', createdBy: requester.id }).returning();
+
+    const res = await decideClubRequest(db, { clubId: club.id, decision: 'approve', note: null, actorId: admin.id });
+    expect(res).toMatchObject({ ok: true, status: 'active', requesterId: requester.id, clubName: 'Ap' });
+
     const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
     expect(after.status).toBe('active');
+    expect(after.reviewedBy).toBe(admin.id);
+    expect(after.reviewedAt).not.toBeNull();
+
     const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id));
-    expect(audit.some((a) => a.action === 'club.activate')).toBe(true);
-    expect(audit.find((a) => a.action === 'club.activate')).toMatchObject({ actingAsRole: 'admin' });
+    expect(audit.map((a) => a.action)).toContain('club.approve');
+    expect(audit.find((a) => a.action === 'club.approve')?.actingAsRole).toBe('admin');
+  });
+
+  it('rejects a pending club and stores the note', async () => {
+    const admin = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `rj-${Date.now()}`, name: 'Rj', status: 'pending' }).returning();
+
+    const res = await decideClubRequest(db, { clubId: club.id, decision: 'reject', note: '  Duplicate of an existing club  ', actorId: admin.id });
+    expect(res).toMatchObject({ ok: true, status: 'rejected' });
+
+    const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
+    expect(after.status).toBe('rejected');
+    expect(after.reviewNote).toBe('Duplicate of an existing club');
+
+    const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id));
+    expect(audit.map((a) => a.action)).toContain('club.reject');
+  });
+
+  // `review_note` cannot be enforced by the schema — the column is nullable because an
+  // approval has no note. This check is the ONLY thing standing between a requester and
+  // a rejection email that says nothing.
+  it('refuses to reject without a note, and does not touch the row', async () => {
+    const admin = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `nn-${Date.now()}`, name: 'Nn', status: 'pending' }).returning();
+
+    expect(await decideClubRequest(db, { clubId: club.id, decision: 'reject', note: '   ', actorId: admin.id }))
+      .toMatchObject({ ok: false, error: 'note_required' });
+    expect(await decideClubRequest(db, { clubId: club.id, decision: 'reject', note: null, actorId: admin.id }))
+      .toMatchObject({ ok: false, error: 'note_required' });
+
+    const [after] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
+    expect(after.status).toBe('pending');
+    expect(after.reviewedAt).toBeNull();
+  });
+
+  it('refuses to decide a club that is not pending', async () => {
+    const admin = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `np-${Date.now()}`, name: 'Np', status: 'active' }).returning();
+    expect(await decideClubRequest(db, { clubId: club.id, decision: 'approve', note: null, actorId: admin.id }))
+      .toMatchObject({ ok: false, error: 'not_pending' });
+  });
+
+  // The un-reject hole: `setClubStatus` is id-keyed, so without a status precondition it
+  // would happily walk a rejected club back to `active` — and collide with whatever live
+  // club has since claimed that slug.
+  it('setClubStatus refuses a pending club and refuses a rejected club', async () => {
+    const admin = await mkUser();
+    const [pendingClub] = await db.insert(schema.clubs)
+      .values({ slug: `sp-${Date.now()}`, name: 'Sp', status: 'pending' }).returning();
+    expect(await setClubStatus(db, { clubId: pendingClub.id, status: 'active', actorId: admin.id }))
+      .toMatchObject({ ok: false, error: 'not_decided' });
+    const [stillPending] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, pendingClub.id));
+    expect(stillPending.status).toBe('pending');
+
+    const [rejectedClub] = await db.insert(schema.clubs)
+      .values({ slug: `sr-${Date.now()}`, name: 'Sr', status: 'rejected' }).returning();
+    expect(await setClubStatus(db, { clubId: rejectedClub.id, status: 'active', actorId: admin.id }))
+      .toMatchObject({ ok: false, error: 'not_decided' });
+    const [stillRejected] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, rejectedClub.id));
+    expect(stillRejected.status).toBe('rejected');
+  });
+
+  it('setClubStatus suspends and reinstates an active club, auditing each way', async () => {
+    const admin = await mkUser();
+    const [club] = await db.insert(schema.clubs)
+      .values({ slug: `ss-${Date.now()}`, name: 'Ss', status: 'active' }).returning();
+
+    expect(await setClubStatus(db, { clubId: club.id, status: 'suspended', actorId: admin.id })).toMatchObject({ ok: true });
+    const [suspended] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
+    expect(suspended.status).toBe('suspended');
+
+    expect(await setClubStatus(db, { clubId: club.id, status: 'active', actorId: admin.id })).toMatchObject({ ok: true });
+    const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id));
+    expect(audit.map((a) => a.action).sort()).toEqual(['club.activate', 'club.suspend']);
+  });
+
+  it('reports not_found for an unknown club id', async () => {
+    const admin = await mkUser();
+    const missing = '00000000-0000-0000-0000-000000000000';
+    expect(await decideClubRequest(db, { clubId: missing, decision: 'approve', note: null, actorId: admin.id }))
+      .toMatchObject({ ok: false, error: 'not_found' });
+    expect(await setClubStatus(db, { clubId: missing, status: 'suspended', actorId: admin.id }))
+      .toMatchObject({ ok: false, error: 'not_found' });
   });
 });

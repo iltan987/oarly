@@ -159,6 +159,7 @@
     "statusActive": "Active",
     "statusPending": "Pending",
     "statusSuspended": "Suspended",
+    "statusRejected": "Rejected",
     "noClubs": "No clubs yet.",
     "noRequests": "No pending requests.",
     "created": "Club created.",
@@ -171,6 +172,7 @@
     "errorNameInvalid": "Club name must be at least 2 characters.",
     "errorOwnerEmailInvalid": "Enter a valid email.",
     "actionError": "Couldn't update the club. Try again.",
+    "errorNotDecided": "Only an approved club can be suspended or reinstated.",
     "errorTooManyRequests": "Too many requests. Please try again later."
   },
   "requestClub": {

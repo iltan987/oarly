@@ -44,6 +44,8 @@ export function ClubStatusButton({
     const result = await setClubStatusAction(null, formData);
     if (result.ok) {
       toast.success(result.status === 'active' ? t('activated') : t('suspended2'));
+    } else if (result.error === 'not_decided') {
+      toast.error(t('errorNotDecided'));
     } else {
       toast.error(t('actionError'));
     }
