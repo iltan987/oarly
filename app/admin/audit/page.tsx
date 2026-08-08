@@ -64,10 +64,16 @@ export default async function AdminAuditPage({ searchParams }: {
   const actionPrefix = reset ? undefined : one(sp.action)?.trim() || undefined;
   const cursor = reset ? null : parseCursor(one(sp.cursor));
 
-  const { rows, nextCursor } = await listAuditRows(db, {
-    filters: { clubId, actorUserId, actionPrefix },
-    cursor,
-  });
+  // `clubId` is bound into `club_id = $1` against a `uuid` column, so a value that is
+  // not uuid-shaped raises `invalid input syntax for type uuid` out of the render —
+  // and unlike the cursor, this one is a free-text `<Input>` an operator types into,
+  // so `abc` was a 500 on the ordinary path. The query is skipped rather than the
+  // filter dropped: dropping it would answer "which rows belong to club abc" with the
+  // entire unfiltered log, which is a worse answer than none.
+  const clubIdIsUsable = clubId === undefined || UUID_RE.test(clubId);
+  const { rows, nextCursor } = clubIdIsUsable
+    ? await listAuditRows(db, { filters: { clubId, actorUserId, actionPrefix }, cursor })
+    : { rows: [], nextCursor: null };
 
   const query = new URLSearchParams();
   if (clubId) query.set('clubId', clubId);

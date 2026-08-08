@@ -38,6 +38,11 @@ async function renderPage(sp: Record<string, string | string[]>) {
 }
 
 const UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+// The club filter is bound against a `uuid` column, so every test that expects a query
+// to actually run has to hand it a uuid — a short label like `c1` is the 500 this page
+// now refuses to make.
+const CLUB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+const CLUB2 = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 const NO_FILTERS = { clubId: undefined, actorUserId: undefined, actionPrefix: undefined };
 
 beforeEach(() => {
@@ -47,10 +52,10 @@ beforeEach(() => {
 
 describe('AdminAuditPage', () => {
   it('parses the cursor out of the URL and passes the trimmed filters through', async () => {
-    await renderPage({ clubId: ' c1 ', actorUserId: 'u1', action: 'boat.', cursor: `2026-08-08T09:00:00.000Z~${UUID}` });
+    await renderPage({ clubId: ` ${CLUB} `, actorUserId: 'u1', action: 'boat.', cursor: `2026-08-08T09:00:00.000Z~${UUID}` });
 
     expect(listAuditRows).toHaveBeenCalledWith({}, {
-      filters: { clubId: 'c1', actorUserId: 'u1', actionPrefix: 'boat.' },
+      filters: { clubId: CLUB, actorUserId: 'u1', actionPrefix: 'boat.' },
       cursor: { createdAt: new Date('2026-08-08T09:00:00.000Z'), id: UUID },
     });
   });
@@ -60,12 +65,12 @@ describe('AdminAuditPage', () => {
   // unreachable.
   it('encodes the next cursor into the Older link and carries the filters with it', async () => {
     listAuditRows.mockReturnValue(result(NEXT));
-    await renderPage({ clubId: 'c1', action: 'boat.' });
+    await renderPage({ clubId: CLUB, action: 'boat.' });
 
     const older = screen.getByRole('link', { name: 'auditNext' });
     const url = new URL(older.getAttribute('href') ?? '', 'http://x');
     expect(url.pathname).toBe('/admin/audit');
-    expect(url.searchParams.get('clubId')).toBe('c1');
+    expect(url.searchParams.get('clubId')).toBe(CLUB);
     expect(url.searchParams.get('action')).toBe('boat.');
     expect(url.searchParams.get('cursor')).toBe(`${NEXT.createdAt.toISOString()}~${NEXT.id}`);
   });
@@ -77,9 +82,9 @@ describe('AdminAuditPage', () => {
   });
 
   it('drops the cursor from the Newest link so it lands on the head of the filtered log', async () => {
-    await renderPage({ clubId: 'c1', cursor: `2026-08-08T09:00:00.000Z~${UUID}` });
+    await renderPage({ clubId: CLUB, cursor: `2026-08-08T09:00:00.000Z~${UUID}` });
     const first = screen.getByRole('link', { name: 'auditFirst' });
-    expect(first.getAttribute('href')).toBe('/admin/audit?clubId=c1');
+    expect(first.getAttribute('href')).toBe(`/admin/audit?clubId=${CLUB}`);
   });
 
   // "Clear" submits the form, so the browser resends every field it still holds.
@@ -108,10 +113,10 @@ describe('AdminAuditPage', () => {
   // here is read with a string method, so a repeated key used to throw a TypeError
   // out of the render before a single row was fetched.
   it('survives a repeated query parameter and reads the first occurrence', async () => {
-    await renderPage({ clubId: ['c1', 'c2'], actorUserId: ['u1'], action: ['boat.', 'club.'], cursor: ['x', 'y'] });
+    await renderPage({ clubId: [CLUB, CLUB2], actorUserId: ['u1'], action: ['boat.', 'club.'], cursor: ['x', 'y'] });
 
     expect(listAuditRows).toHaveBeenCalledWith({}, {
-      filters: { clubId: 'c1', actorUserId: 'u1', actionPrefix: 'boat.' },
+      filters: { clubId: CLUB, actorUserId: 'u1', actionPrefix: 'boat.' },
       cursor: null,
     });
   });
@@ -119,5 +124,35 @@ describe('AdminAuditPage', () => {
   it('honours a repeated reset parameter', async () => {
     await renderPage({ reset: ['1', '0'], clubId: 'c1' });
     expect(listAuditRows).toHaveBeenCalledWith({}, { filters: NO_FILTERS, cursor: null });
+  });
+
+  // `clubId` is bound into `club_id = $1` against a `uuid` column. It is a free-text
+  // `<Input>` in the filter bar, so this is more reachable than the cursor: typing
+  // `abc` and pressing Search raised `invalid input syntax for type uuid` out of the
+  // render as a 500.
+  it.each([
+    ['plain text', 'abc'],
+    ['a uuid with a character missing', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa'],
+    ['a numeric id', '42'],
+  ])('renders an empty page without querying when clubId is %s', async (_label, clubId) => {
+    await renderPage({ clubId });
+    expect(listAuditRows).not.toHaveBeenCalled();
+    expect(screen.getByText('auditEmpty')).toBeInTheDocument();
+  });
+
+  // Dropping the filter instead would answer "which rows belong to club abc" with the
+  // whole unfiltered log, which is a worse answer than none.
+  it('does not fall back to an unfiltered query for an unusable clubId', async () => {
+    await renderPage({ clubId: 'abc', actorUserId: 'u1' });
+    expect(listAuditRows).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link', { name: 'auditNext' })).toBeNull();
+  });
+
+  it('still queries when the clubId is a well-formed uuid in upper case', async () => {
+    await renderPage({ clubId: UUID.toUpperCase() });
+    expect(listAuditRows).toHaveBeenCalledWith({}, {
+      filters: { clubId: UUID.toUpperCase(), actorUserId: undefined, actionPrefix: undefined },
+      cursor: null,
+    });
   });
 });
