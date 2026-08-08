@@ -1,6 +1,7 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, asc, eq, ne, type SQL, sql } from 'drizzle-orm';
 
-import { clubs, memberships, user } from '@/db/schema';
+import type { DbOrTx } from '@/db';
+import { boatTypes, clubs, memberships, scheduleWindows, user } from '@/db/schema';
 import { logAudit } from '@/lib/audit';
 import type { DB } from '@/lib/membership';
 import { validateSlug } from '@/lib/slug';
@@ -140,4 +141,163 @@ export async function setClubStatus(
     });
     return { ok: true, status: input.status };
   });
+}
+
+export type TransferOwnershipResult =
+  | { ok: true; fromUserId: string | null }
+  | { ok: false; error: 'club_not_found' | 'target_not_member' | 'already_owner' };
+
+/**
+ * Move ownership of a club to an existing approved member.
+ *
+ * A TRANSFER, not an invitation: the target must already be an approved member of
+ * this club. Promoting a stranger is the invitation flow, which is deferred
+ * (spec §7). Until now `memberships.role` was only ever written at INSERT time —
+ * there is no `setRole` anywhere — so a club whose owner walked away could not be
+ * reassigned by anyone, including a platform admin (spec §6.3).
+ *
+ * Demote-then-promote in ONE transaction, so the club is never observed ownerless
+ * and never observed with two owners; this cycle does not introduce multiple owners.
+ */
+export async function transferOwnership(
+  db: DB,
+  input: { clubId: string; toUserId: string; actorId: string },
+): Promise<TransferOwnershipResult> {
+  return db.transaction(async (tx) => {
+    // `.for('update')` on the CLUB row is what serialises two concurrent transfers,
+    // and it is load-bearing rather than defensive. This function reads the
+    // memberships, decides, and then writes two of them — the same check-then-act
+    // shape that let two concurrent `decideClubRequest` calls both win. Without the
+    // lock, under READ COMMITTED: both transactions read their own target as an
+    // eligible member; the first demotes the owner and promotes its target; the
+    // second's demote (`WHERE role = 'owner'`) blocks, then re-evaluates against the
+    // committed row, finds it is now `member`, matches NOTHING, and promotes a
+    // SECOND owner. The club ends with two. Locking the club row instead of the
+    // membership rows is deliberate: the two racers target DIFFERENT membership
+    // rows, so a lock on those would not make them meet.
+    const [club] = await tx.select({ id: clubs.id }).from(clubs)
+      .where(eq(clubs.id, input.clubId)).limit(1).for('update');
+    if (!club) return { ok: false, error: 'club_not_found' };
+
+    // Scoped by clubId AND userId: a membership in some other club is not a
+    // membership in this one, and matching on the user alone would let any approved
+    // member anywhere be handed this club.
+    //
+    // Also locked, for a different race than the one above: a concurrent
+    // member-rejection or ban on this exact row would otherwise land between this
+    // read and the promote, and hand the club to someone the club just removed.
+    const [target] = await tx
+      .select({ id: memberships.id, role: memberships.role, status: memberships.status })
+      .from(memberships)
+      .where(and(eq(memberships.clubId, input.clubId), eq(memberships.userId, input.toUserId)))
+      .limit(1)
+      .for('update');
+    if (!target || target.status !== 'approved') return { ok: false, error: 'target_not_member' };
+    // Refused BEFORE the demote, not merely as a courtesy: the demote below matches
+    // every `owner` row of this club, so falling through with an already-owner target
+    // would demote the target and then re-promote it — or, if the two statements ever
+    // drift apart, leave the club with no owner at all.
+    if (target.role === 'owner') return { ok: false, error: 'already_owner' };
+
+    // Demote first, promote second. The reverse order would momentarily match the
+    // freshly promoted row with `WHERE role = 'owner'` and undo itself.
+    const demoted = await tx.update(memberships).set({ role: 'member' })
+      .where(and(eq(memberships.clubId, input.clubId), eq(memberships.role, 'owner')))
+      .returning({ userId: memberships.userId });
+    await tx.update(memberships).set({ role: 'owner' }).where(eq(memberships.id, target.id));
+
+    // Inside the transaction, on `tx`: a role change that committed without its audit
+    // row is precisely what an audit log exists to make impossible.
+    await logAudit(tx, {
+      actorUserId: input.actorId,
+      clubId: input.clubId,
+      action: 'club.transfer_owner',
+      target: input.toUserId,
+      actingAsRole: 'admin',
+    });
+    // `null` when the club had no owner to begin with — the exact situation this
+    // function was added to repair, so it is a normal outcome, not an error.
+    return { ok: true, fromUserId: demoted[0]?.userId ?? null };
+  });
+}
+
+/**
+ * How many owners and transfer candidates `/admin/clubs/[id]` will load.
+ *
+ * Neither list is paginated, so both are capped rather than unbounded: a club with
+ * a thousand approved members must not turn one admin page view into a thousand-row
+ * fetch feeding a thousand-option `<select>`. A club has exactly one owner, so
+ * `OWNER_LIMIT` only ever matters for pre-existing data.
+ */
+const OWNER_LIMIT = 10;
+export const TRANSFER_CANDIDATE_LIMIT = 200;
+
+export type ClubAdminDetail = {
+  club: typeof clubs.$inferSelect;
+  reviewedByName: string | null;
+  owners: { userId: string; name: string; email: string }[];
+  memberCounts: { pending: number; approved: number; rejected: number; banned: number };
+  transferCandidates: { userId: string; name: string; email: string }[];
+  boatCount: number;
+  windowCount: number;
+};
+
+/** Everything `/admin/clubs/[id]` renders, in one place, keyed by id (spec §6.1). */
+export async function getClubAdminDetail(db: DbOrTx, clubId: string): Promise<ClubAdminDetail | null> {
+  const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
+  if (!club) return null;
+
+  // A FUNCTION, not a shared builder: drizzle's `.where()`/`.limit()` mutate the
+  // query object and return `this`, so reusing one builder for both lists below
+  // would have the second call overwrite the first's WHERE clause.
+  const people = (where: SQL | undefined, limit: number) => db
+    .select({ userId: memberships.userId, name: user.name, email: user.email })
+    .from(memberships)
+    .innerJoin(user, eq(user.id, memberships.userId))
+    .where(where)
+    // `user.id` breaks the tie so the order is total: names are not unique, and a
+    // list that reshuffles between renders is a list an admin cannot click safely.
+    .orderBy(asc(user.name), asc(user.id))
+    .limit(limit);
+
+  const [owners, transferCandidates, counts, boats, windows] = await Promise.all([
+    people(and(eq(memberships.clubId, clubId), eq(memberships.role, 'owner')), OWNER_LIMIT),
+    // Approved non-owners only — `transferOwnership` refuses everyone else, so
+    // offering them here would only ever produce a guaranteed error toast.
+    people(
+      and(
+        eq(memberships.clubId, clubId),
+        ne(memberships.role, 'owner'),
+        eq(memberships.status, 'approved'),
+      ),
+      TRANSFER_CANDIDATE_LIMIT,
+    ),
+    // Grouped, not four round trips and not a full roster in memory: the result is
+    // bounded by the four values of `membership_status`.
+    db.select({ status: memberships.status, n: sql<number>`count(*)::int` })
+      .from(memberships).where(eq(memberships.clubId, clubId)).groupBy(memberships.status),
+    db.select({ n: sql<number>`count(*)::int` }).from(boatTypes).where(eq(boatTypes.clubId, clubId)),
+    db.select({ n: sql<number>`count(*)::int` }).from(scheduleWindows).where(eq(scheduleWindows.clubId, clubId)),
+  ]);
+
+  const memberCounts = { pending: 0, approved: 0, rejected: 0, banned: 0 };
+  for (const row of counts) memberCounts[row.status] = row.n;
+
+  let reviewedByName: string | null = null;
+  if (club.reviewedBy) {
+    // `reviewed_by` is `on delete set null` on the column but the reviewer may still
+    // have been deleted between the decision and now, so a missing row is normal.
+    const [reviewer] = await db.select({ name: user.name }).from(user).where(eq(user.id, club.reviewedBy)).limit(1);
+    reviewedByName = reviewer?.name ?? null;
+  }
+
+  return {
+    club,
+    reviewedByName,
+    owners,
+    memberCounts,
+    transferCandidates,
+    boatCount: boats[0]?.n ?? 0,
+    windowCount: windows[0]?.n ?? 0,
+  };
 }
