@@ -19,6 +19,7 @@ export const clubs = pgTable('clubs', {
   timezone: text('timezone').notNull().default('Europe/Istanbul'),
   status: clubStatusEnum('status').notNull().default('pending'),
   multisportMode: multisportModeEnum('multisport_mode').notNull().default('equal'),
+  multisportEnabled: boolean('multisport_enabled').notNull().default(true),
   bookingOpenMode: bookingOpenModeEnum('booking_open_mode').notNull().default('always'),
   bookingOpenLeadDays: integer('booking_open_lead_days'),
   selfCancelEnabled: boolean('self_cancel_enabled').notNull().default(true),

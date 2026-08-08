@@ -23,26 +23,26 @@ describe.skipIf(!url)('scheduling-settings', () => {
 
   it('persists and reads back all seven fields', async () => {
     const c = await newClub('set-rw');
-    const r = await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'lead', bookingOpenLeadDays: 3, selfCancelEnabled: false, cancelCutoffHours: 8, noshowPenalty: '1w', multisportMode: 'priority', openOnHolidays: true, waitlistCapacity: 5 });
+    const r = await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'lead', bookingOpenLeadDays: 3, selfCancelEnabled: false, cancelCutoffHours: 8, noshowPenalty: '1w', multisportMode: 'priority', multisportEnabled: true, openOnHolidays: true, waitlistCapacity: 5 });
     expect(r).toEqual({ ok: true });
-    expect(await getSchedulingSettings(db, c.id)).toEqual({ bookingOpenMode: 'lead', bookingOpenLeadDays: 3, selfCancelEnabled: false, cancelCutoffHours: 8, noshowPenalty: '1w', multisportMode: 'priority', openOnHolidays: true, waitlistCapacity: 5 });
+    expect(await getSchedulingSettings(db, c.id)).toEqual({ bookingOpenMode: 'lead', bookingOpenLeadDays: 3, selfCancelEnabled: false, cancelCutoffHours: 8, noshowPenalty: '1w', multisportMode: 'priority', multisportEnabled: true, openOnHolidays: true, waitlistCapacity: 5 });
   });
 
   it('rejects lead mode without a valid lead-days count', async () => {
     const c = await newClub('set-lead');
-    expect(await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'lead', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', openOnHolidays: false, waitlistCapacity: null })).toEqual({ ok: false, error: 'invalid_lead' });
+    expect(await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'lead', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', multisportEnabled: true, openOnHolidays: false, waitlistCapacity: null })).toEqual({ ok: false, error: 'invalid_lead' });
   });
 
   it('normalizes lead days to null under always mode', async () => {
     const c = await newClub('set-null');
-    await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'always', bookingOpenLeadDays: 5, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', openOnHolidays: false, waitlistCapacity: null });
+    await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'always', bookingOpenLeadDays: 5, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', multisportEnabled: true, openOnHolidays: false, waitlistCapacity: null });
     expect((await getSchedulingSettings(db, c.id)).bookingOpenLeadDays).toBeNull();
   });
 
   it('scopes updates to the owning club', async () => {
     const c1 = await newClub('set-scope1');
     const c2 = await newClub('set-scope2');
-    await updateSchedulingSettings(db, c1.id, { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: false, cancelCutoffHours: null, noshowPenalty: '1m', multisportMode: 'equal', openOnHolidays: false, waitlistCapacity: null });
+    await updateSchedulingSettings(db, c1.id, { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: false, cancelCutoffHours: null, noshowPenalty: '1m', multisportMode: 'equal', multisportEnabled: true, openOnHolidays: false, waitlistCapacity: null });
     // c2 is untouched — still its defaults
     const [row] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, c2.id));
     expect(row.noshowPenalty).toBe('off');
@@ -51,9 +51,9 @@ describe.skipIf(!url)('scheduling-settings', () => {
 
   it('round-trips the waitlist capacity', async () => {
     const c = await newClub('set-waitlist');
-    await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', openOnHolidays: false, waitlistCapacity: 4 });
+    await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', multisportEnabled: true, openOnHolidays: false, waitlistCapacity: 4 });
     expect((await getSchedulingSettings(db, c.id)).waitlistCapacity).toBe(4);
-    await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', openOnHolidays: false, waitlistCapacity: null });
+    await updateSchedulingSettings(db, c.id, { bookingOpenMode: 'always', bookingOpenLeadDays: null, selfCancelEnabled: true, cancelCutoffHours: null, noshowPenalty: 'off', multisportMode: 'equal', multisportEnabled: true, openOnHolidays: false, waitlistCapacity: null });
     expect((await getSchedulingSettings(db, c.id)).waitlistCapacity).toBeNull();
   });
 });

@@ -57,6 +57,13 @@
       "when": 1786123626733,
       "tag": "0007_rare_wolfsbane",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786147589310,
+      "tag": "0008_lonely_saracen",
+      "breakpoints": true
     }
   ]
 }

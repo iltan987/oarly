@@ -10,6 +10,7 @@ export interface SchedulingSettingsInput {
   cancelCutoffHours: number | null;
   noshowPenalty: 'off' | '2d' | '1w' | '2w' | '1m' | 'never';
   multisportMode: 'equal' | 'priority';
+  multisportEnabled: boolean;
   openOnHolidays: boolean;
   waitlistCapacity: number | null;
 }
@@ -24,6 +25,7 @@ export async function getSchedulingSettings(db: DB, clubId: string): Promise<Sch
       cancelCutoffHours: clubs.cancelCutoffHours,
       noshowPenalty: clubs.noshowPenalty,
       multisportMode: clubs.multisportMode,
+      multisportEnabled: clubs.multisportEnabled,
       openOnHolidays: clubs.openOnHolidays,
       waitlistCapacity: clubs.waitlistCapacity,
     })
@@ -47,6 +49,7 @@ export async function updateSchedulingSettings(db: DB, clubId: string, input: Sc
       cancelCutoffHours: input.cancelCutoffHours,
       noshowPenalty: input.noshowPenalty,
       multisportMode: input.multisportMode,
+      multisportEnabled: input.multisportEnabled,
       openOnHolidays: input.openOnHolidays,
       waitlistCapacity: input.waitlistCapacity,
     })

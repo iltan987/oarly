@@ -1,0 +1,1 @@
+ALTER TABLE "clubs" ADD COLUMN "multisport_enabled" boolean DEFAULT true NOT NULL;

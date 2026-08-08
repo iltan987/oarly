@@ -92,6 +92,7 @@ export const schedulingSettingsSchema = z
     cancelCutoffHours: z.coerce.number().int().min(0).max(720).nullable(),
     noshowPenalty: z.enum(['off', '2d', '1w', '2w', '1m', 'never']),
     multisportMode: z.enum(['equal', 'priority']),
+    multisportEnabled: z.boolean(),
     openOnHolidays: z.boolean(),
     waitlistCapacity: z.coerce.number().int().min(0).max(999).nullable(),
   })
