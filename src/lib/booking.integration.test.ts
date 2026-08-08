@@ -28,9 +28,9 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   afterAll(async () => { await pool.end(); });
 
   let seq = 0;
-  async function scenario(opts: { seats: number; quantity?: number; mode?: 'equal' | 'priority'; allowedPayment?: 'regular_only' | 'multisport_only' | 'both'; minSkillRank?: number; selfCancel?: boolean; cutoffHours?: number | null; bookingOpenMode?: 'always' | 'lead'; bookingOpenLeadDays?: number | null }) {
+  async function scenario(opts: { seats: number; quantity?: number; mode?: 'equal' | 'priority'; allowedPayment?: 'regular_only' | 'multisport_only' | 'both'; minSkillRank?: number; selfCancel?: boolean; cutoffHours?: number | null; bookingOpenMode?: 'always' | 'lead'; bookingOpenLeadDays?: number | null; multisportEnabled?: boolean }) {
     const tag = `bk-${Date.now()}-${seq++}`;
-    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, multisportMode: opts.mode ?? 'equal', selfCancelEnabled: opts.selfCancel ?? true, cancelCutoffHours: opts.cutoffHours ?? null, bookingOpenMode: opts.bookingOpenMode ?? 'always', bookingOpenLeadDays: opts.bookingOpenLeadDays ?? null }).returning();
+    const [club] = await db.insert(schema.clubs).values({ slug: tag, name: tag, status: 'active', timezone: TZ, multisportMode: opts.mode ?? 'equal', multisportEnabled: opts.multisportEnabled ?? true, selfCancelEnabled: opts.selfCancel ?? true, cancelCutoffHours: opts.cutoffHours ?? null, bookingOpenMode: opts.bookingOpenMode ?? 'always', bookingOpenLeadDays: opts.bookingOpenLeadDays ?? null }).returning();
     let lvl: typeof schema.skillLevels.$inferSelect | undefined;
     if (opts.minSkillRank != null) [lvl] = await db.insert(schema.skillLevels).values({ clubId: club.id, name: `L${opts.minSkillRank}`, rank: opts.minSkillRank }).returning();
     const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: opts.seats, allowedPayment: opts.allowedPayment ?? 'both', minSkillLevelId: lvl?.id ?? null }).returning();
@@ -256,6 +256,22 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const pend = await newMember(s.club.id, 'p', null, 'pending');
     const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: pend, paymentType: 'regular', now: NOW });
     expect(res).toEqual({ ok: false, error: 'not_a_member' });
+  });
+
+  it('owner-add rejects MultiSport at a club that has MultiSport disabled', async () => {
+    const s = await scenario({ seats: 2, allowedPayment: 'both', multisportEnabled: false });
+    const u1 = await newMember(s.club.id, 'u1');
+    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'multisport', now: NOW });
+    expect(res).toEqual({ ok: false, error: 'multisport_disabled' });
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u1));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('owner-add still accepts regular at a club that has MultiSport disabled', async () => {
+    const s = await scenario({ seats: 2, allowedPayment: 'both', multisportEnabled: false });
+    const u1 = await newMember(s.club.id, 'u1');
+    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
+    expect(res).toMatchObject({ ok: true });
   });
 
   // Nothing sets sessions.status today (per-session cancel is a later cycle), so these

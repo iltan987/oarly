@@ -389,6 +389,7 @@
       "confirmRemoveBody": "This cannot be undone. If someone is waiting, the next person on the waitlist takes the seat.",
       "confirmRemoveCta": "Remove booking",
       "added": "Member added.",
+      "multisportDisabled": "This club has MultiSport turned off — add this member with cash instead.",
       "markAbsent": "Mark absent",
       "undoAbsent": "Undo",
       "absent": "Absent",

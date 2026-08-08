@@ -389,6 +389,7 @@
       "confirmRemoveBody": "Bu işlem geri alınamaz. Bekleme listesi doluysa sıradaki kişi koltuğu alır.",
       "confirmRemoveCta": "Rezervasyonu kaldır",
       "added": "Üye eklendi.",
+      "multisportDisabled": "Bu kulüpte MultiSport kapalı — bu üyeyi nakit ile ekleyin.",
       "markAbsent": "Katılmadı",
       "undoAbsent": "Geri al",
       "absent": "Katılmadı",

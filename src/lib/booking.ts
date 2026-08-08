@@ -261,7 +261,7 @@ export async function ownerRemoveBooking(db: DB, input: { clubId: string; bookin
 export type OwnerAddInput = { clubId: string; windowId: string; boatTypeId: string; startAt: Date; userId: string; paymentType: 'regular' | 'multisport'; now?: Date };
 export type OwnerAddResult =
   | { ok: true; bookingId: string }
-  | { ok: false; error: 'no_session' | 'not_a_member' | 'already_booked_this_slot' | 'session_full' | 'multisport_day_taken' };
+  | { ok: false; error: 'no_session' | 'not_a_member' | 'already_booked_this_slot' | 'session_full' | 'multisport_day_taken' | 'multisport_disabled' };
 
 /**
  * Owner seats a member into a free seat of a block. Override: skips skill/payment
@@ -271,7 +271,7 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
   const now = input.now ?? new Date();
   try {
     return await db.transaction(async (tx) => {
-      const [club] = await tx.select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode }).from(clubs).where(eq(clubs.id, input.clubId));
+      const [club] = await tx.select({ timezone: clubs.timezone, multisportMode: clubs.multisportMode, multisportEnabled: clubs.multisportEnabled }).from(clubs).where(eq(clubs.id, input.clubId));
       if (!club) return { ok: false, error: 'no_session' };
       const [win] = await tx.select().from(scheduleWindows).where(and(eq(scheduleWindows.id, input.windowId), eq(scheduleWindows.clubId, input.clubId)));
       if (!win) return { ok: false, error: 'no_session' };
@@ -315,6 +315,14 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
       if (slotSessionIds.length) {
         const [existingActive] = await tx.select({ id: bookings.id }).from(bookings).where(and(eq(bookings.userId, input.userId), inArray(bookings.sessionId, slotSessionIds), inArray(bookings.status, [...ACTIVE])));
         if (existingActive) return { ok: false, error: 'already_booked_this_slot' };
+      }
+
+      // Unlike the club's own gates (closed day, booking-open, skill, payment
+      // eligibility), this is not a gate the owner is choosing to relax for one
+      // member — a club with no MultiSport contract has no such payment
+      // arrangement to record at all. Rejected, not waived (spec §5.1).
+      if (input.paymentType === 'multisport' && !club.multisportEnabled) {
+        return { ok: false, error: 'multisport_disabled' };
       }
 
       // The owner override covers the club's gates (closed day, booking-open,
