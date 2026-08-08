@@ -1,0 +1,292 @@
+// @vitest-environment jsdom
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The translation keys are asserted on directly (with interpolated values appended)
+// rather than resolved through real message files — this test is about wiring, not copy.
+vi.mock('next-intl', () => ({
+  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
+    (values ? `${key}:${JSON.stringify(values)}` : key),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+}));
+
+vi.mock('./actions', () => ({
+  ownerAddBookingAction: vi.fn(),
+  ownerRemoveBookingAction: vi.fn(),
+}));
+
+vi.mock('./attendance-actions', () => ({
+  markNoShowAction: vi.fn(),
+  undoNoShowAction: vi.fn(),
+}));
+
+// The optimistic-append test is about AddMemberForm's own logic, not the
+// member picker's search/debounce behaviour — stub it down to a single
+// button that selects a fixed member.
+vi.mock('./member-combobox', () => ({
+  MemberCombobox: ({ onSelect }: { onSelect: (m: { userId: string; name: string; email: string; phone: string | null }) => void }) => (
+    <button type="button" onClick={() => onSelect({ userId: 'u9', name: 'Charlie', email: 'charlie@example.com', phone: null })}>
+      pick-member
+    </button>
+  ),
+}));
+
+import { toast } from 'sonner';
+
+import { ownerAddBookingAction, ownerRemoveBookingAction } from './actions';
+import { markNoShowAction, undoNoShowAction } from './attendance-actions';
+import { BookingsRoster, type RosterSessionWithPenalty } from './bookings-roster';
+
+// React entangles in-flight async actions on a module-global lane, so a promise
+// left unresolved when a test ends blocks state updates in every LATER test in
+// this file — and it survives React Testing Library's per-test unmount. Tests
+// below that defer an action's resolution push the resolver here instead of
+// relying solely on their own trailing `resolve?.(...)` call: if an assertion
+// throws before that call runs, the promise would otherwise hang forever and
+// cascade failures into unrelated later tests. This afterEach is the safety
+// net — resolving an already-resolved promise is a no-op, so it's harmless
+// when a test's own resolve call already ran.
+const pendingResolvers: Array<() => void> = [];
+
+afterEach(() => {
+  pendingResolvers.splice(0).forEach((r) => r());
+});
+
+function makeSession(overrides: Partial<RosterSessionWithPenalty> = {}): RosterSessionWithPenalty {
+  return {
+    sessionId: 's1',
+    windowId: 'w1',
+    startAt: new Date('2020-01-01T00:00:00Z'),
+    endAt: new Date('2020-01-01T01:00:00Z'),
+    boatTypeId: 'bt1',
+    boatName: 'Test boat',
+    capacity: 4,
+    status: 'open',
+    seated: [
+      { bookingId: 'b1', name: 'Alice', paymentType: 'regular', queuePosition: null, status: 'booked' },
+      { bookingId: 'b2', name: 'Bob', paymentType: 'regular', queuePosition: null, status: 'booked' },
+    ],
+    waitlisted: [],
+    freeSeats: 0,
+    waitlistCapacity: null,
+    banEndsAt: null,
+    banPermanent: false,
+    banLapsed: false,
+    ...overrides,
+  };
+}
+
+function submitRemoveDialog() {
+  const cta = screen.getByRole('button', { name: /confirmRemoveCta/ });
+  const form = cta.closest('form');
+  if (!form) throw new Error('confirm form not found');
+  fireEvent.submit(form);
+}
+
+describe('BookingsRoster remove flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('clicking Remove opens a confirmation naming the member and does not dispatch the action', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+
+    const removeButtons = screen.getAllByRole('button', { name: 'remove' });
+    fireEvent.click(removeButtons[0]);
+
+    expect(screen.getByText(/confirmRemoveTitle/)).toHaveTextContent('Alice');
+    expect(ownerRemoveBookingAction).not.toHaveBeenCalled();
+  });
+
+  it('confirming dispatches the remove action with the correct bookingId', async () => {
+    vi.mocked(ownerRemoveBookingAction).mockResolvedValue({ ok: true });
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'remove' })[0]);
+    submitRemoveDialog();
+
+    await waitFor(() => expect(ownerRemoveBookingAction).toHaveBeenCalledTimes(1));
+    const call = vi.mocked(ownerRemoveBookingAction).mock.calls[0];
+    expect(call[0]).toBe('club');
+    expect((call[2] as FormData).get('bookingId')).toBe('b1');
+  });
+
+  // The §1.2 guarantee: a removal in flight must NOT take the row out of the list.
+  // Removing the node optimistically would reflow every row below it at t≈0 — moving
+  // a different member's Remove control under a cursor that is still resting there,
+  // which is the mechanism that destroyed real data. Both rows must still be mounted
+  // while the action is unresolved; the row only disappears when server data arrives.
+  it('keeps the removed row mounted (fade in place, not optimistic removal) while the removal is in flight', async () => {
+    let resolve: ((r: { ok: true }) => void) | undefined;
+    vi.mocked(ownerRemoveBookingAction).mockImplementation(
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
+    );
+
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'remove' })[0]);
+    submitRemoveDialog();
+
+    // The dialog's own submit closed and unmounted, but the action is still in flight.
+    await waitFor(() => expect(ownerRemoveBookingAction).toHaveBeenCalledTimes(1));
+
+    expect(screen.getAllByRole('button', { name: 'remove' })).toHaveLength(2);
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+    // …and the row being removed is dimmed in place, so the operator has feedback
+    // for the whole round trip without anything moving.
+    expect(screen.getByText('Alice').closest('li')).toHaveClass('opacity-40');
+
+    resolve?.({ ok: true });
+  });
+
+  // Base UI's Dialog portals the confirm form out of the row's DOM subtree, so this
+  // CSS trick only applies to in-row (non-portalled) submits like undo-absent.
+  it('carries has-data-pending:opacity-40 on the seated row so an in-flight undo dims it', async () => {
+    let resolve: ((r: { ok: true }) => void) | undefined;
+    vi.mocked(undoNoShowAction).mockImplementation(
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
+    );
+
+    const session = makeSession({
+      seated: [{ bookingId: 'b1', name: 'Alice', paymentType: 'regular', queuePosition: null, status: 'no_show' }],
+    });
+    render(<BookingsRoster slug="club" sessions={[session]} timezone="UTC" />);
+
+    const row = screen.getByText('Alice').closest('li');
+    expect(row).not.toBeNull();
+    expect(row).toHaveClass('has-data-pending:opacity-40');
+
+    const undoButton = screen.getByRole('button', { name: 'undoAbsent' });
+    const form = undoButton.closest('form');
+    if (!form) throw new Error('undo form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(undoButton).toHaveAttribute('data-pending'));
+
+    resolve?.({ ok: true });
+  });
+});
+
+describe('BookingsRoster add flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // The one deliberate optimistic-append exception (spec §3): appending below
+  // the confirmed roster shifts nothing above it, so the new member can show
+  // up before the round trip resolves.
+  function submitAddForm() {
+    fireEvent.click(screen.getByRole('button', { name: 'pick-member' }));
+    const form = screen.getByRole('button', { name: 'add' }).closest('form');
+    if (!form) throw new Error('add form not found');
+    fireEvent.submit(form);
+  }
+
+  it('shows the added member immediately, dimmed, and drops the optimistic row once the action resolves', async () => {
+    let resolve: ((r: { ok: true }) => void) | undefined;
+    vi.mocked(ownerAddBookingAction).mockImplementation(
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
+    );
+
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" />);
+    submitAddForm();
+
+    // Still unresolved — this proves the row is optimistic, not server-confirmed.
+    await waitFor(() => expect(screen.getByText('Charlie')).toBeInTheDocument());
+    expect(ownerAddBookingAction).toHaveBeenCalledTimes(1);
+    // "Dimmed" has to be asserted, not just described: it is the only thing telling
+    // the operator this seat is not yet confirmed.
+    expect(screen.getByText('Charlie').closest('li')).toHaveClass('opacity-50');
+
+    // On resolution the optimistic entry is dropped; the real row arrives with the
+    // revalidated server props (which this test does not simulate), so Charlie goes.
+    resolve?.({ ok: true });
+    await waitFor(() => expect(screen.queryByText('Charlie')).not.toBeInTheDocument());
+  });
+
+  // Plan Task 8: the pending row belongs BENEATH THE SEATED LIST, not below the
+  // waitlist. Rendered below the waitlist, server confirmation would lift the new
+  // member up past every waitlisted row — shifting those rows' Remove controls at
+  // round-trip completion, the delayed reflow of §1.2. As a trailing seated row,
+  // confirmation replaces it in place and nothing moves.
+  it('renders the optimistic row as a trailing seated row, above the waitlist', async () => {
+    // Resolved explicitly below, with the module-level afterEach (see top of file)
+    // as a safety net in case an assertion throws first.
+    let resolve: ((r: { ok: true }) => void) | undefined;
+    vi.mocked(ownerAddBookingAction).mockImplementation(
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true })); }),
+    );
+
+    const session = makeSession({
+      freeSeats: 1,
+      waitlisted: [{ bookingId: 'b3', name: 'Wanda', paymentType: 'regular', queuePosition: 1, status: 'waitlisted' }],
+      waitlistCapacity: 2,
+    });
+    render(<BookingsRoster slug="club" sessions={[session]} timezone="UTC" />);
+    submitAddForm();
+
+    await waitFor(() => expect(screen.getByText('Charlie')).toBeInTheDocument());
+
+    const charlieRow = screen.getByText('Charlie').closest('li');
+    const aliceRow = screen.getByText('Alice').closest('li');
+    const wandaRow = screen.getByText(/Wanda/).closest('li');
+    if (!charlieRow || !aliceRow || !wandaRow) throw new Error('expected three roster rows');
+    // Same <ul> as the confirmed seated rows…
+    expect(charlieRow.parentElement).toBe(aliceRow.parentElement);
+    // …and ahead of the waitlist in document order.
+    expect(charlieRow.compareDocumentPosition(wandaRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    resolve?.({ ok: true });
+    await waitFor(() => expect(screen.queryByText('Charlie')).not.toBeInTheDocument());
+  });
+});
+
+describe('BookingsRoster mark-absent flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Mark-absent closes its dialog on submit, so the PendingButton's spinner renders
+  // for zero frames. Without a row-level pending signal nothing on the page changes
+  // for the whole (slow — it cascades cancellations and penalty mail) round trip.
+  it('dims the row while the mark is in flight and clears the dim when it resolves', async () => {
+    let resolve: ((r: { ok: true; cancelled: number }) => void) | undefined;
+    vi.mocked(markNoShowAction).mockImplementation(
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ ok: true, cancelled: 0 })); }),
+    );
+
+    // startAt in the past so the "mark absent" control renders at all.
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'markAbsent' })[0]);
+    const cta = screen.getByRole('button', { name: /confirmAbsentCta/ });
+    const form = cta.closest('form');
+    if (!form) throw new Error('confirm form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(markNoShowAction).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Alice').closest('li')).toHaveClass('opacity-40');
+
+    resolve?.({ ok: true, cancelled: 0 });
+    await waitFor(() => expect(screen.getByText('Alice').closest('li')).not.toHaveClass('opacity-40'));
+  });
+
+  // Spec §5.2's benign-race treatment, extended to mark-absent: a repeat mark means
+  // the operator's intent is already satisfied, so it must not read as a failure.
+  it('reports a repeat mark as benign info rather than a generic error', async () => {
+    vi.mocked(markNoShowAction).mockResolvedValue({ ok: false, error: 'already_marked' });
+
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="UTC" />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'markAbsent' })[0]);
+    const form = screen.getByRole('button', { name: /confirmAbsentCta/ }).closest('form');
+    if (!form) throw new Error('confirm form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('markAlready'));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});

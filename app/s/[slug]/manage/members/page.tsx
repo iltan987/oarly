@@ -43,7 +43,7 @@ export default async function ManageMembersPage({ params }: { params: Promise<{ 
         ) : (
           <ul className="flex flex-col gap-2">
             {pending.map((r) => (
-              <li key={r.membership.id}>
+              <li key={r.membership.id} className="transition-opacity has-data-pending:opacity-40">
                 <Card size="sm">
                   <CardContent className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                     <div className="flex flex-col gap-0.5">

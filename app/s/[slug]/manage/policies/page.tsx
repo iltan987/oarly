@@ -22,8 +22,8 @@ export default async function PoliciesPage({ params }: { params: Promise<{ slug:
         <p className="text-sm text-muted-foreground">{t('intro')}</p>
       </div>
       <PoliciesForm
-        key={club.updatedAt.getTime()}
         slug={slug}
+        updatedAt={club.updatedAt.getTime()}
         settings={settings}
         labels={{
           save: t('save'), bookingOpen: t('bookingOpen'), bookingOpenAlways: t('bookingOpenAlways'),
@@ -33,6 +33,7 @@ export default async function PoliciesPage({ params }: { params: Promise<{ slug:
           multisport: t('multisport'), multisportEqual: t('multisportEqual'), multisportPriority: t('multisportPriority'),
           multisportHint: t('multisportHint'), openOnHolidays: t('openOnHolidays'), waitlistCapacity: t('waitlistCapacity'),
           waitlistCapacityHint: t('waitlistCapacityHint'), errorInvalidLead: t('errorInvalidLead'),
+          errorInvalidInput: t('errorInvalidInput'), saved: t('saved'),
         }}
       />
     </div>

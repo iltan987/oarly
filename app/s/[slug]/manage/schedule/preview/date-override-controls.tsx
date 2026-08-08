@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
-import { Button } from '@/components/ui/button';
+import { PendingButton } from '@/components/pending-button';
 
 import { clearOverrideAction, setOverrideAction } from './actions';
 
@@ -13,17 +13,17 @@ export function DateOverrideControls({ slug, dateISO, overridden }: { slug: stri
       <form action={setOverrideAction.bind(null, slug)}>
         <input type="hidden" name="dateISO" value={dateISO} />
         <input type="hidden" name="isOpen" value="closed" />
-        <Button type="submit" variant="outline" size="sm">{t('close')}</Button>
+        <PendingButton variant="outline" size="sm">{t('close')}</PendingButton>
       </form>
       <form action={setOverrideAction.bind(null, slug)}>
         <input type="hidden" name="dateISO" value={dateISO} />
         <input type="hidden" name="isOpen" value="open" />
-        <Button type="submit" variant="outline" size="sm">{t('forceOpen')}</Button>
+        <PendingButton variant="outline" size="sm">{t('forceOpen')}</PendingButton>
       </form>
       {overridden && (
         <form action={clearOverrideAction.bind(null, slug)}>
           <input type="hidden" name="dateISO" value={dateISO} />
-          <Button type="submit" variant="ghost" size="sm">{t('reset')}</Button>
+          <PendingButton variant="ghost" size="sm">{t('reset')}</PendingButton>
         </form>
       )}
     </div>

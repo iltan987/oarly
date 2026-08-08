@@ -1,8 +1,9 @@
 'use client';
 import { useTranslations } from 'next-intl';
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useEffect, useOptimistic, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -94,7 +95,7 @@ function BoatForm({ slug, boat, levels, labels, action, className, onSuccess, on
   className: string; onSuccess: () => void; onCancel: () => void;
 }) {
   const t = useTranslations('manage');
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(action.bind(null, slug), null);
+  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(action.bind(null, slug), null);
   // Gate on the state object's identity (useActionState returns a fresh object
   // per submission) so the toast/close fires once per result and not again when
   // an unrelated re-render changes the `onSuccess`/`t` identities.
@@ -116,28 +117,37 @@ function BoatForm({ slug, boat, levels, labels, action, className, onSuccess, on
       {boat && <input type="hidden" name="boatId" value={boat.id} />}
       <BoatFields boat={boat} levels={levels} labels={labels} formId={boat?.id ?? 'new'} />
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={pending}>{labels.save}</Button>
+        <PendingButton size="sm">{labels.save}</PendingButton>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>{labels.cancel}</Button>
       </div>
     </form>
   );
 }
 
-function BoatActiveButton({ slug, boatId, active, label }: { slug: string; boatId: string; active: boolean; label: string }) {
+function BoatActiveButton({ slug, boatId, active, label, onToggle }: {
+  slug: string; boatId: string; active: boolean; label: string;
+  onToggle: (boatId: string) => void;
+}) {
   const t = useTranslations('manage');
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(setBoatActiveAction.bind(null, slug), null);
 
-  useEffect(() => {
-    if (state === null) return;
-    if (state.ok) toast.success(t('boats.saved'));
+  // A plain async function passed as the <form>'s `action` runs inside React's
+  // implicit form-action transition, so `onToggle` — a `useOptimistic`
+  // dispatch owned by the parent editor — is safe to call here on the current
+  // frame. `active` (and therefore the hidden input and label above) is
+  // already the OPTIMISTIC value threaded down from `optimisticBoats`, so a
+  // second click before the first toggle resolves composes correctly.
+  async function handleSubmit(formData: FormData) {
+    onToggle(boatId);
+    const result = await setBoatActiveAction(slug, null, formData);
+    if (result.ok) toast.success(t('boats.saved'));
     else toast.error(t('actionError'));
-  }, [state, t]);
+  }
 
   return (
-    <form action={formAction}>
+    <form action={handleSubmit}>
       <input type="hidden" name="boatId" value={boatId} />
       <input type="hidden" name="active" value={active ? 'false' : 'true'} />
-      <Button type="submit" size="sm" variant="ghost" disabled={pending}>{label}</Button>
+      <PendingButton size="sm" variant="ghost">{label}</PendingButton>
     </form>
   );
 }
@@ -146,12 +156,21 @@ export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boa
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
+  // The active/inactive flag is a value swap — the row's height never changes
+  // and nothing else moves — so it is safe to flip on the current frame. Owned
+  // here so the "(inactive)" label next to the boat name and the toggle
+  // button's own label stay in sync.
+  const [optimisticBoats, toggleBoatActive] = useOptimistic(
+    boats,
+    (current: Boat[], boatId: string) => current.map((b) => (b.id === boatId ? { ...b, active: !b.active } : b)),
+  );
+
   return (
     <div className="flex flex-col gap-3">
       {levels.length === 0 && <p className="text-xs text-muted-foreground">{labels.needSkillLevels}</p>}
-      {boats.length === 0 && !adding ? <p className="text-sm text-muted-foreground">{labels.empty}</p> : (
+      {optimisticBoats.length === 0 && !adding ? <p className="text-sm text-muted-foreground">{labels.empty}</p> : (
         <ul className="flex flex-col gap-2">
-          {boats.map((b) => (
+          {optimisticBoats.map((b) => (
             <li key={b.id} className="rounded-lg border p-3">
               {editing === b.id ? (
                 <BoatForm
@@ -167,7 +186,7 @@ export function BoatsEditor({ slug, boats, levels, labels }: { slug: string; boa
                   </div>
                   <div className="flex items-center gap-2">
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(b.id)}>{labels.edit}</Button>
-                    <BoatActiveButton slug={slug} boatId={b.id} active={b.active} label={b.active ? labels.deactivate : labels.activate} />
+                    <BoatActiveButton slug={slug} boatId={b.id} active={b.active} label={b.active ? labels.deactivate : labels.activate} onToggle={toggleBoatActive} />
                   </div>
                 </div>
               )}

@@ -43,6 +43,9 @@ export async function searchClubMembersAction(slug: string, query: string): Prom
     .map((r) => ({ userId: r.userId, name: r.name, email: r.email, phone: r.phone }));
 }
 
+/** Richer than ManageActionResult so the toast can distinguish a benign already-removed race from a generic error. */
+export type RemoveActionResult = { ok: true } | { ok: false; error?: 'not_active' };
+
 const removeSchema = z.object({ bookingId: z.uuid() });
 const addSchema = z.object({
   windowId: z.uuid(),
@@ -52,12 +55,12 @@ const addSchema = z.object({
   paymentType: z.enum(['regular', 'multisport']),
 });
 
-export async function ownerRemoveBookingAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
+export async function ownerRemoveBookingAction(slug: string, _prev: RemoveActionResult | null, formData: FormData): Promise<RemoveActionResult> {
   const { club } = await requireOwner(slug, '/manage/bookings');
   const parsed = removeSchema.safeParse({ bookingId: formData.get('bookingId') });
   if (!parsed.success) return { ok: false };
   const result = await ownerRemoveBooking(db, { clubId: club.id, bookingId: parsed.data.bookingId });
-  if (!result.ok) return { ok: false };
+  if (!result.ok) return result.error === 'not_active' ? { ok: false, error: 'not_active' } : { ok: false };
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);
   revalidatePath(`/s/${slug}/bookings`);

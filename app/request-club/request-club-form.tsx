@@ -2,7 +2,7 @@
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 
-import { Button } from '@/components/ui/button';
+import { PendingButton } from '@/components/pending-button';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 
@@ -10,7 +10,7 @@ import { requestClubAction, type RequestClubState } from './actions';
 
 export function RequestClubForm() {
   const t = useTranslations('requestClub');
-  const [state, action, pending] = useActionState<RequestClubState, FormData>(requestClubAction, {});
+  const [state, action] = useActionState<RequestClubState, FormData>(requestClubAction, {});
   const e = state.errors ?? {};
   return (
     <form action={action} className="max-w-md">
@@ -26,7 +26,7 @@ export function RequestClubForm() {
           {e.slug && <FieldError>{e.slug}</FieldError>}
         </Field>
         {e.form && <FieldError>{e.form}</FieldError>}
-        <Button type="submit" disabled={pending}>{t('submit')}</Button>
+        <PendingButton>{t('submit')}</PendingButton>
       </FieldGroup>
     </form>
   );

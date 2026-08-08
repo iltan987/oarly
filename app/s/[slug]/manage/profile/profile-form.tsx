@@ -3,7 +3,7 @@ import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
+import { PendingButton } from '@/components/pending-button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,7 +19,7 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
   const t = useTranslations('manage.profile');
   const tm = useTranslations('manage');
   const [headingFont, setHeadingFont] = useState(club.headingFont);
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(saveProfileAction.bind(null, slug), null);
+  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(saveProfileAction.bind(null, slug), null);
 
   // The toast lives here in the stable ProfileForm (the <form> below remounts on
   // save via its `key`, but this hook does not), so the success/failure toast
@@ -36,7 +36,7 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
   // successful remove revalidates and deletes that <li>, which would unmount a
   // row-local effect before its toast fires. This component survives the
   // removal, so the toast is reliable.
-  const [rmState, rmAction, rmPending] = useActionState<ManageActionResult | null, FormData>(removeSocialAction.bind(null, slug), null);
+  const [rmState, rmAction] = useActionState<ManageActionResult | null, FormData>(removeSocialAction.bind(null, slug), null);
   const rmHandled = useRef<ManageActionResult | null>(null);
   useEffect(() => {
     if (rmState === null || rmState === rmHandled.current) return;
@@ -93,7 +93,7 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
             </Select>
           </Field>
         </div>
-        <Button type="submit" className="self-start" disabled={pending}>{t('save')}</Button>
+        <PendingButton className="self-start">{t('save')}</PendingButton>
       </form>
 
       <section className="flex flex-col gap-3">
@@ -101,11 +101,11 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
         {socials.length > 0 && (
           <ul className="divide-y rounded-lg border">
             {socials.map((s) => (
-              <li key={s.id} className="flex items-center justify-between gap-2 p-3">
+              <li key={s.id} className="flex items-center justify-between gap-2 p-3 transition-opacity has-data-pending:opacity-40">
                 <span className="min-w-0 truncate text-sm">{s.platform} · {s.handle}</span>
                 <form action={rmAction} className="shrink-0">
                   <input type="hidden" name="socialId" value={s.id} />
-                  <Button type="submit" size="sm" variant="ghost" disabled={rmPending}>{t('socialRemove')}</Button>
+                  <PendingButton size="sm" variant="ghost">{t('socialRemove')}</PendingButton>
                 </form>
               </li>
             ))}
@@ -121,7 +121,7 @@ function AddSocialForm({ slug, labels }: { slug: string; labels: { platform: str
   const t = useTranslations('manage.profile');
   const tm = useTranslations('manage');
   const formRef = useRef<HTMLFormElement>(null);
-  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(addSocialAction.bind(null, slug), null);
+  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(addSocialAction.bind(null, slug), null);
 
   useEffect(() => {
     if (state === null) return;
@@ -143,7 +143,7 @@ function AddSocialForm({ slug, labels }: { slug: string; labels: { platform: str
         <FieldLabel htmlFor="handle">{labels.handle}</FieldLabel>
         <Input id="handle" name="handle" placeholder="bebekrowing" required maxLength={80} />
       </Field>
-      <Button type="submit" disabled={pending}>{labels.add}</Button>
+      <PendingButton>{labels.add}</PendingButton>
     </form>
   );
 }

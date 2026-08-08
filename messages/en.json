@@ -351,7 +351,9 @@
       "openOnHolidays": "Run sessions on national holidays",
       "waitlistCapacity": "Waitlist size per session",
       "waitlistCapacityHint": "How many members may queue behind a full session. Leave empty for no limit.",
-      "errorInvalidLead": "Enter a lead of at least 1 day, or choose \"Always open\"."
+      "errorInvalidLead": "Enter a lead of at least 1 day, or choose \"Always open\".",
+      "saved": "Policies saved.",
+      "errorInvalidInput": "Some values are out of range. Check them and try again."
     },
     "schedulePreview": {
       "title": "Schedule preview",
@@ -382,6 +384,10 @@
       "waitPosition": "#{n}",
       "waitingCount": "Waiting {n}/{capacity}",
       "removed": "Booking removed.",
+      "removeAlready": "That booking was already removed.",
+      "confirmRemoveTitle": "Remove {name}'s booking?",
+      "confirmRemoveBody": "This cannot be undone. If someone is waiting, the next person on the waitlist takes the seat.",
+      "confirmRemoveCta": "Remove booking",
       "added": "Member added.",
       "markAbsent": "Mark absent",
       "undoAbsent": "Undo",
@@ -394,6 +400,7 @@
       "confirmAbsentCta": "Mark absent",
       "marked": "Absence recorded.",
       "markedWithCancellations": "Absence recorded. {count} upcoming bookings were cancelled.",
+      "markAlready": "That member was already marked absent.",
       "undone": "Absence removed. Any seats this penalty cancelled were not restored.",
       "undoConflict": "This seat can no longer be restored — it has since been taken.",
       "bannedUntilBadge": "Banned until {date}",

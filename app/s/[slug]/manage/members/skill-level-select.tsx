@@ -31,7 +31,7 @@ export function SkillLevelSelect({
   const formRef = useRef<HTMLFormElement>(null);
   const skipNextAutoSubmit = useRef(true);
   const [value, setValue] = useState(currentSkillLevelId ?? NONE_VALUE);
-  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(
+  const [state, formAction, pending] = useActionState<ManageActionResult | null, FormData>(
     assignSkillAction.bind(null, slug),
     null,
   );
@@ -78,7 +78,7 @@ export function SkillLevelSelect({
           defaultValue={currentSkillLevelId ?? NONE_VALUE}
           onValueChange={(next) => setValue(next as string)}
         >
-          <SelectTrigger id={`skill-${membershipId}`} size="sm" className="w-36">
+          <SelectTrigger id={`skill-${membershipId}`} size="sm" className="w-36" disabled={pending}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

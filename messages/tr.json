@@ -351,7 +351,9 @@
       "openOnHolidays": "Resmi tatillerde seans yapılsın",
       "waitlistCapacity": "Seans başına bekleme listesi boyutu",
       "waitlistCapacityHint": "Dolu bir seansın arkasında kaç üye sıraya girebilir. Sınırsız için boş bırakın.",
-      "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin."
+      "errorInvalidLead": "En az 1 günlük süre girin ya da \"Her zaman açık\" seçin.",
+      "saved": "Politikalar kaydedildi.",
+      "errorInvalidInput": "Bazı değerler geçerli aralığın dışında. Kontrol edip tekrar deneyin."
     },
     "schedulePreview": {
       "title": "Program önizleme",
@@ -382,6 +384,10 @@
       "waitPosition": "#{n}",
       "waitingCount": "Bekleyen {n}/{capacity}",
       "removed": "Rezervasyon kaldırıldı.",
+      "removeAlready": "Bu rezervasyon zaten kaldırılmış.",
+      "confirmRemoveTitle": "{name} adlı üyenin rezervasyonu kaldırılsın mı?",
+      "confirmRemoveBody": "Bu işlem geri alınamaz. Bekleme listesi doluysa sıradaki kişi koltuğu alır.",
+      "confirmRemoveCta": "Rezervasyonu kaldır",
       "added": "Üye eklendi.",
       "markAbsent": "Katılmadı",
       "undoAbsent": "Geri al",
@@ -394,6 +400,7 @@
       "confirmAbsentCta": "Katılmadı olarak işaretle",
       "marked": "Katılmama kaydedildi.",
       "markedWithCancellations": "Katılmama kaydedildi. {count} ileri tarihli rezervasyon iptal edildi.",
+      "markAlready": "Bu üye zaten katılmadı olarak işaretlenmiş.",
       "undone": "Katılmama kaydı kaldırıldı. Bu ceza nedeniyle iptal edilen yerler geri alınmadı.",
       "undoConflict": "Bu yer artık geri alınamıyor — başkası tarafından tutulmuş.",
       "bannedUntilBadge": "{date} tarihine kadar yasaklı",

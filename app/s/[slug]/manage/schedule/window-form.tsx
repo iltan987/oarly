@@ -1,6 +1,7 @@
 'use client';
 import { useActionState, useEffect, useState } from 'react';
 
+import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -90,7 +91,7 @@ export function WindowForm({ slug, weekday, window, boats, labels, onClose }: {
         <p className="text-sm text-destructive">{state.error ? labels.errors[state.error] : labels.errors.generic}</p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" size="sm">{labels.save}</Button>
+        <PendingButton size="sm">{labels.save}</PendingButton>
         <Button type="button" size="sm" variant="ghost" onClick={onClose}>{labels.cancel}</Button>
       </div>
     </form>

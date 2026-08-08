@@ -5,7 +5,7 @@ import { useActionState, useEffect } from 'react';
 import { toast } from 'sonner';
 
 import { StatusPill, toneByStatus } from '@/components/booking-status-badge';
-import { Button } from '@/components/ui/button';
+import { PendingButton } from '@/components/pending-button';
 import { Card, CardContent } from '@/components/ui/card';
 
 import { cancelBookingAction, type CancelFormState } from './actions';
@@ -24,16 +24,20 @@ const initial: CancelFormState = { status: 'idle', error: null };
 
 function CancelButton({ slug, bookingId }: { slug: string; bookingId: string }) {
   const t = useTranslations('booking');
-  const [state, formAction, pending] = useActionState(cancelBookingAction.bind(null, slug), initial);
+  const [state, formAction] = useActionState(cancelBookingAction.bind(null, slug), initial);
 
+  // The toast carries the SAME specific reason as the inline line below it — a
+  // generic "something went wrong" alongside a specific reason just contradicts
+  // itself. (It also kept the owner-facing `manage` namespace on a member page.)
   useEffect(() => {
     if (state.status === 'ok') toast.success(t('cancelledToast'));
+    else if (state.status === 'error') toast.error(t(`cancelErrors.${state.error ?? 'generic'}`));
   }, [state, t]);
 
   return (
     <form action={formAction} className="flex items-center gap-2">
       <input type="hidden" name="bookingId" value={bookingId} />
-      <Button type="submit" size="xs" variant="outline" disabled={pending}>{t('cancel')}</Button>
+      <PendingButton size="xs" variant="outline">{t('cancel')}</PendingButton>
       {state.status === 'error' && <span className="text-xs text-destructive">{t(`cancelErrors.${state.error ?? 'generic'}`)}</span>}
     </form>
   );
