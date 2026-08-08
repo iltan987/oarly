@@ -171,6 +171,14 @@ describe('AdminClubsPage search and pagination', () => {
 });
 
 describe('admin message catalogs', () => {
+  // NOT superseded by src/i18n/messages-parity.test.ts, and not redundant with it.
+  //
+  // That test compares the two catalogs against EACH OTHER, so a key deleted from
+  // BOTH is invisible to it by construction — parity still holds, and every render
+  // of that key silently degrades. Naming keys explicitly is the only thing that
+  // catches it, which is why this survives the structural check rather than being
+  // replaced by it.
+  //
   // Turkish is the app default, so an English-only key ships as a missing-message
   // warning to every real user.
   it.each([['en', en], ['tr', tr]] as const)('%s carries the new admin keys', (_locale, messages) => {
