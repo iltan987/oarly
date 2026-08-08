@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { db } from '@/db';
 import { normalizePage } from '@/lib/pagination';
 import { one } from '@/lib/search-params';
-import { searchUsers, USERS_PAGE_SIZE } from '@/lib/users-admin';
+import { searchUsers, type UserMembershipSummary, USERS_PAGE_SIZE } from '@/lib/users-admin';
 
 import { AdminToggle } from './admin-toggle';
 
@@ -31,6 +31,22 @@ export default async function AdminUsersPage({ searchParams }: {
   const { rows, total, page } = await searchUsers(db, { q, page: requestedPage, pageSize: USERS_PAGE_SIZE });
   const from = total === 0 ? 0 : (page - 1) * USERS_PAGE_SIZE + 1;
   const to = Math.min(page * USERS_PAGE_SIZE, total);
+
+  // Each membership line used to render `{m.role} / {m.status}` — the raw Postgres
+  // enums. A Turkish operator read "Kayıkhane — owner / approved" on an otherwise
+  // fully Turkish page, and these were the only hardcoded user-visible strings in
+  // app/admin. Keyed by the union rather than by `string`, so a new
+  // `membership_role` or `membership_status` value is a type error here instead of
+  // another untranslated word on the page.
+  const roleLabel: Record<UserMembershipSummary['role'], string> = {
+    // `owner` is a CLUB owner and `admin` is a PLATFORM admin — two different
+    // authorities that Turkish rendered with one noun (`yönetici`) until this cycle.
+    owner: t('roleOwner'), member: t('roleMember'), admin: t('roleAdmin'),
+  };
+  const memberStatusLabel: Record<UserMembershipSummary['status'], string> = {
+    pending: t('memberStatusPending'), approved: t('memberStatusApproved'),
+    rejected: t('memberStatusRejected'), banned: t('memberStatusBanned'),
+  };
 
   return (
     <>
@@ -59,7 +75,7 @@ export default async function AdminUsersPage({ searchParams }: {
                 ) : (
                   <ul className="text-xs text-muted-foreground">
                     {u.memberships.map((m) => (
-                      <li key={m.clubId}>{m.clubName} — {m.role} / {m.status}</li>
+                      <li key={m.clubId}>{m.clubName} — {roleLabel[m.role]} / {memberStatusLabel[m.status]}</li>
                     ))}
                   </ul>
                 )}

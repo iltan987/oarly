@@ -52,6 +52,44 @@ beforeEach(() => {
   searchUsers.mockReturnValue(result());
 });
 
+describe('AdminUsersPage membership lines', () => {
+  /**
+   * These were the only hardcoded user-visible strings in app/admin: each membership
+   * line rendered `{m.role} / {m.status}`, the raw Postgres enums, so a Turkish
+   * operator read "Kayıkhane — owner / approved" on an otherwise fully Turkish page.
+   */
+  it('localizes the membership role and status instead of rendering the enums', async () => {
+    searchUsers.mockReturnValue(result({
+      total: 1,
+      rows: [{
+        id: 'u1', name: 'Ayşe', email: 'ayse@example.com', isAdmin: false,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        memberships: [{ clubId: 'c1', clubName: 'Kayıkhane', role: 'owner', status: 'approved' }],
+      }],
+    }));
+    await renderPage({});
+    expect(screen.getByText('Kayıkhane — roleOwner / memberStatusApproved')).toBeInTheDocument();
+    expect(screen.queryByText(/owner \/ approved/)).toBeNull();
+  });
+
+  it.each([
+    ['member', 'pending', 'roleMember', 'memberStatusPending'],
+    ['admin', 'banned', 'roleAdmin', 'memberStatusBanned'],
+    ['member', 'rejected', 'roleMember', 'memberStatusRejected'],
+  ] as const)('localizes %s / %s', async (role, status, roleKey, statusKey) => {
+    searchUsers.mockReturnValue(result({
+      total: 1,
+      rows: [{
+        id: 'u1', name: 'Ayşe', email: 'ayse@example.com', isAdmin: false,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        memberships: [{ clubId: 'c1', clubName: 'Kayıkhane', role, status }],
+      }],
+    }));
+    await renderPage({});
+    expect(screen.getByText(`Kayıkhane — ${roleKey} / ${statusKey}`)).toBeInTheDocument();
+  });
+});
+
 describe('AdminUsersPage', () => {
   // Each of these used to reach `OFFSET (page - 1) * 25` and be rejected by Postgres as
   // a bigint, escaping the render as a 500 on a URL anyone can hand-edit. `/admin/audit`
