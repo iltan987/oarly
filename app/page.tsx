@@ -15,13 +15,9 @@ import { clubs, memberships } from '@/db/schema';
 import { env } from '@/env';
 import { initials } from '@/lib/initials';
 import { menuSession } from '@/lib/menu-session';
+import { restrictionState } from '@/lib/restriction';
 import { getCurrentUser } from '@/lib/session';
 import { clubUrl, parseAppOrigin } from '@/lib/urls';
-
-function computeIsBanned(row: { status: string; bannedUntil: Date | null }): boolean {
-  const bannedActive = row.bannedUntil != null && row.bannedUntil.getTime() > Date.now();
-  return row.status === 'banned' || bannedActive;
-}
 
 export default async function Home() {
   const t = await getTranslations('common');
@@ -70,7 +66,10 @@ export default async function Home() {
     .where(eq(memberships.userId, user.id))
     .orderBy(asc(clubs.name));
 
-  const rows = myClubs.map((row) => ({ ...row, isBanned: computeIsBanned(row) }));
+  // One instant for the whole list, not `Date.now()` per row: two clubs whose bans
+  // straddle the same millisecond must not disagree about what time it is.
+  const now = new Date();
+  const rows = myClubs.map((row) => ({ ...row, isBanned: restrictionState(row, now) !== 'none' }));
 
   return (
     <AppShell

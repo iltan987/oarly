@@ -15,15 +15,11 @@ import { env } from '@/env';
 import { initials } from '@/lib/initials';
 import { getMembership } from '@/lib/membership';
 import { menuSession } from '@/lib/menu-session';
+import { restrictionState } from '@/lib/restriction';
 import { buildClubMetadata } from '@/lib/seo';
 import { getCurrentUser } from '@/lib/session';
 import { requireClub } from '@/lib/tenant';
 import { parseAppOrigin } from '@/lib/urls';
-
-function computeIsBanned(membership: { status: string; bannedUntil: Date | null } | null): boolean {
-  const bannedActive = membership?.bannedUntil != null && membership.bannedUntil.getTime() > Date.now();
-  return membership?.status === 'banned' || bannedActive;
-}
 
 export async function generateMetadata({
   params,
@@ -51,7 +47,7 @@ export default async function ClubPublicPage({
 
   const user = await getCurrentUser();
   const membership = user ? await getMembership(db, user.id, club.id) : null;
-  const isBanned = computeIsBanned(membership);
+  const isBanned = membership != null && restrictionState(membership, new Date()) !== 'none';
 
   return (
     <AppShell
