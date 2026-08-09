@@ -331,21 +331,24 @@ function ClosedDay({ day, timeZone, t, f }: { day: MemberCalendarDay; timeZone: 
   );
 }
 
-export function BookCalendar({ slug, days, timeZone, bannedUntil, bannedPermanently }: {
+/**
+ * The ban banner that used to open this tree lives in `page.tsx` now, as
+ * `<RestrictionNotice variant="card">`. It was the first child of the returned tree and
+ * depended on nothing the client owns, so hoisting it removed two props
+ * (`bannedUntil`, `bannedPermanently`), the `now` state that served only them, and a
+ * second permanent/timed split spread across the prop boundary — while letting the copy
+ * `await getFormatter` and explain WHY the restriction exists, which a client component
+ * with two scalar props could never do.
+ */
+export function BookCalendar({ slug, days, timeZone }: {
   slug: string;
   days: MemberCalendarDay[];
   timeZone: string;
-  bannedUntil: Date | null;
-  bannedPermanently: boolean;
 }) {
   const t = useTranslations('booking');
   const f = useFormatter();
   const [selectedDate, setSelectedDate] = useState<string>(() => (days.find((d) => d.slots.length > 0) ?? days[0])?.dateISO ?? '');
   const [confirm, setConfirm] = useState<Confirm | null>(null);
-  // The page is server-rendered fresh on every load with the current ban state, so
-  // pinning "now" at mount (rather than calling Date.now() during render) is both
-  // pure and accurate for the lifetime of this view.
-  const [now] = useState(() => Date.now());
 
   // Fall back to the first day with sessions (or the first day) if the previously
   // selected date no longer exists in a refreshed `days` window — computed at
@@ -357,16 +360,6 @@ export function BookCalendar({ slug, days, timeZone, bannedUntil, bannedPermanen
 
   return (
     <div className="flex flex-col gap-4">
-      {(bannedPermanently || (bannedUntil && bannedUntil.getTime() > now)) && (
-        <div className="mb-3 rounded-card border border-bad/30 bg-bad-bg px-3 py-2 text-sm text-bad" role="status">
-          <p className="font-medium">{t('bannedTitle')}</p>
-          <p>
-            {bannedPermanently
-              ? t('bannedPermanent')
-              : t('bannedUntil', { date: f.dateTime(bannedUntil!, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone }) })}
-          </p>
-        </div>
-      )}
       <DateStrip days={days} selected={selectedDay?.dateISO ?? ''} onSelect={setSelectedDate} />
       {selectedDay && (
         <div className="flex flex-col gap-3">

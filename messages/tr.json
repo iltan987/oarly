@@ -29,7 +29,6 @@
     "noClubsCta": "Kulüp başvurusu yap",
     "noClubsHint": "Zaten bir kulübe üyeysen, kulübünün paylaştığı katılım bağlantısını aç.",
     "statusPending": "Beklemede",
-    "statusSuspended": "Askıda",
     "statusRejected": "Onaylanmadı",
     "ctaOpenClub": "Kulübü aç"
   },
@@ -45,10 +44,8 @@
     "ctaBookingCalendar": "Rezervasyon takvimi",
     "noteMember": "Üyesin",
     "notePending": "İsteğin onay bekliyor",
-    "noteBanned": "Bu kulübe erişimin askıya alındı",
     "noteRejected": "İsteğin onaylanmadı",
-    "statusPending": "İstek beklemede",
-    "statusBanned": "Erişim askıda"
+    "statusPending": "İstek beklemede"
   },
   "restriction": {
     "pausedTitle": "Duraklatıldı",
@@ -617,9 +614,6 @@
     "locked": "Kilitli",
     "cancel": "Vazgeç",
     "myBookings": "Rezervasyonlarım",
-    "bannedTitle": "Rezervasyon askıya alındı",
-    "bannedUntil": "{date} tarihine kadar rezervasyon yapamazsınız.",
-    "bannedPermanent": "Kulüp rezervasyon erişiminizi askıya aldı.",
     "multisportDayTaken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
     "reasons": {
       "not_approved": "Üyelik onaylanmadı",

@@ -6,6 +6,7 @@ import { AppWordmark } from '@/components/app-brand';
 import { AppFooter, footerLabels } from '@/components/app-footer';
 import { AppShell } from '@/components/app-shell';
 import { StatusPill } from '@/components/booking-status-badge';
+import { RestrictionNotice } from '@/components/restriction-notice';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -15,7 +16,7 @@ import { clubs, memberships } from '@/db/schema';
 import { env } from '@/env';
 import { initials } from '@/lib/initials';
 import { menuSession } from '@/lib/menu-session';
-import { restrictionState } from '@/lib/restriction';
+import { getRestrictions } from '@/lib/restriction';
 import { getCurrentUser } from '@/lib/session';
 import { clubUrl, parseAppOrigin } from '@/lib/urls';
 
@@ -54,9 +55,15 @@ export default async function Home() {
 
   const myClubs = await db
     .select({
+      // The membership id is what `getRestrictions` keys its answer by, and the club's
+      // timezone is what the notice formats the lift date in — it varies per row here,
+      // which is precisely why the notice takes a `timeZone` rather than reading the
+      // request's.
+      id: memberships.id,
       slug: clubs.slug,
       name: clubs.name,
       logoUrl: clubs.logoUrl,
+      timezone: clubs.timezone,
       role: memberships.role,
       status: memberships.status,
       bannedUntil: memberships.bannedUntil,
@@ -69,7 +76,11 @@ export default async function Home() {
   // One instant for the whole list, not `Date.now()` per row: two clubs whose bans
   // straddle the same millisecond must not disagree about what time it is.
   const now = new Date();
-  const rows = myClubs.map((row) => ({ ...row, isBanned: restrictionState(row, now) !== 'none' }));
+  // ONE call for the whole list, never one per row. `getRestrictions` folds every
+  // membership into a single `inArray` read — and issues no read at all in the common
+  // case where none of them is restricted, which is the only reason this is affordable
+  // on the page every signed-in member lands on.
+  const restrictions = await getRestrictions(db, myClubs, now);
 
   return (
     <AppShell
@@ -83,7 +94,7 @@ export default async function Home() {
       <div className="flex flex-col gap-3">
         <h2 className="font-heading text-lg font-bold">{tHome('myClubs')}</h2>
 
-        {rows.length === 0 ? (
+        {myClubs.length === 0 ? (
           /*
             This empty state is the ONLY inbound route to /request-club from a page — the
             route had zero of them before this — so it is a card with a real call to
@@ -101,47 +112,68 @@ export default async function Home() {
           </Card>
         ) : (
           <Card className="gap-0 divide-y divide-border py-0">
-            {rows.map((row) => (
-              <div key={row.slug} className="flex items-center gap-3 p-4">
-                <Avatar>
-                  {row.logoUrl ? <AvatarImage src={row.logoUrl} alt="" /> : null}
-                  <AvatarFallback className="font-heading font-bold">{initials(row.name)}</AvatarFallback>
-                </Avatar>
+            {myClubs.map((row) => {
+              const restriction = restrictions.get(row.id) ?? { state: 'none' as const };
+              const isRestricted = restriction.state !== 'none';
+              return (
+                <div key={row.slug} className="flex items-center gap-3 p-4">
+                  <Avatar>
+                    {row.logoUrl ? <AvatarImage src={row.logoUrl} alt="" /> : null}
+                    <AvatarFallback className="font-heading font-bold">{initials(row.name)}</AvatarFallback>
+                  </Avatar>
 
-                <div className="flex flex-1 flex-col gap-0.5">
-                  <span className="font-medium">{row.name}</span>
-                  {row.isBanned ? null : row.status === 'pending' ? (
-                    <span className="text-xs text-muted-foreground">{tClub('notePending')}</span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="font-medium">{row.name}</span>
+                    {/*
+                      The slot that used to be hard-`null`ed for a restricted member — the
+                      reported bug in one line: "I see Suspended and I can't do anything …
+                      there is literally no explanation at all."
+                    */}
+                    {isRestricted ? (
+                      <RestrictionNotice restriction={restriction} timeZone={row.timezone} variant="inline" />
+                    ) : row.status === 'pending' ? (
+                      <span className="text-xs text-muted-foreground">{tClub('notePending')}</span>
+                    ) : row.status === 'rejected' ? (
+                      <span className="text-xs text-muted-foreground">{tClub('noteRejected')}</span>
+                    ) : row.status === 'approved' && row.role === 'member' ? (
+                      <span className="text-xs text-muted-foreground">{tClub('noteMember')}</span>
+                    ) : null}
+                  </div>
+
+                  {/*
+                    A restricted member gets a LINK where a dead red pill used to sit. The
+                    club page is the surface that carries the phone number and the two
+                    member destinations, so it is the right single door from here.
+                  */}
+                  {isRestricted ? (
+                    <a
+                      href={clubUrl(row.slug, origin)}
+                      className={buttonVariants({ variant: 'ghost', size: 'sm', className: 'shrink-0' })}
+                    >
+                      {tHome('ctaOpenClub')}
+                    </a>
+                  ) : row.status === 'pending' ? (
+                    <StatusPill tone="warn">{tHome('statusPending')}</StatusPill>
                   ) : row.status === 'rejected' ? (
-                    <span className="text-xs text-muted-foreground">{tClub('noteRejected')}</span>
+                    <StatusPill tone="neutral">{tHome('statusRejected')}</StatusPill>
+                  ) : row.status === 'approved' && row.role === 'owner' ? (
+                    <a
+                      href={`${clubUrl(row.slug, origin)}/manage`}
+                      className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+                    >
+                      {tClub('ctaManage')}
+                    </a>
                   ) : row.status === 'approved' && row.role === 'member' ? (
-                    <span className="text-xs text-muted-foreground">{tClub('noteMember')}</span>
+                    <a
+                      href={`${clubUrl(row.slug, origin)}/book`}
+                      className={buttonVariants({ size: 'sm' })}
+                    >
+                      {tClub('ctaGoBooking')}
+                    </a>
                   ) : null}
                 </div>
-
-                {row.isBanned ? (
-                  <StatusPill tone="bad">{tHome('statusSuspended')}</StatusPill>
-                ) : row.status === 'pending' ? (
-                  <StatusPill tone="warn">{tHome('statusPending')}</StatusPill>
-                ) : row.status === 'rejected' ? (
-                  <StatusPill tone="neutral">{tHome('statusRejected')}</StatusPill>
-                ) : row.status === 'approved' && row.role === 'owner' ? (
-                  <a
-                    href={`${clubUrl(row.slug, origin)}/manage`}
-                    className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-                  >
-                    {tClub('ctaManage')}
-                  </a>
-                ) : row.status === 'approved' && row.role === 'member' ? (
-                  <a
-                    href={`${clubUrl(row.slug, origin)}/book`}
-                    className={buttonVariants({ size: 'sm' })}
-                  >
-                    {tClub('ctaGoBooking')}
-                  </a>
-                ) : null}
-              </div>
-            ))}
+              );
+            })}
           </Card>
         )}
       </div>

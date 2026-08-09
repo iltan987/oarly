@@ -29,7 +29,6 @@
     "noClubsCta": "Request a club",
     "noClubsHint": "Already a member somewhere? Open the join link your club shared with you.",
     "statusPending": "Pending",
-    "statusSuspended": "Suspended",
     "statusRejected": "Not approved",
     "ctaOpenClub": "Open club"
   },
@@ -45,10 +44,8 @@
     "ctaBookingCalendar": "Booking calendar",
     "noteMember": "You're a member",
     "notePending": "Your request is awaiting approval",
-    "noteBanned": "Access to this club is suspended",
     "noteRejected": "Your request wasn't approved",
-    "statusPending": "Request pending",
-    "statusBanned": "Access suspended"
+    "statusPending": "Request pending"
   },
   "restriction": {
     "pausedTitle": "Paused",
@@ -617,9 +614,6 @@
     "locked": "Locked",
     "cancel": "Cancel",
     "myBookings": "My bookings",
-    "bannedTitle": "Booking suspended",
-    "bannedUntil": "You can't book until {date}.",
-    "bannedPermanent": "Your booking access has been suspended by the club.",
     "multisportDayTaken": "Your MultiSport card is already used for another session that day.",
     "reasons": {
       "not_approved": "Membership not approved",

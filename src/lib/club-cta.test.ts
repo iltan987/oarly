@@ -67,6 +67,35 @@ describe('viewerKindOf', () => {
   });
 
   /**
+   * The correctness fix carried out of Task 5's review, and the one case where leading
+   * with the restriction states something FALSE.
+   *
+   * An owner rejects an application from someone already serving a timed penalty.
+   * `restrictionState` reads only `banned_until` for that row and answers `paused`, while
+   * `checkEligibility` answers `not_approved` for the same row. Lead with the restriction
+   * and the page says "you're paused until 12 August, you can book again then" — and on
+   * 12 August they still cannot book, because they were never admitted.
+   *
+   * The fixture's restriction is `paused` and NOT `suspended` on purpose: `suspended`
+   * requires `status === 'banned'`, which a `rejected` row cannot also be, so a
+   * suspended+rejected fixture would be testing an unreachable shape.
+   */
+  it('is rejected, not restricted, for a rejected applicant serving a timed pause', () => {
+    expect(viewerKindOf({ membership: { role: 'member', status: 'rejected' }, restriction: 'paused' })).toBe('rejected');
+  });
+
+  /**
+   * The mutation the test above invites: hoisting the `rejected` check above BOTH
+   * restriction branches. A rejected row cannot really be `banned`, but if a caller ever
+   * hands over that pair, the suspension is the more serious claim and must win — and
+   * this is the only case that separates "rejected above paused" from "rejected above
+   * every restriction".
+   */
+  it('still leads with a suspension when a rejected membership somehow carries one', () => {
+    expect(viewerKindOf({ membership: { role: 'member', status: 'rejected' }, restriction: 'suspended' })).toBe('restricted');
+  });
+
+  /**
    * An owner whose membership is not approved is not an owner for CTA purposes — they
    * fall through to the status branches like anybody else. Pinned because the owner test
    * is a conjunction and dropping either half changes this answer.
