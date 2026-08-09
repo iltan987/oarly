@@ -27,13 +27,25 @@ export const bookings = pgTable(
     // self-cancellation, inventing exactly the fact this column exists to record. The
     // UI treats 'member' and NULL identically for that reason.
     //
-    // Write-once and never cleared: the three sites that write `status: 'cancelled'`
-    // (cancelBooking, ownerRemoveBooking, the markNoShow cascade) set it in the same
-    // `.set()`, and no path moves a row back OUT of 'cancelled' — `applySeating` only
-    // ever reads booked/waitlisted rows, `undoNoShow` restores a 'no_show' row and
-    // refuses anything else, and a re-book inserts a fresh row because
-    // `bookings_active_uq` is partial on booked/waitlisted. So there is no
-    // `cancelledReason: null` write anywhere, and nothing needs one.
+    // Write-once, and that is enforced rather than merely observed. Two halves:
+    //
+    // 1. Nothing moves a row back OUT of 'cancelled', so the value is never cleared:
+    //    `applySeating` only ever reads booked/waitlisted rows, `undoNoShow` restores a
+    //    'no_show' row and refuses anything else, and a re-book inserts a fresh row
+    //    because `bookings_active_uq` is partial on booked/waitlisted. There is no
+    //    `cancelledReason: null` write anywhere and nothing needs one.
+    //
+    // 2. Nothing OVERWRITES it either — but only because all three writers scope their
+    //    UPDATE with `inArray(status, ACTIVE)` as well as the primary key. That is not
+    //    decoration. Each writer's "still active?" guard runs on a SELECT taken before
+    //    the per-slot advisory lock, and under READ COMMITTED a blocked UPDATE
+    //    re-evaluates its WHERE against the newly committed row version, where a bare
+    //    `eq(id, …)` would still match. Drop the status predicate from any of the three
+    //    and a race between a member's own cancellation and the markNoShow cascade
+    //    relabels one as the other. See the comments at those three call sites.
+    //
+    // Being nullable-with-no-default and being write-once are the same design: the column
+    // holds a recorded fact or nothing, and never a guess.
     cancelledReason: bookingCancelReasonEnum('cancelled_reason'),
     queuePosition: integer('queue_position'),
     slotIndex: integer('slot_index'),

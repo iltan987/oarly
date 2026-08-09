@@ -646,7 +646,7 @@
     },
     "cancelled": "İptal edildi",
     "cancelledBy": {
-      "penalty": "Katılmadığın kaydedildiği için iptal edildi.",
+      "penalty": "Kulüp katılmadığını kaydettiği için iptal edildi.",
       "owner": "Kulüp tarafından iptal edildi."
     },
     "noShow": "Gelmedi",

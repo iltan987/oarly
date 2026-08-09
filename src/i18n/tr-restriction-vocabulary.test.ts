@@ -163,13 +163,35 @@ describe('the cancellation sub-line vocabulary', () => {
   });
 
   /**
-   * The whole point of the column. "Katılmadığın KAYDEDİLDİĞİ için" attributes the absence
-   * to the club's record; "katılmadığın için" would state it as fact and turn a sub-line
-   * into a finding against the member — the exact framing Task 6 was written to remove
-   * from `booking.reasons.banned`.
+   * The register's load-bearing half, and the one the first draft of this copy dropped.
+   *
+   * "KULÜP katılmadığını kaydettiği için" names the club as the author of the record.
+   * The agentless passive it replaced — "Katılmadığın kaydedildiği için" — reported the
+   * absence as recorded but by nobody, which leaves the app itself sounding like the one
+   * asserting it. Task 6's `restriction` group names the club in every cause string, the
+   * `owner` line below names it, and the ENGLISH penalty line already named it ("the club
+   * recorded") — so Turkish, the app default, was the single locale drifting.
+   *
+   * Asserted on both keys in both locales, because "the club is named" is the rule, not a
+   * property of one sentence.
    */
-  it('attributes the absence to the record, not to the member', () => {
-    expect(trBooking.cancelledBy.penalty).toMatch(/kaydedil/i);
+  it('names the club as the author, in every reason and both locales', () => {
+    expect(trBooking.cancelledBy.penalty).toMatch(/kulüp/i);
+    expect(trBooking.cancelledBy.owner).toMatch(/kulüp/i);
+    expect(enBooking.cancelledBy.penalty).toMatch(/the club/i);
+    expect(enBooking.cancelledBy.owner).toMatch(/the club/i);
+  });
+
+  /**
+   * And what the club did was RECORD an absence, not find one. `kayd-` covers
+   * kaydetti/kaydettiği/kaydedildi — what is defended is the record framing, whichever
+   * way the grammar turns. The shared `katılmadığını` is the same verb the restriction
+   * card directly above this line uses, and the same one the no-show email used before
+   * that: a member reading all three must not have to work out that they are one event.
+   */
+  it('describes the absence as something recorded, in the words of the card above it', () => {
+    expect(trBooking.cancelledBy.penalty).toMatch(/kayd/i);
+    expect(trBooking.cancelledBy.penalty).toMatch(/katılmadığını/i);
     expect(enBooking.cancelledBy.penalty).toMatch(/recorded/i);
   });
 
