@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -19,7 +21,7 @@ describe.skipIf(!url)('computeCalendar', () => {
   afterAll(async () => { await pool.end(); });
 
   async function newClub(tag: string, openOnHolidays = false) {
-    const [c] = await db.insert(schema.clubs).values({ slug: `${tag}-${Date.now()}-${Math.round(performance.now())}`, name: tag, status: 'active', timezone: 'Europe/Istanbul', openOnHolidays }).returning();
+    const [c] = await db.insert(schema.clubs).values({ slug: `${tag}-${randomUUID()}`, name: tag, status: 'active', timezone: 'Europe/Istanbul', openOnHolidays }).returning();
     return c;
   }
   async function newBoat(clubId: string, name: string, seats: number, active = true) {
@@ -63,7 +65,7 @@ describe.skipIf(!url)('computeCalendar', () => {
     const c = await newClub('cal-override');
     const quad = await newBoat(c.id, 'Quad', 4);
     await mondayWindow(c.id, [{ boatTypeId: quad.id, quantity: 1 }]);
-    const actor = `cal-ov-${Date.now()}`;
+    const actor = `cal-ov-${randomUUID()}`;
     await db.insert(schema.user).values({ id: actor, name: 'O', email: `${actor}@t.co` });
     await setDateOverride(db, c.id, { dateISO: '2026-07-20', isOpen: false }, actor);
     const [day] = await computeCalendar(db, c.id, { fromDateISO: '2026-07-20', days: 1 });
@@ -160,7 +162,7 @@ describe.skipIf(!url)('computeCalendar', () => {
   // Europe/Istanbul has had no DST since 2016, but clubs.timezone is a per-club column.
   it('emits one block per UTC instant across a spring-forward gap', async () => {
     const [c] = await db.insert(schema.clubs).values({
-      slug: `cal-dst-${Date.now()}-${Math.round(performance.now())}`, name: 'dst', status: 'active', timezone: 'America/New_York',
+      slug: `cal-dst-${randomUUID()}`, name: 'dst', status: 'active', timezone: 'America/New_York',
     }).returning();
     const boat = await newBoat(c.id, 'Single', 1);
     // 2026-03-08 is a Sunday (weekday 0); the US clocks jump 02:00 -> 03:00 local.

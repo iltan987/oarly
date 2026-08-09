@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -17,7 +19,7 @@ describe.skipIf(!url)('materializeSlot', () => {
   afterAll(async () => { await pool.end(); });
 
   async function newClub(tag: string) {
-    const [c] = await db.insert(schema.clubs).values({ slug: `${tag}-${Date.now()}-${Math.round(performance.now())}`, name: tag, status: 'active' }).returning();
+    const [c] = await db.insert(schema.clubs).values({ slug: `${tag}-${randomUUID()}`, name: tag, status: 'active' }).returning();
     return c;
   }
   async function newBoat(clubId: string, name: string, seats: number) {

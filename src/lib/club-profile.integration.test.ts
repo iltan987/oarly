@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -24,7 +26,7 @@ describe.skipIf(!url)('club-profile', () => {
     return id;
   }
   async function newClub(tag: string) {
-    const [c] = await db.insert(schema.clubs).values({ slug: `${tag}-${Date.now()}-${Math.round(performance.now())}`, name: tag, status: 'active' }).returning();
+    const [c] = await db.insert(schema.clubs).values({ slug: `${tag}-${randomUUID()}`, name: tag, status: 'active' }).returning();
     return c;
   }
 
@@ -70,9 +72,9 @@ describe.skipIf(!url)('club-profile', () => {
 
   it('ownedClubId returns the club only for an approved owner', async () => {
     const c = await newClub('cp-own');
-    const owner = `o-${Date.now()}`;
-    const member = `m-${Date.now()}`;
-    const pendingOwner = `po-${Date.now()}`;
+    const owner = `o-${randomUUID()}`;
+    const member = `m-${randomUUID()}`;
+    const pendingOwner = `po-${randomUUID()}`;
     await db.insert(schema.user).values([
       { id: owner, name: 'O', email: `${owner}@t.co` },
       { id: member, name: 'M', email: `${member}@t.co` },
@@ -89,10 +91,10 @@ describe.skipIf(!url)('club-profile', () => {
   });
 
   it('does not grant ownership over a rejected club via its slug', async () => {
-    const slug = `cp-rej-${Date.now()}`;
+    const slug = `cp-rej-${randomUUID()}`;
     const [rejected] = await db.insert(schema.clubs)
       .values({ slug, name: 'Rejected', status: 'rejected' }).returning();
-    const owner = `ro-${Date.now()}`;
+    const owner = `ro-${randomUUID()}`;
     await db.insert(schema.user).values({ id: owner, name: 'RO', email: `${owner}@t.co` });
     // requestClub gives the requester an approved owner membership, which survives
     // rejection — so the only thing standing between them and a write is the status filter.
@@ -112,7 +114,7 @@ describe.skipIf(!url)('club-profile', () => {
   it.each(['suspended', 'pending', 'rejected'] as const)(
     'refuses ownedClubId for the legitimate owner of a %s club',
     async (status) => {
-      const slug = `cp-inactive-${status}-${Date.now()}-${Math.round(performance.now())}`;
+      const slug = `cp-inactive-${status}-${randomUUID()}`;
       const [club] = await db.insert(schema.clubs)
         .values({ slug, name: `Inactive ${status}`, status }).returning();
       const owner = await newUser();

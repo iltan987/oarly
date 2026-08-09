@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
@@ -24,7 +26,7 @@ describe.skipIf(!url)('db round-trip', () => {
   it('inserts and reads a club with default policy values', async () => {
     const [club] = await db
       .insert(schema.clubs)
-      .values({ slug: `c-${Date.now()}`, name: 'Test Club' })
+      .values({ slug: `c-${randomUUID()}`, name: 'Test Club' })
       .returning();
     expect(club.status).toBe('pending');
     expect(club.multisportMode).toBe('equal');
@@ -32,9 +34,9 @@ describe.skipIf(!url)('db round-trip', () => {
   });
 
   it('enforces the active-booking unique index', async () => {
-    const [club] = await db.insert(schema.clubs).values({ slug: `c2-${Date.now()}`, name: 'C2' }).returning();
+    const [club] = await db.insert(schema.clubs).values({ slug: `c2-${randomUUID()}`, name: 'C2' }).returning();
     const [u] = await db.insert(schema.user).values({
-      id: `u-${Date.now()}`, name: 'A', email: `a-${Date.now()}@t.co`,
+      id: `u-${randomUUID()}`, name: 'A', email: `a-${randomUUID()}@t.co`,
     }).returning();
     const [bt] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: 4 }).returning();
     const [slot] = await db.insert(schema.slots).values({

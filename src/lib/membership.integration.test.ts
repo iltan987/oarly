@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
@@ -16,9 +18,9 @@ describe.skipIf(!url)('getMembership', () => {
   afterAll(async () => { await pool.end(); });
 
   it('finds the membership for a (user, club) pair and null otherwise', async () => {
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
-    const [club] = await db.insert(schema.clubs).values({ slug: `c-${Date.now()}`, name: 'C', status: 'active' }).returning();
+    const [club] = await db.insert(schema.clubs).values({ slug: `c-${randomUUID()}`, name: 'C', status: 'active' }).returning();
     await db.insert(schema.memberships).values({ userId: uid, clubId: club.id, role: 'owner', status: 'approved' });
     const found = await getMembership(db, uid, club.id);
     expect(found?.role).toBe('owner');

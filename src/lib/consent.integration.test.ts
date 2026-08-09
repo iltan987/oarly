@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -17,7 +19,7 @@ describe.skipIf(!url)('recordSignupConsent', () => {
   afterAll(async () => { await pool.end(); });
 
   it('writes one consent row per document at the current version', async () => {
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'C', email: `${uid}@t.co` });
     await recordSignupConsent(db, uid);
     const rows = await db.select().from(schema.consents).where(eq(schema.consents.userId, uid));

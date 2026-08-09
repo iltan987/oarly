@@ -41,6 +41,14 @@ describe.skipIf(!url)('clubs-admin', () => {
   }
 
   /**
+   * For slugs that go through `createClub`, which enforces `validateSlug`'s 40-character
+   * cap — a full 36-char UUID only fits behind the very shortest prefixes, and a fixture
+   * that grew a longer prefix would start failing as `slug_invalid` for a reason that has
+   * nothing to do with the assertion. Half a UUID is still 64 bits.
+   */
+  const slugId = () => randomUUID().slice(0, 18);
+
+  /**
    * The queue is oldest-first, and a fixture inserted moments ago is therefore at the
    * END of it. This suite shares a database it keeps appending pending rows to, so a
    * freshly created request is reliably on the last page and nowhere else.
@@ -58,7 +66,7 @@ describe.skipIf(!url)('clubs-admin', () => {
   it('creates an active club, an approved owner membership, and an audit row', async () => {
     const admin = await mkUser();
     const owner = await mkUser();
-    const slug = `bogazici-${Date.now()}`;
+    const slug = `bogazici-${slugId()}`;
     const res = await createClub(db, { name: 'Boğaziçi Kürek', slug, ownerEmail: owner.email, createdBy: admin.id });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
@@ -78,7 +86,7 @@ describe.skipIf(!url)('clubs-admin', () => {
   it('lets an admin create a club on a slug that a rejected club still holds', async () => {
     const admin = await mkUser();
     const owner = await mkUser();
-    const slug = `freed-${Date.now()}-${Math.floor(performance.now())}`;
+    const slug = `freed-${slugId()}`;
     // The partial index `clubs_slug_uq` frees a rejected slug in the database; the
     // application's `slug_taken` pre-check must agree, or the slug is dead in practice.
     await db.insert(schema.clubs).values({ slug, name: 'Spam', status: 'rejected' });
@@ -92,9 +100,9 @@ describe.skipIf(!url)('clubs-admin', () => {
     expect((await createClub(db, { name: 'A', slug: 'admin', ownerEmail: owner.email, createdBy: admin.id })).ok).toBe(false);
     expect(await createClub(db, { name: 'A', slug: 'admin', ownerEmail: owner.email, createdBy: admin.id }))
       .toMatchObject({ ok: false, error: 'slug_reserved' });
-    expect(await createClub(db, { name: 'A', slug: `x-${Date.now()}`, ownerEmail: 'nobody@nowhere.co', createdBy: admin.id }))
+    expect(await createClub(db, { name: 'A', slug: `x-${slugId()}`, ownerEmail: 'nobody@nowhere.co', createdBy: admin.id }))
       .toMatchObject({ ok: false, error: 'owner_not_found' });
-    const slug = `dup-${Date.now()}`;
+    const slug = `dup-${slugId()}`;
     await createClub(db, { name: 'A', slug, ownerEmail: owner.email, createdBy: admin.id });
     expect(await createClub(db, { name: 'B', slug, ownerEmail: owner.email, createdBy: admin.id }))
       .toMatchObject({ ok: false, error: 'slug_taken' });
@@ -104,7 +112,7 @@ describe.skipIf(!url)('clubs-admin', () => {
     const admin = await mkUser();
     const requester = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `ap-${Date.now()}`, name: 'Ap', status: 'pending', createdBy: requester.id }).returning();
+      .values({ slug: `ap-${randomUUID()}`, name: 'Ap', status: 'pending', createdBy: requester.id }).returning();
 
     const res = await decideClubRequest(db, { clubId: club.id, decision: 'approve', note: null, actorId: admin.id });
     // `clubSlug` is asserted because Task 3's decision email builds the club's URL from
@@ -126,7 +134,7 @@ describe.skipIf(!url)('clubs-admin', () => {
   it('rejects a pending club and stores the note', async () => {
     const admin = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `rj-${Date.now()}`, name: 'Rj', status: 'pending' }).returning();
+      .values({ slug: `rj-${randomUUID()}`, name: 'Rj', status: 'pending' }).returning();
 
     const res = await decideClubRequest(db, { clubId: club.id, decision: 'reject', note: '  Duplicate of an existing club  ', actorId: admin.id });
     expect(res).toMatchObject({ ok: true, status: 'rejected' });
@@ -145,7 +153,7 @@ describe.skipIf(!url)('clubs-admin', () => {
   it('refuses to reject without a note, and does not touch the row', async () => {
     const admin = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `nn-${Date.now()}`, name: 'Nn', status: 'pending' }).returning();
+      .values({ slug: `nn-${randomUUID()}`, name: 'Nn', status: 'pending' }).returning();
 
     expect(await decideClubRequest(db, { clubId: club.id, decision: 'reject', note: '   ', actorId: admin.id }))
       .toMatchObject({ ok: false, error: 'note_required' });
@@ -228,7 +236,7 @@ describe.skipIf(!url)('clubs-admin', () => {
   it('refuses to decide a club that is not pending', async () => {
     const admin = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `np-${Date.now()}`, name: 'Np', status: 'active' }).returning();
+      .values({ slug: `np-${randomUUID()}`, name: 'Np', status: 'active' }).returning();
     expect(await decideClubRequest(db, { clubId: club.id, decision: 'approve', note: null, actorId: admin.id }))
       .toMatchObject({ ok: false, error: 'not_pending' });
   });
@@ -241,7 +249,7 @@ describe.skipIf(!url)('clubs-admin', () => {
     const admin = await mkUser();
     const other = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `rc-${Date.now()}`, name: 'Rc', status: 'pending' }).returning();
+      .values({ slug: `rc-${randomUUID()}`, name: 'Rc', status: 'pending' }).returning();
 
     // Warm two pool connections FIRST. `db.transaction` calls `pool.connect()`, and on a
     // cold pool the second call spends its first milliseconds on a TCP handshake and
@@ -276,14 +284,14 @@ describe.skipIf(!url)('clubs-admin', () => {
   it('setClubStatus refuses a pending club and refuses a rejected club', async () => {
     const admin = await mkUser();
     const [pendingClub] = await db.insert(schema.clubs)
-      .values({ slug: `sp-${Date.now()}`, name: 'Sp', status: 'pending' }).returning();
+      .values({ slug: `sp-${randomUUID()}`, name: 'Sp', status: 'pending' }).returning();
     expect(await setClubStatus(db, { clubId: pendingClub.id, status: 'active', actorId: admin.id }))
       .toMatchObject({ ok: false, error: 'not_decided' });
     const [stillPending] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, pendingClub.id));
     expect(stillPending.status).toBe('pending');
 
     const [rejectedClub] = await db.insert(schema.clubs)
-      .values({ slug: `sr-${Date.now()}`, name: 'Sr', status: 'rejected' }).returning();
+      .values({ slug: `sr-${randomUUID()}`, name: 'Sr', status: 'rejected' }).returning();
     expect(await setClubStatus(db, { clubId: rejectedClub.id, status: 'active', actorId: admin.id }))
       .toMatchObject({ ok: false, error: 'not_decided' });
     const [stillRejected] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, rejectedClub.id));
@@ -293,7 +301,7 @@ describe.skipIf(!url)('clubs-admin', () => {
   it('setClubStatus suspends and reinstates an active club, auditing each way', async () => {
     const admin = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `ss-${Date.now()}`, name: 'Ss', status: 'active' }).returning();
+      .values({ slug: `ss-${randomUUID()}`, name: 'Ss', status: 'active' }).returning();
 
     expect(await setClubStatus(db, { clubId: club.id, status: 'suspended', actorId: admin.id })).toMatchObject({ ok: true });
     const [suspended] = await db.select().from(schema.clubs).where(eq(schema.clubs.id, club.id));
@@ -308,7 +316,7 @@ describe.skipIf(!url)('clubs-admin', () => {
     const admin = await mkUser();
     const other = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `snoop-${Date.now()}`, name: 'Snoop', status: 'active' }).returning();
+      .values({ slug: `snoop-${randomUUID()}`, name: 'Snoop', status: 'active' }).returning();
 
     expect(await setClubStatus(db, { clubId: club.id, status: 'suspended', actorId: admin.id })).toMatchObject({ ok: true });
     // The stale-page click: a second admin suspending a club the first already did.
@@ -316,7 +324,7 @@ describe.skipIf(!url)('clubs-admin', () => {
     expect(await setClubStatus(db, { clubId: club.id, status: 'suspended', actorId: other.id })).toMatchObject({ ok: true });
     // And reinstating an already-active club is not an activation either.
     const [live] = await db.insert(schema.clubs)
-      .values({ slug: `snoop2-${Date.now()}`, name: 'Snoop2', status: 'active' }).returning();
+      .values({ slug: `snoop2-${randomUUID()}`, name: 'Snoop2', status: 'active' }).returning();
     expect(await setClubStatus(db, { clubId: live.id, status: 'active', actorId: admin.id })).toMatchObject({ ok: true });
 
     expect(await db.select().from(schema.auditLog).where(eq(schema.auditLog.clubId, club.id)))
@@ -338,7 +346,7 @@ describe.skipIf(!url)('clubs-admin', () => {
   it('setClubStatus refuses a status it is not allowed to write, instead of mislabelling it', async () => {
     const admin = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `sbad-${Date.now()}`, name: 'Sbad', status: 'active' }).returning();
+      .values({ slug: `sbad-${randomUUID()}`, name: 'Sbad', status: 'active' }).returning();
 
     const res = await setClubStatus(db, {
       clubId: club.id,

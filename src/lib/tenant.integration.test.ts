@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -25,7 +27,7 @@ describe.skipIf(!url)('tenant resolution query', () => {
   });
 
   it('finds a club by slug', async () => {
-    const slug = `demo-${Date.now()}`;
+    const slug = `demo-${randomUUID()}`;
     await db.insert(schema.clubs).values({ slug, name: 'Demo Rowing' });
     const [found] = await db.select().from(schema.clubs).where(eq(schema.clubs.slug, slug)).limit(1);
     expect(found?.name).toBe('Demo Rowing');
@@ -34,12 +36,12 @@ describe.skipIf(!url)('tenant resolution query', () => {
   });
 
   it('returns nothing for an unknown slug', async () => {
-    const rows = await db.select().from(schema.clubs).where(eq(schema.clubs.slug, `nope-${Date.now()}`)).limit(1);
+    const rows = await db.select().from(schema.clubs).where(eq(schema.clubs.slug, `nope-${randomUUID()}`)).limit(1);
     expect(rows).toHaveLength(0);
   });
 
   it('resolves a live club whose slug was previously rejected, not the rejected row', async () => {
-    const slug = `trap-${Date.now()}`;
+    const slug = `trap-${randomUUID()}`;
     // A rejected request that once held this slug…
     await db.insert(schema.clubs).values({ slug, name: 'Rejected Squatter', status: 'rejected' });
     // …must not stop the real club from claiming it, and must never be resolved by it.
@@ -54,7 +56,7 @@ describe.skipIf(!url)('tenant resolution query', () => {
   });
 
   it('does not resolve a rejected club at all', async () => {
-    const slug = `gone-${Date.now()}`;
+    const slug = `gone-${randomUUID()}`;
     await db.insert(schema.clubs).values({ slug, name: 'Only Rejected', status: 'rejected' });
     expect(await findClubBySlug(db, slug)).toBeNull();
   });
@@ -83,7 +85,7 @@ describe.skipIf(!url)('tenant resolution query', () => {
       schema,
       logger: { logQuery: (sql, params) => { captured.push({ sql, params }); } },
     });
-    await findClubBySlug(logged, `plan-probe-${Date.now()}`);
+    await findClubBySlug(logged, `plan-probe-${randomUUID()}`);
     expect(captured).toHaveLength(1);
     const { sql, params } = captured[0];
 
@@ -107,7 +109,7 @@ describe.skipIf(!url)('tenant resolution query', () => {
     // The other half of the partial index: exempting rejected rows must not have
     // weakened the constraint for live ones, or two clubs could share a slug and the
     // `limit 1` ambiguity would be back for good.
-    const slug = `uq-${Date.now()}`;
+    const slug = `uq-${randomUUID()}`;
     await db.insert(schema.clubs).values({ slug, name: 'First', status: 'active' });
     // drizzle wraps the driver error, so the constraint name lives on `cause`.
     const err = await db.insert(schema.clubs).values({ slug, name: 'Second', status: 'pending' })

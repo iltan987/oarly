@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
@@ -33,6 +33,30 @@ describe.skipIf(!url)('users-admin', () => {
       isAdmin: opts.isAdmin ?? false,
     });
     return { id, email: `${id}@t.co` };
+  }
+
+  /**
+   * Three tests below need a known-empty admin set to make a global count deterministic,
+   * so they demote every platform admin in the database. That is a global write with no
+   * natural owner: `TEST_DATABASE_URL` is meant to name a throwaway database, but it is
+   * one environment variable away from naming one that has real admins in it, and this
+   * used to strip them permanently with no way back.
+   *
+   * The demotion is still the same single statement, so the concurrency the last test
+   * exercises is untouched. The restore runs in `finally`, i.e. AFTER the assertions —
+   * one of them counts the global admin set and must not see the restored rows.
+   */
+  async function withEmptyAdminSet(body: () => Promise<void>) {
+    const demoted = await db.update(schema.user).set({ isAdmin: false })
+      .where(eq(schema.user.isAdmin, true)).returning({ id: schema.user.id });
+    try {
+      await body();
+    } finally {
+      if (demoted.length > 0) {
+        await db.update(schema.user).set({ isAdmin: true })
+          .where(inArray(schema.user.id, demoted.map((u) => u.id)));
+      }
+    }
   }
 
   it('finds a user by a case-insensitive fragment of email or name, with their memberships', async () => {
@@ -174,15 +198,16 @@ describe.skipIf(!url)('users-admin', () => {
   // Revoking a non-admin was refused as `last_admin`, which told the operator "this is
   // the last platform admin" about a user who is not an admin at all.
   it('does not blame the last-admin guard for a revoke of a non-admin', async () => {
-    await db.update(schema.user).set({ isAdmin: false }).where(eq(schema.user.isAdmin, true));
-    const onlyAdmin = await mkUser({ isAdmin: true });
-    const target = await mkUser({ isAdmin: false });
+    await withEmptyAdminSet(async () => {
+      const onlyAdmin = await mkUser({ isAdmin: true });
+      const target = await mkUser({ isAdmin: false });
 
-    const res = await setPlatformAdmin(db, { targetUserId: target.id, isAdmin: false, actorId: onlyAdmin.id });
-    expect(res).toMatchObject({ ok: true, isAdmin: false });
-    // And the one real admin is untouched.
-    const [admin] = await db.select().from(schema.user).where(eq(schema.user.id, onlyAdmin.id));
-    expect(admin.isAdmin).toBe(true);
+      const res = await setPlatformAdmin(db, { targetUserId: target.id, isAdmin: false, actorId: onlyAdmin.id });
+      expect(res).toMatchObject({ ok: true, isAdmin: false });
+      // And the one real admin is untouched.
+      const [admin] = await db.select().from(schema.user).where(eq(schema.user.id, onlyAdmin.id));
+      expect(admin.isAdmin).toBe(true);
+    });
   });
 
   // The grant path takes no lock, so both transactions read `is_admin = false`. The
@@ -226,13 +251,14 @@ describe.skipIf(!url)('users-admin', () => {
 
   it('refuses to revoke the last remaining admin', async () => {
     // Start from a known-empty admin set so the count is deterministic.
-    await db.update(schema.user).set({ isAdmin: false }).where(eq(schema.user.isAdmin, true));
-    const actor = await mkUser({ isAdmin: false });
-    const onlyAdmin = await mkUser({ isAdmin: true });
-    expect(await setPlatformAdmin(db, { targetUserId: onlyAdmin.id, isAdmin: false, actorId: actor.id }))
-      .toMatchObject({ ok: false, error: 'last_admin' });
-    const [after] = await db.select().from(schema.user).where(eq(schema.user.id, onlyAdmin.id));
-    expect(after.isAdmin).toBe(true);
+    await withEmptyAdminSet(async () => {
+      const actor = await mkUser({ isAdmin: false });
+      const onlyAdmin = await mkUser({ isAdmin: true });
+      expect(await setPlatformAdmin(db, { targetUserId: onlyAdmin.id, isAdmin: false, actorId: actor.id }))
+        .toMatchObject({ ok: false, error: 'last_admin' });
+      const [after] = await db.select().from(schema.user).where(eq(schema.user.id, onlyAdmin.id));
+      expect(after.isAdmin).toBe(true);
+    });
   });
 
   // Two operators trimming the admin list in the same second. Without `FOR UPDATE` on the
@@ -240,32 +266,33 @@ describe.skipIf(!url)('users-admin', () => {
   // both write — leaving zero admins and nobody able to grant the flag back. Exactly one
   // revoke may win.
   it('lets only one of two concurrent revokes win, leaving one admin standing', async () => {
-    await db.update(schema.user).set({ isAdmin: false }).where(eq(schema.user.isAdmin, true));
-    const actor = await mkUser({ isAdmin: false });
-    const a = await mkUser({ isAdmin: true });
-    const b = await mkUser({ isAdmin: true });
+    await withEmptyAdminSet(async () => {
+      const actor = await mkUser({ isAdmin: false });
+      const a = await mkUser({ isAdmin: true });
+      const b = await mkUser({ isAdmin: true });
 
-    // Warm two pool connections FIRST. `db.transaction` calls `pool.connect()`, and on a
-    // cold pool the second call spends its first milliseconds on a TCP handshake and auth —
-    // by which time the first transaction has already committed, so the two never overlap
-    // and the race cannot reproduce. Without this the test passes with the lock removed.
-    const warm = await Promise.all([pool.connect(), pool.connect()]);
-    for (const c of warm) c.release();
+      // Warm two pool connections FIRST. `db.transaction` calls `pool.connect()`, and on a
+      // cold pool the second call spends its first milliseconds on a TCP handshake and auth —
+      // by which time the first transaction has already committed, so the two never overlap
+      // and the race cannot reproduce. Without this the test passes with the lock removed.
+      const warm = await Promise.all([pool.connect(), pool.connect()]);
+      for (const c of warm) c.release();
 
-    const [ra, rb] = await Promise.all([
-      setPlatformAdmin(db, { targetUserId: a.id, isAdmin: false, actorId: actor.id }),
-      setPlatformAdmin(db, { targetUserId: b.id, isAdmin: false, actorId: actor.id }),
-    ]);
+      const [ra, rb] = await Promise.all([
+        setPlatformAdmin(db, { targetUserId: a.id, isAdmin: false, actorId: actor.id }),
+        setPlatformAdmin(db, { targetUserId: b.id, isAdmin: false, actorId: actor.id }),
+      ]);
 
-    expect([ra, rb].filter((r) => r.ok)).toHaveLength(1);
-    expect([ra, rb].find((r) => !r.ok)).toMatchObject({ ok: false, error: 'last_admin' });
+      expect([ra, rb].filter((r) => r.ok)).toHaveLength(1);
+      expect([ra, rb].find((r) => !r.ok)).toMatchObject({ ok: false, error: 'last_admin' });
 
-    // The invariant the guard exists for: the platform is never left without an admin.
-    const admins = await db.select().from(schema.user).where(eq(schema.user.isAdmin, true));
-    expect(admins).toHaveLength(1);
-    // And the refusal left no audit row claiming a revoke that did not happen.
-    const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.actorUserId, actor.id));
-    expect(audit).toHaveLength(1);
+      // The invariant the guard exists for: the platform is never left without an admin.
+      const admins = await db.select().from(schema.user).where(eq(schema.user.isAdmin, true));
+      expect(admins).toHaveLength(1);
+      // And the refusal left no audit row claiming a revoke that did not happen.
+      const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.actorUserId, actor.id));
+      expect(audit).toHaveLength(1);
+    });
   });
 
   it('rolls the flag change back when the audit insert fails', async () => {

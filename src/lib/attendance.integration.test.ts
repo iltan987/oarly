@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -26,7 +28,7 @@ describe.skipIf(!url)('markNoShow', () => {
     pool = new Pool({ connectionString: url });
     db = drizzle(pool, { schema });
     await migrate(db, { migrationsFolder: './drizzle' });
-    ownerId = `att-owner-${Date.now()}`;
+    ownerId = `att-owner-${randomUUID()}`;
     await db.insert(schema.user).values({ id: ownerId, name: 'Owner', email: `${ownerId}@t.co` });
   });
   afterAll(async () => { await pool.end(); });
