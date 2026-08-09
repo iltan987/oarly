@@ -4,7 +4,10 @@
     "signIn": "Giriş yap",
     "signUp": "Kayıt ol",
     "signOut": "Çıkış yap",
-    "loading": "Yükleniyor…"
+    "loading": "Yükleniyor…",
+    "language": "Dil",
+    "toggleTheme": "Temayı değiştir",
+    "appDescription": "Kürek kulüpleri için seans ve rezervasyon yönetimi."
   },
   "home": {
     "heroTitle": "Tekneyi ayırt, grup sohbetini boşver",

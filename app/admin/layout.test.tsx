@@ -10,6 +10,7 @@ vi.mock('@/env', () => ({ env: { APP_URL: 'http://localhost:3000' } }));
 vi.mock('@/lib/urls', () => ({ apexUrl: () => '/sign-in', parseAppOrigin: () => ({}) }));
 vi.mock('@/components/sign-out-button', () => ({ SignOutButton: () => null }));
 vi.mock('@/components/theme-toggle', () => ({ ThemeToggle: () => null }));
+vi.mock('@/components/language-toggle', () => ({ LanguageToggle: () => null }));
 vi.mock('./_nav', () => ({ AdminNav: () => null }));
 
 import AdminLayout from './layout';

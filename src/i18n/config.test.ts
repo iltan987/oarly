@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { asLocale } from '@/i18n/request';
+import { asLocale } from '@/i18n/config';
 
 describe('asLocale', () => {
   it('accepts supported locales', () => {

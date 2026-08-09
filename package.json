@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint --max-warnings 0",
     "lint:fix": "eslint --fix",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/oarly_test vitest run --no-file-parallelism",

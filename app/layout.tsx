@@ -3,7 +3,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Manrope, Space_Grotesk } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
-import { getLocale } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
@@ -11,10 +11,10 @@ import { Toaster } from '@/components/ui/sonner';
 const heading = Space_Grotesk({ subsets: ['latin'], display: 'swap', variable: '--font-heading-face' });
 const body = Manrope({ subsets: ['latin'], display: 'swap', variable: '--font-body' });
 
-export const metadata: Metadata = {
-  title: 'Oarly',
-  description: 'Kürek kulüpleri için seans ve rezervasyon yönetimi.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('common');
+  return { title: t('appName'), description: t('appDescription') };
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale();

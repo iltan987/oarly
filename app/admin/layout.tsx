@@ -2,8 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 
-import { SignOutButton } from '@/components/sign-out-button';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { AppControls } from '@/components/app-controls';
 import { env } from '@/env';
 import { requireAdmin } from '@/lib/session';
 import { apexUrl, parseAppOrigin } from '@/lib/urls';
@@ -26,10 +25,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <h1 className="font-heading text-lg font-bold text-brand">
           <Link href="/admin">{t('title')}</Link>
         </h1>
-        <div className="flex items-center gap-1">
-          <ThemeToggle />
-          <SignOutButton redirectTo={signOutUrl} />
-        </div>
+        <AppControls signOutUrl={signOutUrl} />
       </header>
       <AdminNav />
       {children}
