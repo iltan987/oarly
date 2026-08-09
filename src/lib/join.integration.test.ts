@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -17,9 +19,9 @@ describe.skipIf(!url)('requestToJoin', () => {
   afterAll(async () => { await pool.end(); });
 
   it('creates one pending membership and is idempotent', async () => {
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'J', email: `${uid}@t.co` });
-    const [club] = await db.insert(schema.clubs).values({ slug: `j-${Date.now()}`, name: 'J', status: 'active' }).returning();
+    const [club] = await db.insert(schema.clubs).values({ slug: `j-${randomUUID()}`, name: 'J', status: 'active' }).returning();
     expect(await requestToJoin(db, { clubId: club.id, userId: uid })).toBe('created');
     expect(await requestToJoin(db, { clubId: club.id, userId: uid })).toBe('exists');
     const rows = await db.select().from(schema.memberships)
@@ -29,9 +31,9 @@ describe.skipIf(!url)('requestToJoin', () => {
   });
 
   it('refuses to join a non-active club and writes nothing', async () => {
-    const uid = `u-${Date.now()}-2`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'K', email: `${uid}@t.co` });
-    const [club] = await db.insert(schema.clubs).values({ slug: `j2-${Date.now()}`, name: 'K', status: 'pending' }).returning();
+    const [club] = await db.insert(schema.clubs).values({ slug: `j2-${randomUUID()}`, name: 'K', status: 'pending' }).returning();
     expect(await requestToJoin(db, { clubId: club.id, userId: uid })).toBe('club_inactive');
     const rows = await db.select().from(schema.memberships)
       .where(and(eq(schema.memberships.clubId, club.id), eq(schema.memberships.userId, uid)));

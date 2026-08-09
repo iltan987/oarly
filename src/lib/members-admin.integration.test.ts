@@ -45,10 +45,10 @@ describe.skipIf(!url)('members-admin', () => {
   }
 
   it('approves only memberships of the given club', async () => {
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
-    const [c1] = await db.insert(schema.clubs).values({ slug: `c1-${Date.now()}`, name: 'C1', status: 'active' }).returning();
-    const [c2] = await db.insert(schema.clubs).values({ slug: `c2-${Date.now()}`, name: 'C2', status: 'active' }).returning();
+    const [c1] = await db.insert(schema.clubs).values({ slug: `c1-${randomUUID()}`, name: 'C1', status: 'active' }).returning();
+    const [c2] = await db.insert(schema.clubs).values({ slug: `c2-${randomUUID()}`, name: 'C2', status: 'active' }).returning();
     const [m] = await db.insert(schema.memberships).values({ userId: uid, clubId: c1.id, role: 'member', status: 'pending' }).returning();
     expect(await setMembershipStatus(db, { membershipId: m.id, clubId: c2.id, status: 'approved', actorId: uid })).toBe(false);
     expect(await setMembershipStatus(db, { membershipId: m.id, clubId: c1.id, status: 'approved', actorId: uid })).toBe(true);
@@ -57,10 +57,10 @@ describe.skipIf(!url)('members-admin', () => {
   });
 
   it('rejects a membershipId belonging to a different club without changing it', async () => {
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
-    const [c1] = await db.insert(schema.clubs).values({ slug: `c1b-${Date.now()}`, name: 'C1', status: 'active' }).returning();
-    const [c2] = await db.insert(schema.clubs).values({ slug: `c2b-${Date.now()}`, name: 'C2', status: 'active' }).returning();
+    const [c1] = await db.insert(schema.clubs).values({ slug: `c1b-${randomUUID()}`, name: 'C1', status: 'active' }).returning();
+    const [c2] = await db.insert(schema.clubs).values({ slug: `c2b-${randomUUID()}`, name: 'C2', status: 'active' }).returning();
     const [m] = await db.insert(schema.memberships).values({ userId: uid, clubId: c1.id, role: 'member', status: 'pending' }).returning();
     expect(await setMembershipStatus(db, { membershipId: m.id, clubId: c2.id, status: 'rejected', actorId: uid })).toBe(false);
     const [after] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, m.id));
@@ -68,10 +68,10 @@ describe.skipIf(!url)('members-admin', () => {
   });
 
   it('assigns a skill level from the same club and rejects one from another club', async () => {
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
-    const [c1] = await db.insert(schema.clubs).values({ slug: `c1s-${Date.now()}`, name: 'C1', status: 'active' }).returning();
-    const [c2] = await db.insert(schema.clubs).values({ slug: `c2s-${Date.now()}`, name: 'C2', status: 'active' }).returning();
+    const [c1] = await db.insert(schema.clubs).values({ slug: `c1s-${randomUUID()}`, name: 'C1', status: 'active' }).returning();
+    const [c2] = await db.insert(schema.clubs).values({ slug: `c2s-${randomUUID()}`, name: 'C2', status: 'active' }).returning();
     const [m] = await db.insert(schema.memberships).values({ userId: uid, clubId: c1.id, role: 'member', status: 'approved' }).returning();
     const [lvlSameClub] = await db.insert(schema.skillLevels).values({ clubId: c1.id, name: 'Beginner', rank: 1 }).returning();
     const [lvlOtherClub] = await db.insert(schema.skillLevels).values({ clubId: c2.id, name: 'Advanced', rank: 1 }).returning();
@@ -86,10 +86,10 @@ describe.skipIf(!url)('members-admin', () => {
   });
 
   it('assignSkillLevel is scoped by clubId on the membership itself', async () => {
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
-    const [c1] = await db.insert(schema.clubs).values({ slug: `c1m-${Date.now()}`, name: 'C1', status: 'active' }).returning();
-    const [c2] = await db.insert(schema.clubs).values({ slug: `c2m-${Date.now()}`, name: 'C2', status: 'active' }).returning();
+    const [c1] = await db.insert(schema.clubs).values({ slug: `c1m-${randomUUID()}`, name: 'C1', status: 'active' }).returning();
+    const [c2] = await db.insert(schema.clubs).values({ slug: `c2m-${randomUUID()}`, name: 'C2', status: 'active' }).returning();
     const [m] = await db.insert(schema.memberships).values({ userId: uid, clubId: c1.id, role: 'member', status: 'approved' }).returning();
     const [lvl] = await db.insert(schema.skillLevels).values({ clubId: c1.id, name: 'Beginner', rank: 1 }).returning();
 
@@ -99,9 +99,9 @@ describe.skipIf(!url)('members-admin', () => {
   });
 
   it('does not assign a skill level to a non-approved membership', async () => {
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
-    const [c1] = await db.insert(schema.clubs).values({ slug: `c1p-${Date.now()}`, name: 'C1', status: 'active' }).returning();
+    const [c1] = await db.insert(schema.clubs).values({ slug: `c1p-${randomUUID()}`, name: 'C1', status: 'active' }).returning();
     const [m] = await db.insert(schema.memberships).values({ userId: uid, clubId: c1.id, role: 'member', status: 'pending' }).returning();
     const [lvl] = await db.insert(schema.skillLevels).values({ clubId: c1.id, name: 'Beginner', rank: 1 }).returning();
     expect(await assignSkillLevel(db, { membershipId: m.id, clubId: c1.id, skillLevelId: lvl.id, actorId: uid })).toBe(false);

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -24,7 +26,7 @@ describe.skipIf(!url)('skill-levels', () => {
     return id;
   }
   async function newClub(tag: string) {
-    const [c] = await db.insert(schema.clubs).values({ slug: `${tag}-${Date.now()}-${Math.round(performance.now())}`, name: tag, status: 'active' }).returning();
+    const [c] = await db.insert(schema.clubs).values({ slug: `${tag}-${randomUUID()}`, name: tag, status: 'active' }).returning();
     return c;
   }
 
@@ -69,7 +71,7 @@ describe.skipIf(!url)('skill-levels', () => {
   it('counts references then deletes, nulling out referencing members and boats', async () => {
     const c = await newClub('sl-del');
     const lvl = await createSkillLevel(db, { clubId: c.id, name: 'Adv', actorId: actor });
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
     const [m] = await db.insert(schema.memberships).values({ userId: uid, clubId: c.id, role: 'member', status: 'approved', skillLevelId: lvl.id }).returning();
     const [boat] = await db.insert(schema.boatTypes).values({ clubId: c.id, name: 'Quad', seats: 4, minSkillLevelId: lvl.id }).returning();
@@ -110,7 +112,7 @@ describe.skipIf(!url)('skill-levels', () => {
     const c1 = await newClub('sl-cr1');
     const c2 = await newClub('sl-cr2');
     const lvl = await createSkillLevel(db, { clubId: c1.id, name: 'Ref', actorId: actor });
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'M', email: `${uid}@t.co` });
     await db.insert(schema.memberships).values({ userId: uid, clubId: c1.id, role: 'member', status: 'approved', skillLevelId: lvl.id }).returning();
     await db.insert(schema.boatTypes).values({ clubId: c1.id, name: 'Quad', seats: 4, minSkillLevelId: lvl.id }).returning();

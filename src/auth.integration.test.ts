@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -24,7 +26,7 @@ describe.skipIf(!url)('auth sign-up', () => {
     process.env.BETTER_AUTH_URL ??= 'http://localhost:3000';
     process.env.APP_URL ??= 'http://localhost:3000';
     const { auth } = await import('@/auth');
-    const email = `signup-${Date.now()}@test.co`;
+    const email = `signup-${randomUUID()}@test.co`;
     await auth.api.signUpEmail({
       body: { email, password: 'Passw0rd!123', name: 'Test User' },
     });
@@ -48,7 +50,7 @@ describe.skipIf(!url)('auth sign-up', () => {
     process.env.BETTER_AUTH_URL ??= 'http://localhost:3000';
     process.env.APP_URL ??= 'http://localhost:3000';
     const { auth } = await import('@/auth');
-    const email = `signup-en-${Date.now()}@test.co`;
+    const email = `signup-en-${randomUUID()}@test.co`;
     await auth.api.signUpEmail({
       body: { email, password: 'Passw0rd!123', name: 'Test User', locale: 'en' },
     });

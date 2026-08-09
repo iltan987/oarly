@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -16,10 +18,17 @@ describe.skipIf(!url)('requestClub', () => {
   beforeAll(async () => { pool = new Pool({ connectionString: url }); db = drizzle(pool, { schema }); await migrate(db, { migrationsFolder: './drizzle' }); });
   afterAll(async () => { await pool.end(); });
 
+  /**
+   * `requestClub` enforces `validateSlug`'s 40-character cap, which a prefix plus a full
+   * 36-char UUID exceeds. Half a UUID is still 64 bits — far more than a fixture needs —
+   * and keeps the failure output readable.
+   */
+  const slugId = () => randomUUID().slice(0, 18);
+
   it('creates a pending club owned by the requester', async () => {
-    const uid = `u-${Date.now()}`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'R', email: `${uid}@t.co` });
-    const slug = `req-${Date.now()}`;
+    const slug = `req-${slugId()}`;
     const res = await requestClub(db, { name: 'İTÜ Kürek', slug, ownerId: uid });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
@@ -31,20 +40,20 @@ describe.skipIf(!url)('requestClub', () => {
   });
 
   it('rejects reserved and duplicate slugs', async () => {
-    const uid = `u-${Date.now()}-2`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'R', email: `${uid}@t.co` });
     expect(await requestClub(db, { name: 'A', slug: 'admin', ownerId: uid }))
       .toMatchObject({ ok: false, error: 'slug_reserved' });
-    const slug = `dup-${Date.now()}`;
+    const slug = `dup-${slugId()}`;
     await requestClub(db, { name: 'A', slug, ownerId: uid });
     expect(await requestClub(db, { name: 'B', slug, ownerId: uid }))
       .toMatchObject({ ok: false, error: 'slug_taken' });
   });
 
   it('lets a new request take a slug that a rejected club still holds', async () => {
-    const uid = `u-${Date.now()}-3`;
+    const uid = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id: uid, name: 'R', email: `${uid}@t.co` });
-    const slug = `freed-${Date.now()}`;
+    const slug = `freed-${slugId()}`;
     await db.insert(schema.clubs).values({ slug, name: 'Spam', status: 'rejected' });
     const res = await requestClub(db, { name: 'Real', slug, ownerId: uid });
     expect(res).toMatchObject({ ok: true });
