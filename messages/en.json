@@ -164,6 +164,34 @@
     "googleError": "Couldn't sign in with Google. Please try again.",
     "errorAccountNotLinked": "This email already uses password sign-in. Enter your password above."
   },
+  "account": {
+    "title": "My account",
+    "body": "Update your personal details here.",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "phone": "Phone",
+    "email": "Email",
+    "emailDescription": "Your email address can't be changed.",
+    "passwordHint": "To change your password,",
+    "passwordLink": "use the password reset flow",
+    "birthday": "Date of birth",
+    "birthdayDescription": "Optional. Leave it empty and nothing is stored.",
+    "gender": "Gender",
+    "genderDescription": "Optional. You can leave it empty.",
+    "genderUnset": "Not set",
+    "genderFemale": "Female",
+    "genderMale": "Male",
+    "genderOther": "Other",
+    "genderPreferNotToSay": "Prefer not to say",
+    "paymentType": "Default payment method",
+    "paymentTypeDescription": "This option comes preselected when you book. It doesn't apply at clubs that don't accept MultiSport; there you pay cash.",
+    "paymentRegular": "Cash",
+    "paymentMultisport": "MultiSport",
+    "save": "Save",
+    "saved": "Your details are updated.",
+    "errorInvalid": "Check the fields and try again.",
+    "errorTooManyRequests": "You've made too many changes. Please wait a moment and try again."
+  },
   "privacy": {
     "title": "Privacy & KVKK",
     "stub": "The full clarification text and privacy policy will be published before launch."
@@ -406,7 +434,15 @@
       "addBoat": "+ Boat",
       "removeBoat": "Remove",
       "needBoats": "Add at least one active boat type first, on the Boats page.",
-      "weekdays": { "0": "Sunday", "1": "Monday", "2": "Tuesday", "3": "Wednesday", "4": "Thursday", "5": "Friday", "6": "Saturday" },
+      "weekdays": {
+        "0": "Sunday",
+        "1": "Monday",
+        "2": "Tuesday",
+        "3": "Wednesday",
+        "4": "Thursday",
+        "5": "Friday",
+        "6": "Saturday"
+      },
       "errors": {
         "end_before_start": "End time must be after the start time.",
         "uneven_tiling": "Session length must divide the window evenly (no leftover minutes).",

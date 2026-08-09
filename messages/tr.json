@@ -164,6 +164,34 @@
     "googleError": "Google ile giriş yapılamadı. Lütfen tekrar dene.",
     "errorAccountNotLinked": "Bu e-posta parola ile giriş kullanıyor. Yukarıdan parolanla giriş yap."
   },
+  "account": {
+    "title": "Hesabım",
+    "body": "Kişisel bilgilerini buradan güncelleyebilirsin.",
+    "firstName": "Ad",
+    "lastName": "Soyad",
+    "phone": "Telefon",
+    "email": "E-posta",
+    "emailDescription": "E-posta adresin değiştirilemez.",
+    "passwordHint": "Şifreni değiştirmek için",
+    "passwordLink": "şifre sıfırlama akışını kullan",
+    "birthday": "Doğum tarihi",
+    "birthdayDescription": "İsteğe bağlı. Boş bırakırsan kaydedilmez.",
+    "gender": "Cinsiyet",
+    "genderDescription": "İsteğe bağlı. Boş bırakabilirsin.",
+    "genderUnset": "Belirtilmedi",
+    "genderFemale": "Kadın",
+    "genderMale": "Erkek",
+    "genderOther": "Diğer",
+    "genderPreferNotToSay": "Belirtmek istemiyorum",
+    "paymentType": "Varsayılan ödeme yöntemi",
+    "paymentTypeDescription": "Rezervasyon yaparken bu seçenek hazır gelir. MultiSport kabul etmeyen kulüplerde geçerli olmaz; orada ödeme nakit alınır.",
+    "paymentRegular": "Nakit",
+    "paymentMultisport": "MultiSport",
+    "save": "Kaydet",
+    "saved": "Bilgilerin güncellendi.",
+    "errorInvalid": "Bilgileri kontrol edip tekrar dene.",
+    "errorTooManyRequests": "Çok fazla değişiklik yaptın. Lütfen biraz bekleyip tekrar dene."
+  },
   "privacy": {
     "title": "Gizlilik ve KVKK",
     "stub": "Aydınlatma metni ve gizlilik politikası yayın öncesi eklenecektir."
@@ -406,7 +434,15 @@
       "addBoat": "+ Tekne",
       "removeBoat": "Kaldır",
       "needBoats": "Önce Tekneler sayfasından en az bir aktif tekne tipi ekleyin.",
-      "weekdays": { "0": "Pazar", "1": "Pazartesi", "2": "Salı", "3": "Çarşamba", "4": "Perşembe", "5": "Cuma", "6": "Cumartesi" },
+      "weekdays": {
+        "0": "Pazar",
+        "1": "Pazartesi",
+        "2": "Salı",
+        "3": "Çarşamba",
+        "4": "Perşembe",
+        "5": "Cuma",
+        "6": "Cumartesi"
+      },
       "errors": {
         "end_before_start": "Bitiş saati başlangıçtan sonra olmalı.",
         "uneven_tiling": "Seans süresi aralığı tam bölmeli (artan dakika kalmamalı).",
