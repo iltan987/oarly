@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { AppWordmark } from '@/components/app-brand';
-import { AppFooter } from '@/components/app-footer';
+import { AppFooter, footerLabels } from '@/components/app-footer';
 import { AppShell } from '@/components/app-shell';
 import { StatusPill } from '@/components/booking-status-badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -27,6 +27,7 @@ export default async function Home() {
   const t = await getTranslations('common');
   const tHome = await getTranslations('home');
   const origin = parseAppOrigin(env.APP_URL);
+  const footerCopy = await footerLabels();
   const user = await getCurrentUser();
 
   if (!user) {
@@ -36,7 +37,7 @@ export default async function Home() {
         align="center"
         brand={<AppWordmark name={t('appName')} />}
         menu={<UserMenu />}
-        footer={<AppFooter />}
+        footer={<AppFooter labels={footerCopy} />}
       >
         <div className="flex flex-col gap-2">
           <h1 className="font-heading text-3xl font-bold text-balance">{tHome('heroTitle')}</h1>
@@ -76,7 +77,7 @@ export default async function Home() {
       width="md"
       brand={<AppWordmark name={t('appName')} />}
       menu={<UserMenu session={menuSession(user)} />}
-      footer={<AppFooter />}
+      footer={<AppFooter labels={footerCopy} />}
     >
       <p className="text-sm text-muted-foreground">{tHome('signedInAs', { email: user.email })}</p>
 

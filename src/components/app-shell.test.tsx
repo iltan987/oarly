@@ -38,6 +38,17 @@ describe('AppShell', () => {
     expect(screen.getByRole('main')).not.toContainElement(screen.getByRole('banner'));
   });
 
+  it('keeps the full-height column that the footer and align="center" both depend on', () => {
+    // jsdom cannot measure layout, but it can pin the two classes the layout rests on.
+    // Without `min-h-dvh` on the root a short page's footer floats up under the content
+    // instead of sitting at the bottom of the viewport; without `flex-1` on <main> the
+    // root has no slack to distribute, so `align="center"` centres inside a
+    // content-height box and centres nothing. Neither failure raises anything.
+    const { container } = renderShell({ align: 'center' });
+    expect(container.firstElementChild).toHaveClass('flex', 'min-h-dvh', 'flex-col');
+    expect(screen.getByRole('main')).toHaveClass('flex-1');
+  });
+
   /**
    * THE regression test for the reported defect: "when I press the manage club button ...
    * I expect theme button, language switch to remain in the same place." Before this
@@ -87,9 +98,15 @@ describe('AppShell', () => {
 
   /**
    * Asserted on the header's own direct children, NOT via
-   * `container.querySelector('.shrink-0')`. The deleted `app-controls.test.tsx` used that
-   * selector to prove this very property and could never fail, because `shrink-0` is baked
-   * into the `button` and `toggle-group` primitives and always matched something nested.
+   * `container.querySelector('.shrink-0')`. That selector cannot fail: `shrink-0` is baked
+   * into the `button` and `toggle-group` primitives, so it always matches something nested
+   * regardless of whether the wrapper under test carries it.
+   *
+   * The deleted `app-controls.test.tsx` learned this the hard way — it shipped with that
+   * exact selector at `cfcce15` and was corrected at `534ca1e` to assert on
+   * `[role="group"]`'s `parentElement`, with a comment rejecting the querySelector form.
+   * So the version deleted by this task was already right; the lesson is carried forward
+   * here, not the mistake.
    */
   it('lets the brand compress and never the menu', () => {
     renderShell();

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { AppWordmark } from '@/components/app-brand';
-import { AppFooter } from '@/components/app-footer';
+import { AppFooter, footerLabels } from '@/components/app-footer';
 import { AppShell } from '@/components/app-shell';
 import { buttonVariants } from '@/components/ui/button';
 import { UserMenu } from '@/components/user-menu';
@@ -24,7 +24,7 @@ export default async function NotFound() {
       align="center"
       brand={<AppWordmark name={tCommon('appName')} />}
       menu={<UserMenu session={menuSession(user, { tenant: true })} />}
-      footer={<AppFooter tenant />}
+      footer={<AppFooter tenant labels={await footerLabels()} />}
     >
       <div className="flex flex-col items-center gap-4 text-center">
         <h1 className="font-heading text-2xl font-bold">{t('title')}</h1>

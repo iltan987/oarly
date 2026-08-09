@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
 import { ClubBrand } from '@/components/app-brand';
-import { AppFooter } from '@/components/app-footer';
+import { AppFooter, footerLabels } from '@/components/app-footer';
 import { AppShell } from '@/components/app-shell';
 import { buttonVariants } from '@/components/ui/button';
 import { UserMenu } from '@/components/user-menu';
@@ -40,7 +40,7 @@ export default async function JoinPage({
     align: 'center',
     brand: <ClubBrand name={club.name} logoUrl={club.logoUrl} />,
     menu: <UserMenu session={menuSession(session?.user, { tenant: true })} />,
-    footer: <AppFooter tenant />,
+    footer: <AppFooter tenant labels={await footerLabels()} />,
   } as const;
 
   if (!session) {

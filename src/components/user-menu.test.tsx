@@ -257,6 +257,16 @@ describe('UserMenu', () => {
       expect(menu).toHaveAccessibleName('userMenu');
     });
 
+    it("calls itself preferences for a guest, matching what the guest's menu holds", async () => {
+      // A signed-out visitor's trigger says "Preferences" and their popup contains no
+      // account row at all, so labelling it "Account and preferences" announces a section
+      // that is not there. The signed-in assertion above cannot see this: an unconditional
+      // t('userMenu') satisfies it in both states.
+      renderMenu(<UserMenu />);
+      const menu = await openMenu('preferences');
+      expect(menu).toHaveAccessibleName('preferences');
+    });
+
     it('sizes itself independently of the 32px trigger and hangs off its end', async () => {
       // The shadcn popup is `w-(--anchor-width)` — it matches the trigger — and this
       // trigger is `size-8`, so without the override the whole menu renders 32px wide.

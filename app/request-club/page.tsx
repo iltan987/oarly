@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 import { AppWordmark } from '@/components/app-brand';
-import { AppFooter } from '@/components/app-footer';
+import { AppFooter, footerLabels } from '@/components/app-footer';
 import { AppShell } from '@/components/app-shell';
 import { UserMenu } from '@/components/user-menu';
 import { menuSession } from '@/lib/menu-session';
@@ -24,7 +24,7 @@ export default async function RequestClubPage({
     align: 'center',
     brand: <AppWordmark name={tCommon('appName')} />,
     menu: <UserMenu session={menuSession(user)} />,
-    footer: <AppFooter />,
+    footer: <AppFooter labels={await footerLabels()} />,
   } as const;
 
   if (submitted === '1') {

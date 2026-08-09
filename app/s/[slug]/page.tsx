@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { ClubBrand } from '@/components/app-brand';
-import { AppFooter } from '@/components/app-footer';
+import { AppFooter, footerLabels } from '@/components/app-footer';
 import { AppShell } from '@/components/app-shell';
 import { StatusPill } from '@/components/booking-status-badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -59,7 +59,7 @@ export default async function ClubPublicPage({
       align="center"
       brand={<ClubBrand name={club.name} logoUrl={club.logoUrl} />}
       menu={<UserMenu session={menuSession(user, { tenant: true })} />}
-      footer={<AppFooter tenant />}
+      footer={<AppFooter tenant labels={await footerLabels()} />}
     >
       <div className="flex flex-col items-center">
         <Card className="w-full items-center gap-6 p-8 text-center">

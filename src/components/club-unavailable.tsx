@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 import { ClubBrand } from '@/components/app-brand';
-import { AppFooter } from '@/components/app-footer';
+import { AppFooter, footerLabels } from '@/components/app-footer';
 import { AppShell } from '@/components/app-shell';
 import { UserMenu } from '@/components/user-menu';
 import { menuSession } from '@/lib/menu-session';
@@ -18,7 +18,7 @@ export async function ClubUnavailable({ name }: { name: string }) {
       align="center"
       brand={<ClubBrand name={name} />}
       menu={<UserMenu session={menuSession(user, { tenant: true })} />}
-      footer={<AppFooter tenant />}
+      footer={<AppFooter tenant labels={await footerLabels()} />}
     >
       <div className="flex flex-col items-center gap-4 text-center">
         {/*
