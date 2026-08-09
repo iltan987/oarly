@@ -117,6 +117,12 @@ async function diagnose() {
 
     const client = new Client({ connectionString: unpooled || pooled });
     await client.connect();
+    // The replay takes the same locks the real migration did, so a concurrent lock
+    // holder blocks it too — and a diagnostic that hangs is worse than the silence it
+    // replaces, because it stalls the deploy it was meant to explain. Today this is
+    // masked whenever 0009 is among the pending set (its own SET LOCAL runs first),
+    // which stops being true the moment 0009 is applied in production.
+    await client.query("SET lock_timeout = '5s'").catch(() => {});
     try {
       let lastApplied = null;
       try {
