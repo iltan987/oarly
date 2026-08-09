@@ -70,5 +70,11 @@ export const penalties = pgTable(
     permanent: boolean('permanent').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('penalties_booking_uq').on(t.bookingId)],
+  (t) => [
+    uniqueIndex('penalties_booking_uq').on(t.bookingId),
+    // Every read of this table is by membership: `recomputeBan` folds one member's rows
+    // after each mark/undo, and `getRestrictions` explains a restriction from them. The
+    // only index before this one was on `booking_id`, so both were sequential scans.
+    index('penalties_membership_idx').on(t.membershipId),
+  ],
 );
