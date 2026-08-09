@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -28,15 +30,18 @@ describe.skipIf(!url)('notify', () => {
   beforeEach(() => { sendMock.mockReset(); });
 
   async function mkUser() {
-    const id = `u-${Date.now()}-${Math.floor(performance.now())}`;
+    // randomUUID, not a timestamp: both Date.now() and Math.floor(performance.now())
+    // are millisecond-resolution, so two calls inside one millisecond produced an
+    // identical id. It survived locally because each call awaits a round trip; CI is
+    // fast enough to collide, and did — `duplicate key value violates user_pkey`.
+    const id = `u-${randomUUID()}`;
     await db.insert(schema.user).values({ id, name: 'X', email: `${id}@t.co` });
     return { id, email: `${id}@t.co` };
   }
 
-  let seq = 0;
   // Seed a single booking + its session/slot/club/boat/user directly (no bookSeat needed).
   async function seedBooking(status: 'booked' | 'waitlisted' | 'cancelled', queuePosition: number | null = null) {
-    const tag = `ntf-${Date.now()}-${seq++}`;
+    const tag = `ntf-${randomUUID()}`;
     const [club] = await db.insert(schema.clubs).values({ slug: tag, name: `Club ${tag}`, status: 'active', timezone: TZ }).returning();
     const [boat] = await db.insert(schema.boatTypes).values({ clubId: club.id, name: 'Quad', seats: 2, allowedPayment: 'both' }).returning();
     const [slot] = await db.insert(schema.slots).values({ clubId: club.id, date: MON, startAt: START, endAt: END }).returning();
@@ -92,7 +97,7 @@ describe.skipIf(!url)('notify', () => {
   it('sends the decision notice to the club requester and never throws', async () => {
     const requester = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `nd-${Date.now()}`, name: 'Notify Club', status: 'rejected', createdBy: requester.id }).returning();
+      .values({ slug: `nd-${randomUUID()}`, name: 'Notify Club', status: 'rejected', createdBy: requester.id }).returning();
     await expect(notifyClubDecision(db, { clubId: club.id, decision: 'rejected', note: 'because' })).resolves.toBeUndefined();
     expect(sendMock).toHaveBeenCalledTimes(1);
     expect(sendMock.mock.calls[0][0]).toMatchObject({ to: requester.email });
@@ -100,7 +105,7 @@ describe.skipIf(!url)('notify', () => {
 
   it('is a no-op when the club has no requester on record', async () => {
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `nr-${Date.now()}`, name: 'Orphan', status: 'active', createdBy: null }).returning();
+      .values({ slug: `nr-${randomUUID()}`, name: 'Orphan', status: 'active', createdBy: null }).returning();
     await expect(notifyClubDecision(db, { clubId: club.id, decision: 'approved', note: null })).resolves.toBeUndefined();
     expect(sendMock).not.toHaveBeenCalled();
   });
@@ -111,7 +116,7 @@ describe.skipIf(!url)('notify', () => {
     const admin = await mkUser();
     const requester = await mkUser();
     const [club] = await db.insert(schema.clubs)
-      .values({ slug: `ndf-${Date.now()}`, name: 'Flaky Mail Club', status: 'pending', createdBy: requester.id }).returning();
+      .values({ slug: `ndf-${randomUUID()}`, name: 'Flaky Mail Club', status: 'pending', createdBy: requester.id }).returning();
 
     const decided = await decideClubRequest(db, { clubId: club.id, decision: 'approve', note: null, actorId: admin.id });
     expect(decided).toMatchObject({ ok: true, status: 'active' });
