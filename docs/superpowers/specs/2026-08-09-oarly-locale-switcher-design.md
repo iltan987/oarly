@@ -198,6 +198,16 @@ today get a minimal one.
 | `app/(auth)/layout.tsx` | **nothing** | add a control row |
 | `app/s/[slug]/join/page.tsx` (both branches) | **nothing** | add a control row |
 | `app/privacy/page.tsx` | **nothing** | add a control row |
+| `app/s/[slug]/page.tsx` | **nothing** | add a control row |
+| `app/not-found.tsx` | **nothing** | add a control row |
+| `app/request-club/page.tsx` (both branches) | **nothing** | add a control row |
+
+The last three were omissions in the first draft of this table, caught in review. The club's
+public landing page (`app/s/[slug]/page.tsx`) is reachable by anyone who has the subdomain
+— it is the most public surface in the product — and `not-found.tsx` is where a mistyped URL
+lands someone who may not read the language they are being apologised to in. Both were
+chrome-less. The goal stated at the top of this section is "every surface a user can reach",
+and these are surfaces a user can reach.
 
 `app/(auth)/layout.tsx` matters most: it wraps sign-in, sign-up, forgot-password,
 reset-password and verify-email. It is where a first-time visitor lands, in a language
@@ -280,9 +290,23 @@ eight brittle render tests.
 - **`revalidatePath('/', 'layout')` is a wide invalidation.** Accepted: locale changes
   every string on every route, so a narrower invalidation would be a correctness bug, not
   an optimisation. It fires only on an explicit user action, bounded at 60/min per IP.
-- **The segmented control adds ~60px to header rows** that already truncate the club name
-  on narrow viewports. The club name's `min-w-0 truncate` absorbs it; the control is
-  `shrink-0`. To be checked at 320px.
+- **The segmented control adds ~76px to header rows** that already truncate on narrow
+  viewports. Where the truncating element sits *outside* the control cluster — the club
+  name in `member-header.tsx`, which has `min-w-0 truncate` — its `truncate` absorbs the
+  extra width and `shrink-0` on the cluster is exactly right.
+
+  **`manage/layout.tsx` is the exception, and it is the one that bites.** Its truncating
+  element is the owner's account link, which moves *inside* `AppControls` as the leading
+  slot. A flex child only truncates when its parent is compressed, and `shrink-0`
+  guarantees the cluster always gets its max-content width — so the link never shrinks
+  below its `max-w-40` cap and the header overflows instead. Measured with an owner whose
+  display name is absent and falls back to a 20-character email: 86px of overflow at
+  320px, 31px at 375px, 16px at 390px, all of which fitted before. `flex-wrap` does not
+  save it; the cluster drops to its own line and still cannot shrink.
+
+  So the cluster's shrink behaviour must be split: the controls themselves never shrink,
+  the leading slot does. To be checked at 320px on both layouts, since the fix has to hold
+  for the surface that was already correct as well as the one that was not.
 - **`httpOnly` is a one-way door for client-side reads.** Nothing reads the cookie from
   the client today, and next-intl's provider is the supported path if anything ever needs
   to.
