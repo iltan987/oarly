@@ -36,6 +36,7 @@ class RedirectError extends Error {
 }
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/lib/user-locale', () => ({ setUserLocale: vi.fn() }));
 vi.mock('next/server', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   after: vi.fn(),
