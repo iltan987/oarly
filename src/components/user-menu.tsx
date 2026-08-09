@@ -146,7 +146,10 @@ export function UserMenu({ session }: { session?: UserMenuSession | null }): Rea
         // back to the label. `mergeProps` follows the Object.assign pattern, so an
         // explicit `undefined` from here overwrites the internal value.
         aria-labelledby={undefined}
-        aria-label={t('userMenu')}
+        // Conditioned on `session` for the same reason the trigger's label is: a guest's
+        // menu holds no account at all, and their trigger says "Preferences". Labelling
+        // the popup "Account and preferences" would announce a section they cannot reach.
+        aria-label={session ? t('userMenu') : t('preferences')}
         className="w-56"
       >
         {session ? (

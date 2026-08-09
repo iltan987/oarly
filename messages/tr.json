@@ -14,6 +14,9 @@
     "themeLight": "Açık",
     "themeDark": "Koyu",
     "themeSystem": "Sistem",
+    "privacy": "Gizlilik",
+    "requestClub": "Kulüp başvurusu",
+    "copyright": "© {year} Oarly",
     "appDescription": "Kürek kulüpleri için seans ve rezervasyon yönetimi."
   },
   "home": {
@@ -23,6 +26,10 @@
     "signedInAs": "{email} olarak giriş yaptın",
     "myClubs": "Kulüplerin",
     "noClubs": "Henüz bir kulübe üye değilsin.",
+    "noClubsTitle": "Henüz bir kulübe üye değilsin",
+    "noClubsBody": "Kendi kulübünü yönetiyorsan Oarly'ye taşımak için başvurabilirsin.",
+    "noClubsCta": "Kulüp başvurusu yap",
+    "noClubsHint": "Zaten bir kulübe üyeysen, kulübünün paylaştığı katılım bağlantısını aç.",
     "statusPending": "Beklemede",
     "statusSuspended": "Askıda",
     "statusRejected": "Onaylanmadı"
