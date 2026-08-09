@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { boatSchema, clubProfileSchema, createClubSchema, dateOverrideSchema, schedulingSettingsSchema, signUpSchema, skillLevelNameSchema, socialSchema, windowBoatSchema, windowSchema } from './schemas';
+import { paymentTypeEnum } from '@/db/schema/enums';
+
+import { accountProfileSchema, boatSchema, clubProfileSchema, createClubSchema, dateOverrideSchema, GENDER_OPTIONS, PAYMENT_TYPES, schedulingSettingsSchema, signUpSchema, skillLevelNameSchema, socialSchema, windowBoatSchema, windowSchema } from './schemas';
 
 describe('schemas', () => {
   it('signUpSchema requires consent === true and an 8+ char password', () => {
@@ -13,6 +15,82 @@ describe('schemas', () => {
     expect(createClubSchema.safeParse({ name: 'Boğaziçi', slug: 'bogazici', ownerEmail: 'o@c.co' }).success).toBe(true);
     expect(createClubSchema.safeParse({ name: 'x', slug: 'bogazici', ownerEmail: 'o@c.co' }).success).toBe(false);
     expect(createClubSchema.safeParse({ name: 'Boğaziçi', slug: 'bogazici', ownerEmail: 'nope' }).success).toBe(false);
+  });
+});
+
+describe('accountProfileSchema', () => {
+  const base = {
+    firstName: 'İltan', lastName: 'Caner', phone: '5551112233',
+    birthday: '1990-04-17', gender: 'male' as const, defaultPaymentType: 'regular' as const,
+  };
+
+  /**
+   * The reason `PAYMENT_TYPES` is allowed to be a second copy of the pg enum at all.
+   * `src/lib/schemas.ts` is imported by client components, so importing
+   * `@/db/schema/enums` there would pull `drizzle-orm/pg-core` into the browser bundle;
+   * this test is the thing that stops the copy from drifting. Order is asserted too —
+   * the form renders the radio options in this order.
+   */
+  it('keeps PAYMENT_TYPES identical to the payment_type pg enum', () => {
+    expect([...PAYMENT_TYPES]).toEqual([...paymentTypeEnum.enumValues]);
+  });
+
+  it('accepts a fully filled profile', () => {
+    const r = accountProfileSchema.safeParse(base);
+    expect(r).toMatchObject({ success: true, data: base });
+  });
+
+  /**
+   * `birthday` and `gender` are nullable and were NEVER collected at sign-up, so '' has to
+   * parse: it is how the form says "not set", and the action turns it into NULL. Asserting
+   * the parsed VALUE, not just `success` — a schema that silently coerced '' to some
+   * default would still report success and would destroy the unset/answered distinction.
+   */
+  it("accepts '' for birthday and gender and preserves it as ''", () => {
+    const r = accountProfileSchema.safeParse({ ...base, birthday: '', gender: '' });
+    expect(r).toMatchObject({ success: true, data: { birthday: '', gender: '' } });
+  });
+
+  // '' must NOT be a way through for defaultPaymentType: the column is NOT NULL and
+  // always has a real value, so the UI never offers "not set" for it either.
+  it("rejects '' for defaultPaymentType, which is NOT NULL", () => {
+    expect(accountProfileSchema.safeParse({ ...base, defaultPaymentType: '' }).success).toBe(false);
+  });
+
+  // Shape is not validity: these match /^\d{4}-\d{2}-\d{2}$/ and reach the `date` column
+  // as 22008, escaping the action to the error boundary. Same class as dateOverrideSchema.
+  it.each(['2026-02-31', '2026-13-45', '1900-02-29', '17/04/1990', '1990-4-7'])(
+    'rejects the malformed birthday %s', (birthday) => {
+      expect(accountProfileSchema.safeParse({ ...base, birthday }).success).toBe(false);
+    },
+  );
+  it('still accepts a real leap-day birthday', () => {
+    expect(accountProfileSchema.safeParse({ ...base, birthday: '2024-02-29' }).success).toBe(true);
+  });
+
+  it('rejects a gender outside the four offered answers', () => {
+    expect(accountProfileSchema.safeParse({ ...base, gender: 'yes' }).success).toBe(false);
+    expect(GENDER_OPTIONS).toEqual(['female', 'male', 'other', 'prefer_not_to_say']);
+  });
+  it.each(GENDER_OPTIONS)('accepts the offered gender %s', (gender) => {
+    expect(accountProfileSchema.safeParse({ ...base, gender }).success).toBe(true);
+  });
+
+  /**
+   * The `.pick()` is live in both directions, and both halves matter:
+   *  - the three picked rules still apply here (an empty name/phone is refused), so the
+   *    account form cannot blank out what sign-up required; and
+   *  - the fields NOT picked are absent, so this never demands an `email`, `password` or
+   *    `consent` that the account form does not and must not submit.
+   */
+  it.each(['firstName', 'lastName', 'phone'])('inherits signUpSchema\'s rule for %s', (field) => {
+    expect(accountProfileSchema.safeParse({ ...base, [field]: '' }).success).toBe(false);
+  });
+  it('does not carry email, password or consent across from signUpSchema', () => {
+    expect(accountProfileSchema.safeParse(base).success).toBe(true);
+    expect(Object.keys(accountProfileSchema.shape).sort()).toEqual(
+      ['birthday', 'defaultPaymentType', 'firstName', 'gender', 'lastName', 'phone'],
+    );
   });
 });
 
