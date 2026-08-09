@@ -85,7 +85,11 @@ const eslintConfig = defineConfig([
     extends: [tseslint.configs.disableTypeChecked],
   },
 
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  // `.claude/worktrees/**` holds agent worktrees — full second checkouts nested inside
+  // the repo. Without this, a repo-wide lint walks them and reports their copy of
+  // `src/components/ui/*`, which the per-directory rules below only exempt at the
+  // real path.
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", ".claude/worktrees/**"]),
 ]);
 
 export default eslintConfig;

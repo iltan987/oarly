@@ -24,7 +24,15 @@ const NOW = new Date(START.getTime() - 24 * 60 * 60 * 1000);
 describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   let pool: Pool;
   let db: ReturnType<typeof drizzle<typeof schema>>;
-  beforeAll(async () => { pool = new Pool({ connectionString: url }); db = drizzle(pool, { schema }); await migrate(db, { migrationsFolder: './drizzle' }); });
+  /** The owner every owner-override call below is attributed to — `audit_log.actor_user_id` is a real FK. */
+  let ownerId: string;
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: url });
+    db = drizzle(pool, { schema });
+    await migrate(db, { migrationsFolder: './drizzle' });
+    ownerId = `bk-owner-${Date.now()}`;
+    await db.insert(schema.user).values({ id: ownerId, name: 'Owner', email: `${ownerId}@t.co` });
+  });
   afterAll(async () => { await pool.end(); });
 
   let seq = 0;
@@ -225,7 +233,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     if (!r1.ok) throw new Error('setup');
     const selfBlocked = await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: r1.bookingId, now: NOW });
     expect(selfBlocked).toEqual({ ok: false, error: 'cutoff_passed' });
-    const removed = await ownerRemoveBooking(db, { clubId: s.club.id, bookingId: r1.bookingId });
+    const removed = await ownerRemoveBooking(db, { actorId: ownerId, clubId: s.club.id, bookingId: r1.bookingId });
     expect(removed).toMatchObject({ ok: true, promoted: { userId: u2 } });
     const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, s.club.id));
     expect(rows.find((r) => r.userId === u2)!.status).toBe('booked');
@@ -234,7 +242,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   it('owner seats a member into a free seat, tagged source=owner', async () => {
     const s = await scenario({ seats: 2, allowedPayment: 'both' });
     const u1 = await newMember(s.club.id, 'u1');
-    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
+    const res = await ownerAddBooking(db, { actorId: ownerId, clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
     expect(res).toMatchObject({ ok: true });
     if (!res.ok) throw new Error('add failed');
     const [row] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, res.bookingId));
@@ -246,22 +254,22 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     const s = await scenario({ seats: 1, allowedPayment: 'both' });
     const u1 = await newMember(s.club.id, 'u1');
     const u2 = await newMember(s.club.id, 'u2');
-    await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
-    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u2, paymentType: 'regular', now: NOW });
+    await ownerAddBooking(db, { actorId: ownerId, clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
+    const res = await ownerAddBooking(db, { actorId: ownerId, clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u2, paymentType: 'regular', now: NOW });
     expect(res).toEqual({ ok: false, error: 'session_full' });
   });
 
   it('owner-add rejects a non-approved member', async () => {
     const s = await scenario({ seats: 2, allowedPayment: 'both' });
     const pend = await newMember(s.club.id, 'p', null, 'pending');
-    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: pend, paymentType: 'regular', now: NOW });
+    const res = await ownerAddBooking(db, { actorId: ownerId, clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: pend, paymentType: 'regular', now: NOW });
     expect(res).toEqual({ ok: false, error: 'not_a_member' });
   });
 
   it('owner-add rejects MultiSport at a club that has MultiSport disabled', async () => {
     const s = await scenario({ seats: 2, allowedPayment: 'both', multisportEnabled: false });
     const u1 = await newMember(s.club.id, 'u1');
-    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'multisport', now: NOW });
+    const res = await ownerAddBooking(db, { actorId: ownerId, clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'multisport', now: NOW });
     expect(res).toEqual({ ok: false, error: 'multisport_disabled' });
     const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, u1));
     expect(rows).toHaveLength(0);
@@ -270,8 +278,67 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   it('owner-add still accepts regular at a club that has MultiSport disabled', async () => {
     const s = await scenario({ seats: 2, allowedPayment: 'both', multisportEnabled: false });
     const u1 = await newMember(s.club.id, 'u1');
-    const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
+    const res = await ownerAddBooking(db, { actorId: ownerId, clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
     expect(res).toMatchObject({ ok: true });
+  });
+
+  /** One club, one seated member — the booking an owner then removes. */
+  async function seedOwnerBooking() {
+    const s = await scenario({ seats: 2 });
+    const uid = await newMember(s.club.id, 'own');
+    const r = await bookSeat(db, { clubId: s.club.id, userId: uid, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', idempotencyKey: key(), now: NOW });
+    if (!r.ok) throw new Error('setup');
+    return { clubId: s.club.id, bookingId: r.bookingId };
+  }
+
+  it('audits booking.owner_remove', async () => {
+    const f = await seedOwnerBooking();
+    expect(await ownerRemoveBooking(db, { actorId: ownerId, clubId: f.clubId, bookingId: f.bookingId }))
+      .toMatchObject({ ok: true });
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, f.bookingId));
+    expect(rows.map((a) => a.action)).toContain('booking.owner_remove');
+    expect(rows[0].actingAsRole).toBe('owner');
+    expect(rows[0].actorUserId).toBe(ownerId);
+    expect(rows[0].clubId).toBe(f.clubId);
+  });
+
+  it('rolls the removal back when the audit insert fails', async () => {
+    const f = await seedOwnerBooking();
+    await expect(ownerRemoveBooking(db, { actorId: 'no-such-user', clubId: f.clubId, bookingId: f.bookingId }))
+      .rejects.toThrow();
+    const [booking] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, f.bookingId));
+    expect(booking.status).toBe('booked');
+  });
+
+  it('writes no audit row when the booking is not active', async () => {
+    const f = await seedOwnerBooking();
+    await ownerRemoveBooking(db, { actorId: ownerId, clubId: f.clubId, bookingId: f.bookingId });
+    const before = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, f.bookingId));
+    expect(await ownerRemoveBooking(db, { actorId: ownerId, clubId: f.clubId, bookingId: f.bookingId }))
+      .toEqual({ ok: false, error: 'not_active' });
+    const after = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, f.bookingId));
+    expect(after).toHaveLength(before.length);
+  });
+
+  it('audits booking.owner_add against the created booking', async () => {
+    const s = await scenario({ seats: 2 });
+    const uid = await newMember(s.club.id, 'add');
+    const res = await ownerAddBooking(db, { actorId: ownerId, clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: uid, paymentType: 'regular', now: NOW });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, res.bookingId));
+    expect(rows.map((a) => a.action)).toContain('booking.owner_add');
+    expect(rows[0].actingAsRole).toBe('owner');
+    expect(rows[0].actorUserId).toBe(ownerId);
+  });
+
+  it('rolls the owner-add back when the audit insert fails', async () => {
+    const s = await scenario({ seats: 2 });
+    const uid = await newMember(s.club.id, 'addfail');
+    await expect(ownerAddBooking(db, { actorId: 'no-such-user', clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: uid, paymentType: 'regular', now: NOW }))
+      .rejects.toThrow();
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.userId, uid));
+    expect(rows).toHaveLength(0);
   });
 
   // Nothing sets sessions.status today (per-session cancel is a later cycle), so these
@@ -297,7 +364,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     it('takes no owner-added booking either', async () => {
       const s = await closedSession();
       const u = await newMember(s.club.id, 'late');
-      const res = await ownerAddBooking(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u, paymentType: 'regular', now: NOW });
+      const res = await ownerAddBooking(db, { actorId: ownerId, clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u, paymentType: 'regular', now: NOW });
       expect(res).toEqual({ ok: false, error: 'no_session' });
     });
 
@@ -349,7 +416,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
       const first = await bookSeat(db, { clubId: a.clubId, userId: uid, windowId: a.windowId, boatTypeId: a.boatTypeId, startAt: a.startAt, paymentType: 'multisport', idempotencyKey: 'k-a', now: NOW });
       expect(first.ok).toBe(true);
 
-      const second = await ownerAddBooking(db, { clubId: b.clubId, windowId: b.windowId, boatTypeId: b.boatTypeId, startAt: b.startAt, userId: uid, paymentType: 'multisport', now: NOW });
+      const second = await ownerAddBooking(db, { actorId: ownerId, clubId: b.clubId, windowId: b.windowId, boatTypeId: b.boatTypeId, startAt: b.startAt, userId: uid, paymentType: 'multisport', now: NOW });
       expect(second).toEqual({ ok: false, error: 'multisport_day_taken' });
     });
 

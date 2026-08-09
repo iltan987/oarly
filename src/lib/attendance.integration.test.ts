@@ -20,7 +20,15 @@ const NOW = zonedWallClockToUtc(MISSED_DAY, '20:00', TZ);
 describe.skipIf(!url)('markNoShow', () => {
   let pool: Pool;
   let db: ReturnType<typeof drizzle<typeof schema>>;
-  beforeAll(async () => { pool = new Pool({ connectionString: url }); db = drizzle(pool, { schema }); await migrate(db, { migrationsFolder: './drizzle' }); });
+  /** The owner every mutation below is attributed to — `audit_log.actor_user_id` is a real FK. */
+  let ownerId: string;
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: url });
+    db = drizzle(pool, { schema });
+    await migrate(db, { migrationsFolder: './drizzle' });
+    ownerId = `att-owner-${Date.now()}`;
+    await db.insert(schema.user).values({ id: ownerId, name: 'Owner', email: `${ownerId}@t.co` });
+  });
   afterAll(async () => { await pool.end(); });
 
   let seq = 0;
@@ -70,7 +78,7 @@ describe.skipIf(!url)('markNoShow', () => {
 
   it('marks the booking, writes a penalty and bans until session start + policy', async () => {
     const ctx = await seed('1w');
-    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.permanent).toBe(false);
@@ -86,7 +94,7 @@ describe.skipIf(!url)('markNoShow', () => {
 
   it('records the absence but imposes no ban when the policy is off', async () => {
     const ctx = await seed('off');
-    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
     expect(result).toMatchObject({ ok: true, bannedUntil: null, permanent: false });
     const [penalty] = await db.select().from(schema.penalties).where(eq(schema.penalties.bookingId, ctx.booking.id));
     expect(penalty).toBeDefined();
@@ -98,7 +106,7 @@ describe.skipIf(!url)('markNoShow', () => {
 
   it('sets the membership to banned for a never policy', async () => {
     const ctx = await seed('never');
-    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
     expect(result).toMatchObject({ ok: true, permanent: true });
     const [m] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, ctx.membership.id));
     expect(m.status).toBe('banned');
@@ -118,7 +126,7 @@ describe.skipIf(!url)('markNoShow', () => {
     await db.insert(schema.memberships).values({ userId: filler, clubId: ctx.club.id, status: 'approved' });
     await db.insert(schema.bookings).values({ sessionId: future.session.id, clubId: ctx.club.id, userId: filler, paymentType: 'regular', status: 'booked', effectiveAt: NOW, bookingDate: '2026-03-12' });
 
-    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.cancelled.map((c) => c.bookingId)).toEqual([future.booking.id]);
@@ -131,7 +139,7 @@ describe.skipIf(!url)('markNoShow', () => {
   it('leaves a seat that falls after the ban ends', async () => {
     const ctx = await seed('1w');
     const later = await seedFutureSeat(ctx, '2026-03-25');    // beyond 10 Mar + 7d
-    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.cancelled).toEqual([]);
@@ -142,7 +150,7 @@ describe.skipIf(!url)('markNoShow', () => {
   it('cancels every future seat when the ban is permanent', async () => {
     const ctx = await seed('never');
     const far = await seedFutureSeat(ctx, '2027-01-05');
-    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.cancelled.map((c) => c.bookingId)).toEqual([far.booking.id]);
@@ -156,7 +164,7 @@ describe.skipIf(!url)('markNoShow', () => {
     // was seeded (that would make the assertion vacuous).
     const survivor = await seedFutureSeat(ctx, '2026-04-01');
     const late = zonedWallClockToUtc('2026-03-30', '20:00', TZ);   // marked long after
-    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: late });
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: late });
     expect(result).toMatchObject({ ok: true, alreadyLapsed: true });
     if (!result.ok) return;
     expect(result.bannedUntil!.getTime()).toBeLessThan(late.getTime());
@@ -172,7 +180,7 @@ describe.skipIf(!url)('markNoShow', () => {
     await db.insert(schema.memberships).values({ userId: ctx.uid, clubId: otherClub.club.id, status: 'approved' });
     const foreign = await seedFutureSeat({ ...otherClub, uid: ctx.uid }, '2026-03-12');
 
-    await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
     const [kept] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, foreign.booking.id));
     expect(kept.status).toBe('booked');
   });
@@ -180,25 +188,25 @@ describe.skipIf(!url)('markNoShow', () => {
   it('rejects a session that has not started', async () => {
     const ctx = await seed('1w');
     const before = zonedWallClockToUtc(MISSED_DAY, '06:00', TZ);
-    expect(await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: before })).toEqual({ ok: false, error: 'not_started' });
+    expect(await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: before })).toEqual({ ok: false, error: 'not_started' });
   });
 
   it('rejects a waitlisted booking — it never held a seat', async () => {
     const ctx = await seed('1w');
     await db.update(schema.bookings).set({ status: 'waitlisted', queuePosition: 1 }).where(eq(schema.bookings.id, ctx.booking.id));
-    expect(await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW })).toEqual({ ok: false, error: 'not_booked' });
+    expect(await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW })).toEqual({ ok: false, error: 'not_booked' });
   });
 
   it('rejects a second mark on the same booking', async () => {
     const ctx = await seed('1w');
-    await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
-    expect(await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW })).toEqual({ ok: false, error: 'already_marked' });
+    await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    expect(await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW })).toEqual({ ok: false, error: 'already_marked' });
   });
 
   it('rejects a booking belonging to another club', async () => {
     const ctx = await seed('1w');
     const other = await seed('1w');
-    expect(await markNoShow(db, { clubId: other.club.id, bookingId: ctx.booking.id, now: NOW })).toEqual({ ok: false, error: 'not_found' });
+    expect(await markNoShow(db, { actorId: ownerId, clubId: other.club.id, bookingId: ctx.booking.id, now: NOW })).toEqual({ ok: false, error: 'not_found' });
   });
 
   it('takes the later end date when a second absence is marked during a ban', async () => {
@@ -210,13 +218,13 @@ describe.skipIf(!url)('markNoShow', () => {
     // over every row, this would regress to 17 Mar.
     const second = await seedFutureSeat(ctx, '2026-03-12');
     const firstNow = zonedWallClockToUtc('2026-03-12', '20:00', TZ);
-    const firstResult = await markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, now: firstNow });
+    const firstResult = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: second.booking.id, now: firstNow });
     expect(firstResult.ok).toBe(true);
     if (!firstResult.ok) return;
     expect(firstResult.bannedUntil).toEqual(zonedWallClockToUtc('2026-03-19', '07:00', TZ));
 
     const later = zonedWallClockToUtc('2026-03-13', '20:00', TZ);
-    const result = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: later });
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: later });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // max(10 Mar + 7d = 17 Mar, standing ban 19 Mar) = 19 Mar — the standing
@@ -235,7 +243,7 @@ describe.skipIf(!url)('markNoShow', () => {
     const [session] = await db.insert(schema.sessions).values({ slotId: slot.id, clubId: club.id, boatTypeId: boat.id, capacity: 2 }).returning();
     const [booking] = await db.insert(schema.bookings).values({ sessionId: session.id, clubId: club.id, userId: uid, paymentType: 'regular', status: 'booked', effectiveAt: MISSED_START, bookingDate: MISSED_DAY }).returning();
 
-    const result = await markNoShow(db, { clubId: club.id, bookingId: booking.id, now: NOW });
+    const result = await markNoShow(db, { actorId: ownerId, clubId: club.id, bookingId: booking.id, now: NOW });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.permanent).toBe(true);
@@ -244,12 +252,60 @@ describe.skipIf(!url)('markNoShow', () => {
     expect(m.status).toBe('rejected');
   });
 
+  it('audits attendance.noshow and attendance.noshow_undo', async () => {
+    const ctx = await seed('1w');
+
+    const marked = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    expect(marked.ok).toBe(true);
+    const afterMark = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, ctx.booking.id));
+    expect(afterMark.map((a) => a.action)).toContain('attendance.noshow');
+    expect(afterMark[0].actingAsRole).toBe('owner');
+    expect(afterMark[0].actorUserId).toBe(ownerId);
+    expect(afterMark[0].clubId).toBe(ctx.club.id);
+
+    const undone = await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
+    expect(undone.ok).toBe(true);
+    const afterUndo = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, ctx.booking.id));
+    expect(afterUndo.map((a) => a.action).sort()).toEqual(['attendance.noshow', 'attendance.noshow_undo']);
+  });
+
+  it('rolls the absence back when the audit insert fails', async () => {
+    const ctx = await seed('1w');
+    await expect(markNoShow(db, { actorId: 'no-such-user', clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW }))
+      .rejects.toThrow();
+    const [booking] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, ctx.booking.id));
+    expect(booking.status).toBe('booked');
+    const penalties = await db.select().from(schema.penalties).where(eq(schema.penalties.bookingId, ctx.booking.id));
+    expect(penalties).toHaveLength(0);
+  });
+
+  it('rolls the undo back when the audit insert fails', async () => {
+    const ctx = await seed('1w');
+    await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    await expect(undoNoShow(db, { actorId: 'no-such-user', clubId: ctx.club.id, bookingId: ctx.booking.id }))
+      .rejects.toThrow();
+    const [booking] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, ctx.booking.id));
+    expect(booking.status).toBe('no_show');
+    const penalties = await db.select().from(schema.penalties).where(eq(schema.penalties.bookingId, ctx.booking.id));
+    expect(penalties).toHaveLength(1);
+  });
+
+  it('writes no audit row when the booking was already marked', async () => {
+    const ctx = await seed('1w');
+    await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    const before = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, ctx.booking.id));
+    expect(await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW }))
+      .toMatchObject({ ok: false, error: 'already_marked' });
+    const after = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, ctx.booking.id));
+    expect(after).toHaveLength(before.length);
+  });
+
   describe.skipIf(!url)('undoNoShow', () => {
     it('restores the booking, deletes the penalty and lifts the ban', async () => {
       const ctx = await seed('1w');
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
 
-      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      const result = await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
       expect(result).toEqual({ ok: true, bannedUntil: null, permanent: false });
 
       const [booking] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, ctx.booking.id));
@@ -262,13 +318,13 @@ describe.skipIf(!url)('markNoShow', () => {
 
     it('keeps the ban alive when another absence still stands', async () => {
       const ctx = await seed('1w');
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
       const second = await seedFutureSeat(ctx, '2026-03-12');
       const later = zonedWallClockToUtc('2026-03-13', '20:00', TZ);
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, now: later });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: second.booking.id, now: later });
 
       // Undo the FIRST absence; the second still bans until 12 Mar + 7d = 19 Mar.
-      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      const result = await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.bannedUntil).toEqual(zonedWallClockToUtc('2026-03-19', '07:00', TZ));
@@ -276,8 +332,8 @@ describe.skipIf(!url)('markNoShow', () => {
 
     it('lifts a permanent ban back to approved', async () => {
       const ctx = await seed('never');
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
-      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      const result = await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
       expect(result).toMatchObject({ ok: true, permanent: false });
       const [m] = await db.select().from(schema.memberships).where(eq(schema.memberships.id, ctx.membership.id));
       expect(m.status).toBe('approved');
@@ -286,8 +342,8 @@ describe.skipIf(!url)('markNoShow', () => {
     it('does not restore the seats the cascade cancelled', async () => {
       const ctx = await seed('1w');
       const future = await seedFutureSeat(ctx, '2026-03-12');
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
-      await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
 
       const [still] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, future.booking.id));
       expect(still.status).toBe('cancelled');
@@ -295,14 +351,14 @@ describe.skipIf(!url)('markNoShow', () => {
 
     it('rejects a booking that was never marked', async () => {
       const ctx = await seed('1w');
-      expect(await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id })).toEqual({ ok: false, error: 'not_marked' });
+      expect(await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id })).toEqual({ ok: false, error: 'not_marked' });
     });
 
     it('rejects a booking belonging to another club', async () => {
       const ctx = await seed('1w');
       const other = await seed('1w');
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
-      expect(await undoNoShow(db, { clubId: other.club.id, bookingId: ctx.booking.id })).toEqual({ ok: false, error: 'not_found' });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      expect(await undoNoShow(db, { actorId: ownerId, clubId: other.club.id, bookingId: ctx.booking.id })).toEqual({ ok: false, error: 'not_found' });
     });
 
     it('reports a restore conflict when a multisport seat was taken on the freed day', async () => {
@@ -314,7 +370,7 @@ describe.skipIf(!url)('markNoShow', () => {
       // Marking it absent flips status to `no_show`, which falls outside the
       // index's `status in ('booked', 'waitlisted')` predicate — the day is now
       // free again as far as the unique index is concerned.
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
 
       // The member legitimately takes another MultiSport seat the SAME
       // club-local day, on a different session, while the first sits marked absent.
@@ -324,7 +380,7 @@ describe.skipIf(!url)('markNoShow', () => {
 
       // Undo tries to put the first booking back into the predicate — colliding
       // with the second, which now legitimately occupies that (user, day) key.
-      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      const result = await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
       expect(result).toEqual({ ok: false, error: 'restore_conflict' });
     });
 
@@ -337,14 +393,14 @@ describe.skipIf(!url)('markNoShow', () => {
       const cUid = await seedMember(ctx, 'att-c');
 
       // Mark A absent — the seat is now open (freeSeats counts only 'booked').
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
 
       // Owner seats a walk-in (C) into the freed seat.
-      const added = await ownerAddBooking(db, { clubId: ctx.club.id, windowId, boatTypeId: ctx.boat.id, startAt: MISSED_START, userId: cUid, paymentType: 'regular', now: NOW });
+      const added = await ownerAddBooking(db, { actorId: ownerId, clubId: ctx.club.id, windowId, boatTypeId: ctx.boat.id, startAt: MISSED_START, userId: cUid, paymentType: 'regular', now: NOW });
       expect(added.ok).toBe(true);
 
       // Undoing A's absence must not push the session to 3 booked in a 2-seat boat.
-      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      const result = await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
       expect(result).toEqual({ ok: false, error: 'restore_conflict' });
 
       const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.sessionId, ctx.session.id));
@@ -361,20 +417,20 @@ describe.skipIf(!url)('markNoShow', () => {
       // Mark A absent, then the owner re-seats A into a NEW row ("sorry, wrong row").
       // The one-booking-per-slot check in `ownerAddBooking` filters on active
       // statuses, so the `no_show` row does not block the re-add.
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
-      const added = await ownerAddBooking(db, { clubId: ctx.club.id, windowId, boatTypeId: ctx.boat.id, startAt: MISSED_START, userId: ctx.uid, paymentType: 'regular', now: NOW });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      const added = await ownerAddBooking(db, { actorId: ownerId, clubId: ctx.club.id, windowId, boatTypeId: ctx.boat.id, startAt: MISSED_START, userId: ctx.uid, paymentType: 'regular', now: NOW });
       expect(added.ok).toBe(true);
 
       // Undoing the original absence would collide with the new row on
       // `bookings_active_uq` — this must come back as a typed failure, not a throw.
-      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      const result = await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
       expect(result).toEqual({ ok: false, error: 'restore_conflict' });
     });
 
     it('still restores the seat when it has remained free (guard against over-correcting)', async () => {
       const ctx = await seed('1w');
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
-      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      const result = await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
       expect(result).toEqual({ ok: true, bannedUntil: null, permanent: false });
       const [booking] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, ctx.booking.id));
       expect(booking.status).toBe('booked');
@@ -391,12 +447,12 @@ describe.skipIf(!url)('markNoShow', () => {
       // Mark A absent. `markNoShow` never calls `applySeating` on the missed
       // session itself (only on the future sessions its cascade touches), so D
       // is NOT auto-promoted here — booked = {B}, waitlisted = {D}.
-      await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
 
       // The freed seat is genuinely open: `capacity` bounds booked rows only,
       // and D's waitlisted row is additional to capacity, not counted against
       // it. Undo must succeed.
-      const result = await undoNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id });
+      const result = await undoNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id });
       expect(result).toEqual({ ok: true, bannedUntil: null, permanent: false });
 
       const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.sessionId, ctx.session.id));

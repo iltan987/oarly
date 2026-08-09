@@ -123,4 +123,15 @@ describe('dateOverrideSchema', () => {
   it('rejects a non-boolean isOpen', () => {
     expect(dateOverrideSchema.safeParse({ dateISO: '2026-07-20', isOpen: 'yes' }).success).toBe(false);
   });
+  // Shape is not validity. These match /^\d{4}-\d{2}-\d{2}$/ and reach a `date`
+  // column as `date/time field value out of range` (22008), which escapes the action
+  // to the error boundary instead of returning the refusal the contract promises.
+  it.each(['2026-02-31', '2026-13-45', '2026-04-31', '1900-02-29', '2026-01-00'])(
+    'rejects the well-shaped non-date %s', (dateISO) => {
+      expect(dateOverrideSchema.safeParse({ dateISO, isOpen: true }).success).toBe(false);
+    },
+  );
+  it('still accepts a real leap day', () => {
+    expect(dateOverrideSchema.safeParse({ dateISO: '2024-02-29', isOpen: true }).success).toBe(true);
+  });
 });

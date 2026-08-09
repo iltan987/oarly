@@ -15,7 +15,7 @@ export type PoliciesState =
   | { status: 'error'; cause: 'invalid_lead' | 'invalid_input' };
 
 export async function savePoliciesAction(slug: string, _prev: PoliciesState, formData: FormData): Promise<PoliciesState> {
-  const { club } = await requireOwner(slug, '/manage/policies');
+  const { club, user } = await requireOwner(slug, '/manage/policies');
   const leadRaw = String(formData.get('bookingOpenLeadDays') ?? '').trim();
   const cutoffRaw = String(formData.get('cancelCutoffHours') ?? '').trim();
   const waitlistRaw = String(formData.get('waitlistCapacity') ?? '').trim();
@@ -31,7 +31,7 @@ export async function savePoliciesAction(slug: string, _prev: PoliciesState, for
     waitlistCapacity: waitlistRaw === '' ? null : waitlistRaw,
   });
   if (!parsed.success) return { status: 'error', cause: 'invalid_input' };
-  const result = await updateSchedulingSettings(db, club.id, parsed.data);
+  const result = await updateSchedulingSettings(db, club.id, parsed.data, user.id);
   if (!result.ok) return { status: 'error', cause: 'invalid_lead' };
   revalidatePath(`/s/${slug}/manage/policies`);
   revalidatePath(`/s/${slug}/manage`);

@@ -2,6 +2,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { boatTypes, skillLevels } from '@/db/schema';
+import { logAudit } from '@/lib/audit';
 
 export type BoatType = typeof boatTypes.$inferSelect;
 export type AllowedPayment = 'regular_only' | 'multisport_only' | 'both';
@@ -39,34 +40,53 @@ async function skillBelongsToClub(db: DB, clubId: string, skillLevelId: string):
   return Boolean(lvl);
 }
 
-export async function createBoat(db: DB, clubId: string, input: BoatInput): Promise<{ ok: true; id: string } | { ok: false; error: 'skill_not_in_club' }> {
+/**
+ * The three mutations below are each wrapped in a transaction purely so the audit
+ * row commits with the change (spec §4.3). The logged `clubId` is the caller's,
+ * which is safe because every write below is either scoped by `clubId` in its
+ * `WHERE` (so a row from another club yields no update and no log) or inserts the
+ * boat under that very `clubId` — the log can never attribute a boat to a club
+ * the write did not touch.
+ */
+export async function createBoat(db: DB, clubId: string, input: BoatInput, actorId: string): Promise<{ ok: true; id: string } | { ok: false; error: 'skill_not_in_club' }> {
   if (input.minSkillLevelId && !(await skillBelongsToClub(db, clubId, input.minSkillLevelId))) {
     return { ok: false, error: 'skill_not_in_club' };
   }
-  const [row] = await db.insert(boatTypes).values({
-    clubId, name: input.name, seats: input.seats, minSkillLevelId: input.minSkillLevelId,
-    allowedPayment: input.allowedPayment, minAttendance: input.minAttendance,
-  }).returning({ id: boatTypes.id });
-  return { ok: true, id: row.id };
+  return db.transaction(async (tx) => {
+    const [row] = await tx.insert(boatTypes).values({
+      clubId, name: input.name, seats: input.seats, minSkillLevelId: input.minSkillLevelId,
+      allowedPayment: input.allowedPayment, minAttendance: input.minAttendance,
+    }).returning({ id: boatTypes.id });
+    await logAudit(tx, { actorUserId: actorId, clubId, action: 'boat.create', target: row.id, actingAsRole: 'owner' });
+    return { ok: true, id: row.id };
+  });
 }
 
-export async function updateBoat(db: DB, input: { clubId: string; boatId: string } & BoatInput): Promise<{ ok: true } | { ok: false; error: 'skill_not_in_club' | 'not_found' }> {
+export async function updateBoat(db: DB, input: { clubId: string; boatId: string; actorId: string } & BoatInput): Promise<{ ok: true } | { ok: false; error: 'skill_not_in_club' | 'not_found' }> {
   if (input.minSkillLevelId && !(await skillBelongsToClub(db, input.clubId, input.minSkillLevelId))) {
     return { ok: false, error: 'skill_not_in_club' };
   }
-  const res = await db.update(boatTypes).set({
-    name: input.name, seats: input.seats, minSkillLevelId: input.minSkillLevelId,
-    allowedPayment: input.allowedPayment, minAttendance: input.minAttendance,
-  }).where(and(eq(boatTypes.id, input.boatId), eq(boatTypes.clubId, input.clubId)))
-    .returning({ id: boatTypes.id });
-  return res.length > 0 ? { ok: true } : { ok: false, error: 'not_found' };
+  return db.transaction(async (tx) => {
+    const res = await tx.update(boatTypes).set({
+      name: input.name, seats: input.seats, minSkillLevelId: input.minSkillLevelId,
+      allowedPayment: input.allowedPayment, minAttendance: input.minAttendance,
+    }).where(and(eq(boatTypes.id, input.boatId), eq(boatTypes.clubId, input.clubId)))
+      .returning({ id: boatTypes.id });
+    if (res.length === 0) return { ok: false, error: 'not_found' };
+    await logAudit(tx, { actorUserId: input.actorId, clubId: input.clubId, action: 'boat.update', target: input.boatId, actingAsRole: 'owner' });
+    return { ok: true };
+  });
 }
 
-export async function setBoatActive(db: DB, input: { clubId: string; boatId: string; active: boolean }): Promise<boolean> {
-  const res = await db.update(boatTypes).set({ active: input.active })
-    .where(and(eq(boatTypes.id, input.boatId), eq(boatTypes.clubId, input.clubId)))
-    .returning({ id: boatTypes.id });
-  return res.length > 0;
+export async function setBoatActive(db: DB, input: { clubId: string; boatId: string; active: boolean; actorId: string }): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const res = await tx.update(boatTypes).set({ active: input.active })
+      .where(and(eq(boatTypes.id, input.boatId), eq(boatTypes.clubId, input.clubId)))
+      .returning({ id: boatTypes.id });
+    if (res.length === 0) return false;
+    await logAudit(tx, { actorUserId: input.actorId, clubId: input.clubId, action: 'boat.set_active', target: input.boatId, actingAsRole: 'owner' });
+    return true;
+  });
 }
 
 /**

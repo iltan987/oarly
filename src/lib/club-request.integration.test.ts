@@ -40,4 +40,13 @@ describe.skipIf(!url)('requestClub', () => {
     expect(await requestClub(db, { name: 'B', slug, ownerId: uid }))
       .toMatchObject({ ok: false, error: 'slug_taken' });
   });
+
+  it('lets a new request take a slug that a rejected club still holds', async () => {
+    const uid = `u-${Date.now()}-3`;
+    await db.insert(schema.user).values({ id: uid, name: 'R', email: `${uid}@t.co` });
+    const slug = `freed-${Date.now()}`;
+    await db.insert(schema.clubs).values({ slug, name: 'Spam', status: 'rejected' });
+    const res = await requestClub(db, { name: 'Real', slug, ownerId: uid });
+    expect(res).toMatchObject({ ok: true });
+  });
 });

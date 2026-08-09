@@ -63,7 +63,9 @@ describe.skipIf(!url)('computeCalendar', () => {
     const c = await newClub('cal-override');
     const quad = await newBoat(c.id, 'Quad', 4);
     await mondayWindow(c.id, [{ boatTypeId: quad.id, quantity: 1 }]);
-    await setDateOverride(db, c.id, { dateISO: '2026-07-20', isOpen: false });
+    const actor = `cal-ov-${Date.now()}`;
+    await db.insert(schema.user).values({ id: actor, name: 'O', email: `${actor}@t.co` });
+    await setDateOverride(db, c.id, { dateISO: '2026-07-20', isOpen: false }, actor);
     const [day] = await computeCalendar(db, c.id, { fromDateISO: '2026-07-20', days: 1 });
     expect(day.closed).toBe(true);
     expect(day.closedReason).toBe('override');

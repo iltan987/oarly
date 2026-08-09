@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { boatTypes, clubs } from '@/db/schema';
+import { logAudit } from '@/lib/audit';
 
 export interface SchedulingSettingsInput {
   bookingOpenMode: 'always' | 'lead';
@@ -38,7 +39,26 @@ export async function getSchedulingSettings(db: DB, clubId: string): Promise<Sch
   return c;
 }
 
-export async function updateSchedulingSettings(db: DB, clubId: string, input: SchedulingSettingsInput): Promise<SchedulingResult> {
+/**
+ * Unlike every other mutation in this module's neighbours, this one has no
+ * "row not found" branch: the UPDATE below matches zero rows for an unknown
+ * `clubId` and says nothing about it. Since the audit row was added, such a call
+ * **throws** rather than returning `{ ok: true }` — `audit_log.club_id` is a real
+ * foreign key to `clubs.id`, so the audit insert fails and takes the whole
+ * transaction with it.
+ *
+ * That is the safe direction (a settings change for a club that does not exist
+ * can never commit unattributed), and it is unreachable in production because
+ * `requireOwner` has already loaded a live club. It is documented and pinned by a
+ * test rather than "fixed" into a typed error, because the throw is a genuine
+ * invariant violation, not an expected outcome the caller should branch on.
+ */
+export async function updateSchedulingSettings(
+  db: DB,
+  clubId: string,
+  input: SchedulingSettingsInput,
+  actorId: string,
+): Promise<SchedulingResult> {
   if (input.bookingOpenMode === 'lead' && (input.bookingOpenLeadDays === null || input.bookingOpenLeadDays < 1)) {
     return { ok: false, error: 'invalid_lead' };
   }
@@ -71,6 +91,9 @@ export async function updateSchedulingSettings(db: DB, clubId: string, input: Sc
       convertedBoats = result.rowCount ?? 0;
     }
 
+    // Inside the existing transaction: these policies bind every member of the
+    // club, so the record of who changed them commits with the change (spec §4.3).
+    await logAudit(tx, { actorUserId: actorId, clubId, action: 'club.policies_update', target: clubId, actingAsRole: 'owner' });
     return { ok: true, convertedBoats };
   });
 }

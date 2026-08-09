@@ -9,6 +9,7 @@ import { memberships, user } from '@/db/schema';
 import { ownerAddBooking, ownerRemoveBooking } from '@/lib/booking';
 import { requireOwner } from '@/lib/membership';
 import { notifyBookingConfirmation, notifyOwnerRemoval, notifyWaitlistPromotion } from '@/lib/notify';
+import { escapeLike } from '@/lib/search-params';
 
 export type MemberHit = { userId: string; name: string; email: string; phone: string | null };
 
@@ -22,8 +23,7 @@ export async function searchClubMembersAction(slug: string, query: string): Prom
   const { club } = await requireOwner(slug, '/manage/bookings');
   const q = query.trim();
   if (q.length < 2) return [];
-  // Escape LIKE wildcards in user input so `%`/`_` are matched literally.
-  const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+  const like = `%${escapeLike(q)}%`;
   const now = Date.now();
   const rows = await db
     .select({ userId: memberships.userId, name: user.name, email: user.email, phone: user.phone, bannedUntil: memberships.bannedUntil })
@@ -56,10 +56,10 @@ const addSchema = z.object({
 });
 
 export async function ownerRemoveBookingAction(slug: string, _prev: RemoveActionResult | null, formData: FormData): Promise<RemoveActionResult> {
-  const { club } = await requireOwner(slug, '/manage/bookings');
+  const { club, user } = await requireOwner(slug, '/manage/bookings');
   const parsed = removeSchema.safeParse({ bookingId: formData.get('bookingId') });
   if (!parsed.success) return { ok: false };
-  const result = await ownerRemoveBooking(db, { clubId: club.id, bookingId: parsed.data.bookingId });
+  const result = await ownerRemoveBooking(db, { clubId: club.id, bookingId: parsed.data.bookingId, actorId: user.id });
   if (!result.ok) return result.error === 'not_active' ? { ok: false, error: 'not_active' } : { ok: false };
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);
@@ -73,7 +73,7 @@ export async function ownerRemoveBookingAction(slug: string, _prev: RemoveAction
 }
 
 export async function ownerAddBookingAction(slug: string, _prev: OwnerAddActionResult | null, formData: FormData): Promise<OwnerAddActionResult> {
-  const { club } = await requireOwner(slug, '/manage/bookings');
+  const { club, user } = await requireOwner(slug, '/manage/bookings');
   const parsed = addSchema.safeParse({
     windowId: formData.get('windowId'),
     boatTypeId: formData.get('boatTypeId'),
@@ -82,7 +82,7 @@ export async function ownerAddBookingAction(slug: string, _prev: OwnerAddActionR
     paymentType: formData.get('paymentType'),
   });
   if (!parsed.success) return { ok: false };
-  const result = await ownerAddBooking(db, { clubId: club.id, windowId: parsed.data.windowId, boatTypeId: parsed.data.boatTypeId, startAt: new Date(parsed.data.startAt), userId: parsed.data.userId, paymentType: parsed.data.paymentType });
+  const result = await ownerAddBooking(db, { clubId: club.id, windowId: parsed.data.windowId, boatTypeId: parsed.data.boatTypeId, startAt: new Date(parsed.data.startAt), userId: parsed.data.userId, paymentType: parsed.data.paymentType, actorId: user.id });
   if (!result.ok) return result.error === 'multisport_disabled' ? { ok: false, error: 'multisport_disabled' } : { ok: false };
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);

@@ -1,12 +1,12 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
 
 export const paymentTypeEnum = pgEnum('payment_type', ['regular', 'multisport']);
-export const clubStatusEnum = pgEnum('club_status', ['pending', 'active', 'suspended']);
+export const clubStatusEnum = pgEnum('club_status', ['pending', 'active', 'suspended', 'rejected']);
 export const multisportModeEnum = pgEnum('multisport_mode', ['equal', 'priority']);
 export const bookingOpenModeEnum = pgEnum('booking_open_mode', ['always', 'lead']);
 export const noshowPenaltyEnum = pgEnum('noshow_penalty', ['off', '2d', '1w', '2w', '1m', 'never']);
 export const headingFontEnum = pgEnum('heading_font', ['default', 'premium']);
-export const membershipRoleEnum = pgEnum('membership_role', ['owner', 'member']);
+export const membershipRoleEnum = pgEnum('membership_role', ['owner', 'member', 'admin']);
 export const membershipStatusEnum = pgEnum('membership_status', ['pending', 'approved', 'rejected', 'banned']);
 export const allowedPaymentEnum = pgEnum('allowed_payment', ['regular_only', 'multisport_only', 'both']);
 export const slotStatusEnum = pgEnum('slot_status', ['scheduled', 'open', 'closed', 'cancelled']);

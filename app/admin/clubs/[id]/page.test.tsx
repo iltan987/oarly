@@ -1,0 +1,166 @@
+// @vitest-environment jsdom
+import { render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { ClubAdminDetail } from '@/lib/clubs-admin';
+
+// `@/db` reads server-only env at module load. Left unmocked under jsdom it fails with
+// "Attempted to access a server-side environment variable on the client" and takes the
+// whole FILE down — `0 test`, which is not a failing assertion but an absent one.
+vi.mock('@/db', () => ({ db: {} }));
+
+const getClubAdminDetail = vi.fn<(db: unknown, id: string) => Promise<ClubAdminDetail | null>>();
+vi.mock('@/lib/clubs-admin', () => ({
+  getClubAdminDetail: (...args: Parameters<typeof getClubAdminDetail>) => getClubAdminDetail(...args),
+}));
+
+const listAuditRows = vi.fn(() => Promise.resolve({ rows: [], nextCursor: null }));
+vi.mock('@/lib/audit', () => ({ listAuditRows: (...args: unknown[]) => listAuditRows(...args as []) }));
+
+vi.mock('next-intl/server', () => ({
+  getTranslations: () => Promise.resolve((key: string, values?: Record<string, unknown>) =>
+    (values ? `${key}:${JSON.stringify(values)}` : key)),
+  getLocale: () => Promise.resolve('en'),
+}));
+
+class NotFound extends Error {}
+vi.mock('next/navigation', () => ({ notFound: () => { throw new NotFound(); } }));
+
+// Both are client components whose own behaviour is covered by their own suites; here
+// they are stand-ins so this file can assert WHICH props the page hands them.
+vi.mock('../../club-status-button', () => ({
+  ClubStatusButton: ({ targetStatus, label }: { targetStatus: string; label: string }) =>
+    <div data-testid="status-button" data-target={targetStatus}>{label}</div>,
+}));
+vi.mock('./transfer-owner', () => ({
+  TransferOwner: ({ clubName, candidates }: { clubName: string; candidates: unknown[] }) =>
+    <div data-testid="transfer" data-club={clubName} data-count={candidates.length} />,
+}));
+
+import AdminClubDetailPage from './page';
+
+const CLUB_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+function detail(overrides: Partial<ClubAdminDetail> = {}, club: Record<string, unknown> = {}): ClubAdminDetail {
+  return {
+    club: {
+      id: CLUB_ID, slug: 'bogazici', name: 'Boğaziçi', status: 'active',
+      timezone: 'Europe/Istanbul', reviewNote: null, reviewedBy: null,
+      ...club,
+    } as ClubAdminDetail['club'],
+    reviewedByName: null,
+    owners: [{ userId: 'u1', name: 'Ada', email: 'ada@example.com' }],
+    memberCounts: { pending: 1, approved: 2, rejected: 0, banned: 3 },
+    transferCandidates: [{ userId: 'u2', name: 'Bora', email: 'bora@example.com' }],
+    transferCandidatesTruncated: false,
+    boatCount: 4,
+    windowCount: 5,
+    ...overrides,
+  };
+}
+
+async function renderPage(id = CLUB_ID) {
+  render(await AdminClubDetailPage({ params: Promise.resolve({ id }) }));
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  listAuditRows.mockReturnValue(Promise.resolve({ rows: [], nextCursor: null }));
+});
+
+describe('AdminClubDetailPage', () => {
+  // Keyed by id, not slug: `clubs_slug_uq` is a PARTIAL index that exempts rejected
+  // rows, so a slug can name two clubs at once (spec §6.1).
+  it('looks the club up by the route id and scopes the audit read to it', async () => {
+    getClubAdminDetail.mockResolvedValue(detail());
+    await renderPage();
+
+    expect(getClubAdminDetail).toHaveBeenCalledWith({}, CLUB_ID);
+    // Club-scoped and bounded — `audit_log_club_created_at_id_idx` exists for this
+    // call, and an unfiltered read would merge every club's history onto this page.
+    expect(listAuditRows).toHaveBeenCalledWith({}, { filters: { clubId: CLUB_ID }, limit: 20 });
+  });
+
+  // "No audit entries match these filters" under a heading that reads "Recent
+  // activity", on a page with no filters and no filter UI. It is the /admin/audit
+  // string, and the only reason it fits there is that /admin/audit HAS filters.
+  it('says this club has no activity yet, not that no rows match a filter', async () => {
+    getClubAdminDetail.mockResolvedValue(detail());
+    listAuditRows.mockReturnValue(Promise.resolve({ rows: [], nextCursor: null }));
+    await renderPage();
+    expect(screen.getByText('detailNoAudit')).toBeInTheDocument();
+    expect(screen.queryByText('auditEmpty')).toBeNull();
+  });
+
+  it('404s on an unknown id instead of rendering an empty club', async () => {
+    getClubAdminDetail.mockResolvedValue(null);
+    await expect(renderPage()).rejects.toBeInstanceOf(NotFound);
+  });
+
+  // `/admin/clubs/foo` was a 500, not a 404: `id` is bound into `clubs.id = $1`
+  // against a uuid PRIMARY KEY, and Postgres raised
+  // `invalid input syntax for type uuid: "foo"` (22P02) out of the render.
+  // `listAuditRows({ clubId: 'foo' })` raised it identically.
+  it.each([
+    ['plain text', 'foo'],
+    ['a short label', 'c1'],
+    ['a uuid with a character missing', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa'],
+    ['a numeric id', '42'],
+    ['SQL in the id slot', "'; DROP TABLE clubs; --"],
+  ])('404s on %s without ever reaching the database', async (_label, id) => {
+    getClubAdminDetail.mockResolvedValue(detail());
+    await expect(renderPage(id)).rejects.toBeInstanceOf(NotFound);
+    // The guard is BEFORE the fetch: reaching either query at all is the 500.
+    expect(getClubAdminDetail).not.toHaveBeenCalled();
+    expect(listAuditRows).not.toHaveBeenCalled();
+  });
+
+  // The guard is on shape, not on case: Postgres accepts either.
+  it('still queries when the id is a well-formed uuid in upper case', async () => {
+    getClubAdminDetail.mockResolvedValue(detail());
+    await renderPage(CLUB_ID.toUpperCase());
+    expect(getClubAdminDetail).toHaveBeenCalledWith({}, CLUB_ID.toUpperCase());
+  });
+
+  it('hands the transfer control the club name and only the eligible candidates', async () => {
+    getClubAdminDetail.mockResolvedValue(detail());
+    await renderPage();
+
+    const transfer = screen.getByTestId('transfer');
+    expect(transfer).toHaveAttribute('data-club', 'Boğaziçi');
+    expect(transfer).toHaveAttribute('data-count', '1');
+  });
+
+  it('reports a club with no owner rather than rendering an empty list', async () => {
+    getClubAdminDetail.mockResolvedValue(detail({ owners: [] }));
+    await renderPage();
+    expect(screen.getByText('detailNoOwner')).toBeInTheDocument();
+  });
+
+  // Only a DECIDED club may be suspended or reinstated; `setClubStatus` refuses
+  // `pending` and `rejected` outright, so offering the control there is a button that
+  // can only ever error (spec §5.3).
+  it.each([
+    ['active', 'suspended'],
+    ['suspended', 'active'],
+  ] as const)('offers the status toggle on a %s club, targeting %s', async (status, target) => {
+    getClubAdminDetail.mockResolvedValue(detail({}, { status }));
+    await renderPage();
+    expect(screen.getByTestId('status-button')).toHaveAttribute('data-target', target);
+  });
+
+  it.each(['pending', 'rejected'] as const)('offers no status toggle on a %s club', async (status) => {
+    getClubAdminDetail.mockResolvedValue(detail({}, { status }));
+    await renderPage();
+    expect(screen.queryByTestId('status-button')).toBeNull();
+    // …but the status is still labelled, so a rejected club is not a blank pill.
+    expect(screen.getByText(status === 'pending' ? 'statusPending' : 'statusRejected')).toBeInTheDocument();
+  });
+
+  it('shows the reviewer and the review note when the club was decided', async () => {
+    getClubAdminDetail.mockResolvedValue(detail({ reviewedByName: 'Ece' }, { reviewNote: 'Duplicate' }));
+    await renderPage();
+    expect(screen.getByText('detailReviewedBy:{"name":"Ece"}')).toBeInTheDocument();
+    expect(screen.getByText('Duplicate')).toBeInTheDocument();
+  });
+});

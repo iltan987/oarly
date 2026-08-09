@@ -64,6 +64,27 @@
       "when": 1786147589310,
       "tag": "0008_lonely_saracen",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786212680031,
+      "tag": "0009_bouncy_grim_reaper",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786219740228,
+      "tag": "0010_silly_galactus",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786220552424,
+      "tag": "0011_glamorous_manta",
+      "breakpoints": true
     }
   ]
 }
