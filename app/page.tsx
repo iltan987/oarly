@@ -2,17 +2,21 @@ import { asc, eq } from 'drizzle-orm';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
-import { AppControls } from '@/components/app-controls';
+import { AppWordmark } from '@/components/app-brand';
+import { AppFooter } from '@/components/app-footer';
+import { AppShell } from '@/components/app-shell';
 import { StatusPill } from '@/components/booking-status-badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { UserMenu } from '@/components/user-menu';
 import { db } from '@/db';
 import { clubs, memberships } from '@/db/schema';
 import { env } from '@/env';
 import { initials } from '@/lib/initials';
+import { menuSession } from '@/lib/menu-session';
 import { getCurrentUser } from '@/lib/session';
-import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
+import { clubUrl, parseAppOrigin } from '@/lib/urls';
 
 function computeIsBanned(row: { status: string; bannedUntil: Date | null }): boolean {
   const bannedActive = row.bannedUntil != null && row.bannedUntil.getTime() > Date.now();
@@ -27,12 +31,13 @@ export default async function Home() {
 
   if (!user) {
     return (
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-10 p-8">
-        <div className="flex items-center justify-between">
-          <span className="font-heading text-2xl font-bold text-brand">{t('appName')}</span>
-          <AppControls />
-        </div>
-
+      <AppShell
+        width="md"
+        align="center"
+        brand={<AppWordmark name={t('appName')} />}
+        menu={<UserMenu />}
+        footer={<AppFooter />}
+      >
         <div className="flex flex-col gap-2">
           <h1 className="font-heading text-3xl font-bold text-balance">{tHome('heroTitle')}</h1>
           <p className="text-muted-foreground">{tHome('heroSubtitle')}</p>
@@ -44,7 +49,7 @@ export default async function Home() {
             {tHome('createAccount')}
           </Link>
         </div>
-      </main>
+      </AppShell>
     );
   }
 
@@ -67,19 +72,33 @@ export default async function Home() {
   const rows = myClubs.map((row) => ({ ...row, isBanned: computeIsBanned(row) }));
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
-        <span className="min-w-0 truncate font-heading text-2xl font-bold text-brand">{t('appName')}</span>
-        <AppControls signOutUrl={apexUrl('/sign-in?signedout=1', origin)} />
-      </div>
-
+    <AppShell
+      width="md"
+      brand={<AppWordmark name={t('appName')} />}
+      menu={<UserMenu session={menuSession(user)} />}
+      footer={<AppFooter />}
+    >
       <p className="text-sm text-muted-foreground">{tHome('signedInAs', { email: user.email })}</p>
 
       <div className="flex flex-col gap-3">
         <h2 className="font-heading text-lg font-bold">{tHome('myClubs')}</h2>
 
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{tHome('noClubs')}</p>
+          /*
+            This empty state is the ONLY inbound route to /request-club from a page — the
+            route had zero of them before this — so it is a card with a real call to
+            action, not the bare <p> it used to be. The hint matters as much as the CTA:
+            most people who land here are not club owners, they are members whose club
+            sent them a join link, and "request a club" is the wrong door for them.
+          */
+          <Card className="items-start gap-3 p-6">
+            <h3 className="font-heading text-base font-bold">{tHome('noClubsTitle')}</h3>
+            <p className="text-sm text-muted-foreground">{tHome('noClubsBody')}</p>
+            <Link href="/request-club" className={buttonVariants({ size: 'sm' })}>
+              {tHome('noClubsCta')}
+            </Link>
+            <p className="text-xs text-muted-foreground">{tHome('noClubsHint')}</p>
+          </Card>
         ) : (
           <Card className="gap-0 divide-y divide-border py-0">
             {rows.map((row) => (
@@ -126,6 +145,6 @@ export default async function Home() {
           </Card>
         )}
       </div>
-    </main>
+    </AppShell>
   );
 }

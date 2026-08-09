@@ -2,15 +2,19 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
-import { AppControls } from '@/components/app-controls';
+import { ClubBrand } from '@/components/app-brand';
+import { AppFooter } from '@/components/app-footer';
+import { AppShell } from '@/components/app-shell';
 import { StatusPill } from '@/components/booking-status-badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { UserMenu } from '@/components/user-menu';
 import { db } from '@/db';
 import { env } from '@/env';
 import { initials } from '@/lib/initials';
 import { getMembership } from '@/lib/membership';
+import { menuSession } from '@/lib/menu-session';
 import { buildClubMetadata } from '@/lib/seo';
 import { getCurrentUser } from '@/lib/session';
 import { requireClub } from '@/lib/tenant';
@@ -50,11 +54,14 @@ export default async function ClubPublicPage({
   const isBanned = computeIsBanned(membership);
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-8">
-      <div className="flex justify-end">
-        <AppControls />
-      </div>
-      <div className="flex flex-1 flex-col items-center justify-center">
+    <AppShell
+      width="md"
+      align="center"
+      brand={<ClubBrand name={club.name} logoUrl={club.logoUrl} />}
+      menu={<UserMenu session={menuSession(user, { tenant: true })} />}
+      footer={<AppFooter tenant />}
+    >
+      <div className="flex flex-col items-center">
         <Card className="w-full items-center gap-6 p-8 text-center">
           <Avatar className="size-16 rounded-card after:rounded-card">
             {club.logoUrl ? <AvatarImage src={club.logoUrl} alt="" className="rounded-card" /> : null}
@@ -118,6 +125,6 @@ export default async function ClubPublicPage({
           </div>
         </Card>
       </div>
-    </main>
+    </AppShell>
   );
 }

@@ -1,16 +1,27 @@
 import { getTranslations } from 'next-intl/server';
 
-import { AppControls } from '@/components/app-controls';
+import { AppWordmark } from '@/components/app-brand';
+import { AppFooter } from '@/components/app-footer';
+import { AppShell } from '@/components/app-shell';
+import { UserMenu } from '@/components/user-menu';
+import { menuSession } from '@/lib/menu-session';
+import { getCurrentUser } from '@/lib/session';
 
 export default async function PrivacyPage() {
   const t = await getTranslations('privacy');
+  const tCommon = await getTranslations('common');
+  const user = await getCurrentUser();
   return (
-    <main className="mx-auto max-w-2xl p-8">
-      <div className="mb-4 flex justify-end">
-        <AppControls />
+    <AppShell
+      width="2xl"
+      brand={<AppWordmark name={tCommon('appName')} />}
+      menu={<UserMenu session={menuSession(user)} />}
+      footer={<AppFooter />}
+    >
+      <div className="flex flex-col gap-4">
+        <h1 className="font-heading text-2xl font-bold">{t('title')}</h1>
+        <p className="text-muted-foreground">{t('stub')}</p>
       </div>
-      <h1 className="mb-4 font-heading text-2xl font-bold">{t('title')}</h1>
-      <p className="text-muted-foreground">{t('stub')}</p>
-    </main>
+    </AppShell>
   );
 }

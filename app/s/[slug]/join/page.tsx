@@ -2,11 +2,15 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
-import { AppControls } from '@/components/app-controls';
+import { ClubBrand } from '@/components/app-brand';
+import { AppFooter } from '@/components/app-footer';
+import { AppShell } from '@/components/app-shell';
 import { buttonVariants } from '@/components/ui/button';
+import { UserMenu } from '@/components/user-menu';
 import { db } from '@/db';
 import { env } from '@/env';
 import { getMembership } from '@/lib/membership';
+import { menuSession } from '@/lib/menu-session';
 import { getSession } from '@/lib/session';
 import { requireClub } from '@/lib/tenant';
 import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
@@ -30,21 +34,27 @@ export default async function JoinPage({
   const tj = await getTranslations('join');
   const session = await getSession();
 
+  // A tenant host, so every apex target is absolute.
+  const shell = {
+    width: 'md',
+    align: 'center',
+    brand: <ClubBrand name={club.name} logoUrl={club.logoUrl} />,
+    menu: <UserMenu session={menuSession(session?.user, { tenant: true })} />,
+    footer: <AppFooter tenant />,
+  } as const;
+
   if (!session) {
     const origin = parseAppOrigin(env.APP_URL);
     const back = `${clubUrl(slug, origin)}/join`;
     const signInHref = `${apexUrl('/sign-in', origin)}?redirect=${encodeURIComponent(back)}`;
     return (
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-8">
-        <div className="flex justify-end">
-          <AppControls />
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+      <AppShell {...shell}>
+        <div className="flex flex-col items-center gap-4 text-center">
           <h1 className="font-heading text-2xl font-bold text-brand">{t('joinTitle', { name: club.name })}</h1>
           <p className="text-muted-foreground">{t('joinBody')}</p>
           <a href={signInHref} className={buttonVariants({ className: 'w-full' })}>{tj('signInToJoin')}</a>
         </div>
-      </main>
+      </AppShell>
     );
   }
 
@@ -55,11 +65,8 @@ export default async function JoinPage({
     : null;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-8">
-      <div className="flex justify-end">
-        <AppControls />
-      </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+    <AppShell {...shell}>
+      <div className="flex flex-col items-center gap-4 text-center">
         <h1 className="font-heading text-2xl font-bold text-brand">{t('joinTitle', { name: club.name })}</h1>
         {error === 'rate_limited' && <p className="text-sm text-destructive">{tj('rateLimited')}</p>}
         {membership ? (
@@ -68,6 +75,6 @@ export default async function JoinPage({
           <JoinForm action={joinAction.bind(null, slug)} body={t('joinBody')} cta={tj('requestToJoin')} />
         )}
       </div>
-    </main>
+    </AppShell>
   );
 }

@@ -1,6 +1,10 @@
 import { getTranslations } from 'next-intl/server';
 
-import { AppControls } from '@/components/app-controls';
+import { AppWordmark } from '@/components/app-brand';
+import { AppFooter } from '@/components/app-footer';
+import { AppShell } from '@/components/app-shell';
+import { UserMenu } from '@/components/user-menu';
+import { menuSession } from '@/lib/menu-session';
 import { requireUser } from '@/lib/session';
 
 import { RequestClubForm } from './request-club-form';
@@ -10,30 +14,37 @@ export default async function RequestClubPage({
 }: {
   searchParams: Promise<{ submitted?: string }>;
 }) {
-  await requireUser('/request-club');
+  const user = await requireUser('/request-club');
   const { submitted } = await searchParams;
   const t = await getTranslations('requestClub');
+  const tCommon = await getTranslations('common');
+
+  const shell = {
+    width: 'md',
+    align: 'center',
+    brand: <AppWordmark name={tCommon('appName')} />,
+    menu: <UserMenu session={menuSession(user)} />,
+    footer: <AppFooter />,
+  } as const;
 
   if (submitted === '1') {
     return (
-      <main className="mx-auto max-w-md p-8">
-        <div className="mb-4 flex justify-end">
-          <AppControls />
+      <AppShell {...shell}>
+        <div className="flex flex-col gap-4">
+          <h1 className="font-heading text-2xl font-bold">{t('submittedTitle')}</h1>
+          <p className="text-sm text-muted-foreground">{t('submittedBody')}</p>
         </div>
-        <h1 className="mb-4 font-heading text-2xl font-bold">{t('submittedTitle')}</h1>
-        <p className="text-sm text-muted-foreground">{t('submittedBody')}</p>
-      </main>
+      </AppShell>
     );
   }
 
   return (
-    <main className="mx-auto max-w-md p-8">
-      <div className="mb-4 flex justify-end">
-        <AppControls />
+    <AppShell {...shell}>
+      <div className="flex flex-col gap-2">
+        <h1 className="font-heading text-2xl font-bold">{t('title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('body')}</p>
       </div>
-      <h1 className="mb-2 font-heading text-2xl font-bold">{t('title')}</h1>
-      <p className="mb-6 text-sm text-muted-foreground">{t('body')}</p>
       <RequestClubForm />
-    </main>
+    </AppShell>
   );
 }
