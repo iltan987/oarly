@@ -1,7 +1,6 @@
 import { getFormatter, getTranslations } from 'next-intl/server';
 import type { ReactElement } from 'react';
 
-import { StatusPill } from '@/components/booking-status-badge';
 import type { Restriction } from '@/lib/restriction';
 import { cn } from '@/lib/utils';
 
@@ -88,13 +87,14 @@ export function RestrictionNoticeView({
           : 'gap-0.5',
       )}
     >
-      {isCard ? (
-        <StatusPill tone={state === 'paused' ? 'warn' : 'bad'}>{title}</StatusPill>
-      ) : (
-        // No pill inline: the apex row is 320px wide with an avatar and a link already in
-        // it, and a badge on its own line costs more height than the sentence it labels.
-        <span className={cn('text-xs font-semibold', toneText)}>{title}</span>
-      )}
+      {/*
+        A bold coloured word, not a `StatusPill`. The pill's own surface is `bg-warn-bg` /
+        `bg-bad-bg` — the SAME token as this card's background — so on the card it renders
+        as an invisible rectangle around its own text (seen in Chrome, not reasoned about),
+        and inline it costs a whole line of height in a 320px list row that already has an
+        avatar and a link in it.
+      */}
+      <span className={cn('font-heading font-bold', isCard ? 'text-sm' : 'text-xs', toneText)}>{title}</span>
 
       <p className={cn(isCard ? 'text-sm font-medium' : 'text-xs', toneText)}>{lead}</p>
 

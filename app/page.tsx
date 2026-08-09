@@ -19,6 +19,7 @@ import { menuSession } from '@/lib/menu-session';
 import { getRestrictions } from '@/lib/restriction';
 import { getCurrentUser } from '@/lib/session';
 import { clubUrl, parseAppOrigin } from '@/lib/urls';
+import { cn } from '@/lib/utils';
 
 export default async function Home() {
   const t = await getTranslations('common');
@@ -116,13 +117,23 @@ export default async function Home() {
               const restriction = restrictions.get(row.id) ?? { state: 'none' as const };
               const isRestricted = restriction.state !== 'none';
               return (
-                <div key={row.slug} className="flex items-center gap-3 p-4">
+                /*
+                  A restricted row is the only one that carries prose, and at 320px the
+                  fixed avatar + CTA left the note column 120px wide: the club name broke
+                  across two lines and the explanation ran to six. `flex-wrap` with a
+                  `min-w-40` floor on the note column drops the CTA onto its own line as
+                  soon as the note cannot hold 10rem, which gives it the full width back.
+                  Applied ONLY when restricted — every other row keeps its single-line
+                  `items-center` layout unchanged, and a blanket `flex-wrap` would have
+                  wrapped their pills at 320px too. Measured in Chrome at 320 and 390.
+                */
+                <div key={row.slug} className={cn('flex gap-3 p-4', isRestricted ? 'flex-wrap items-start' : 'items-center')}>
                   <Avatar>
                     {row.logoUrl ? <AvatarImage src={row.logoUrl} alt="" /> : null}
                     <AvatarFallback className="font-heading font-bold">{initials(row.name)}</AvatarFallback>
                   </Avatar>
 
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <div className={cn('flex min-w-0 flex-1 flex-col gap-0.5', isRestricted && 'min-w-40')}>
                     <span className="font-medium">{row.name}</span>
                     {/*
                       The slot that used to be hard-`null`ed for a restricted member — the
@@ -148,7 +159,7 @@ export default async function Home() {
                   {isRestricted ? (
                     <a
                       href={clubUrl(row.slug, origin)}
-                      className={buttonVariants({ variant: 'ghost', size: 'sm', className: 'shrink-0' })}
+                      className={buttonVariants({ variant: 'outline', size: 'sm', className: 'shrink-0' })}
                     >
                       {tHome('ctaOpenClub')}
                     </a>

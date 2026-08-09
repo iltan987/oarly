@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * `t(key)` returns the key; `t(key, values)` returns `key(a=1,b=2)`. Asserting on the KEY
- * rather than on a colour class is the whole point of this file's assertions:
- * `StatusPill` applies `bg-warn-bg text-warn` through `cn`, so
- * `container.querySelector('.bg-warn-bg')` matches the NESTED pill and passes even when
- * the notice's own container is the wrong colour — a test that can never fail. The
- * translated key differs per state, so it cannot pass for the wrong state.
+ * rather than on a colour class is the whole point of this file's assertions: a
+ * `container.querySelector('.bg-warn-bg')` would match any nested element carrying the
+ * same token — `StatusPill` applies `bg-warn-bg text-warn` through `cn`, and this notice
+ * used to nest one — and would pass even when the notice's own container was the wrong
+ * colour. A test that can never fail. The translated key differs per state, so it cannot
+ * pass for the wrong one.
  */
 const { dateTimeCalls } = vi.hoisted(() => ({ dateTimeCalls: [] as { date: Date; opts: Record<string, unknown> }[] }));
 
