@@ -7,6 +7,13 @@
     "loading": "Loading…",
     "language": "Language",
     "toggleTheme": "Toggle theme",
+    "preferences": "Preferences",
+    "userMenu": "Account and preferences",
+    "account": "Account",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
     "appDescription": "Session and booking management for rowing clubs."
   },
   "home": {
