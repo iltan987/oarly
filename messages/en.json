@@ -30,7 +30,8 @@
     "noClubsHint": "Already a member somewhere? Open the join link your club shared with you.",
     "statusPending": "Pending",
     "statusSuspended": "Suspended",
-    "statusRejected": "Not approved"
+    "statusRejected": "Not approved",
+    "ctaOpenClub": "Open club"
   },
   "club": {
     "joinCta": "Join this club",
@@ -40,12 +41,25 @@
     "ctaManage": "Manage club",
     "ctaGoBooking": "Go to booking",
     "ctaRequestJoin": "Request to join",
+    "ctaMyBookings": "My bookings",
+    "ctaBookingCalendar": "Booking calendar",
     "noteMember": "You're a member",
     "notePending": "Your request is awaiting approval",
     "noteBanned": "Access to this club is suspended",
     "noteRejected": "Your request wasn't approved",
     "statusPending": "Request pending",
     "statusBanned": "Access suspended"
+  },
+  "restriction": {
+    "pausedTitle": "Paused",
+    "pausedUntil": "Your booking access reopens by itself on {date} at {time}.",
+    "suspendedTitle": "Suspended",
+    "suspendedBody": "The club has closed your booking access, and it will not reopen by itself.",
+    "causeNoShow": "The club recorded that you did not attend the {time} session on {date}.",
+    "causeNoShowUndated": "The club recorded that you did not attend a session.",
+    "causeOther": "This restriction was applied by the club.",
+    "contact": "Only the club can lift this restriction.",
+    "callClub": "Call the club: {phone}"
   },
   "join": {
     "signInToJoin": "Sign in to join",
@@ -609,7 +623,7 @@
     "multisportDayTaken": "Your MultiSport card is already used for another session that day.",
     "reasons": {
       "not_approved": "Membership not approved",
-      "banned": "Temporarily suspended",
+      "banned": "You have a booking restriction",
       "skill_too_low": "Requires a higher skill level",
       "payment_not_allowed": "Payment type not allowed on this boat"
     },

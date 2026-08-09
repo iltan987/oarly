@@ -30,7 +30,8 @@
     "noClubsHint": "Zaten bir kulübe üyeysen, kulübünün paylaştığı katılım bağlantısını aç.",
     "statusPending": "Beklemede",
     "statusSuspended": "Askıda",
-    "statusRejected": "Onaylanmadı"
+    "statusRejected": "Onaylanmadı",
+    "ctaOpenClub": "Kulübü aç"
   },
   "club": {
     "joinCta": "Kulübe katıl",
@@ -40,12 +41,25 @@
     "ctaManage": "Kulübü yönet",
     "ctaGoBooking": "Rezervasyona git",
     "ctaRequestJoin": "Katılma isteği gönder",
+    "ctaMyBookings": "Rezervasyonlarım",
+    "ctaBookingCalendar": "Rezervasyon takvimi",
     "noteMember": "Üyesin",
     "notePending": "İsteğin onay bekliyor",
     "noteBanned": "Bu kulübe erişimin askıya alındı",
     "noteRejected": "İsteğin onaylanmadı",
     "statusPending": "İstek beklemede",
     "statusBanned": "Erişim askıda"
+  },
+  "restriction": {
+    "pausedTitle": "Duraklatıldı",
+    "pausedUntil": "Rezervasyon erişimin {date} günü saat {time} itibarıyla kendiliğinden geri açılacak.",
+    "suspendedTitle": "Askıda",
+    "suspendedBody": "Rezervasyon erişimin kulüp tarafından kapatıldı ve kendiliğinden geri açılmaz.",
+    "causeNoShow": "Kulüp, {date} günü saat {time} seansına katılmadığını kaydetti.",
+    "causeNoShowUndated": "Kulüp, bir seansa katılmadığını kaydetti.",
+    "causeOther": "Bu kısıtlamayı kulüp uyguladı.",
+    "contact": "Bu kısıtlamayı yalnızca kulüp kaldırabilir.",
+    "callClub": "Kulübü ara: {phone}"
   },
   "join": {
     "signInToJoin": "Katılmak için giriş yap",
@@ -609,7 +623,7 @@
     "multisportDayTaken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
     "reasons": {
       "not_approved": "Üyelik onaylanmadı",
-      "banned": "Geçici olarak askıya alındı",
+      "banned": "Rezervasyon kısıtlaman var",
       "skill_too_low": "Daha yüksek bir seviye gerekiyor",
       "payment_not_allowed": "Bu teknede bu ödeme türü kullanılamaz"
     },
