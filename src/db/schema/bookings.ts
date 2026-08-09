@@ -5,7 +5,7 @@ integer,   pgTable, text, timestamp, uniqueIndex, uuid, } from 'drizzle-orm/pg-c
 
 import { user } from './auth';
 import { clubs, memberships } from './clubs';
-import { bookingSourceEnum, bookingStatusEnum, paymentTypeEnum } from './enums';
+import { bookingCancelReasonEnum, bookingSourceEnum, bookingStatusEnum, paymentTypeEnum } from './enums';
 import { sessions } from './schedule';
 
 export const bookings = pgTable(
@@ -17,6 +17,24 @@ export const bookings = pgTable(
     userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
     paymentType: paymentTypeEnum('payment_type').notNull(),
     status: bookingStatusEnum('status').notNull().default('booked'),
+    // Why the cancellation happened, for the member's own bookings list — `status` alone
+    // renders a penalty cascade and a self-cancel as the same "İptal edildi".
+    //
+    // NULLABLE, and with NO default, on purpose. Two populations genuinely have no
+    // recorded reason: every row that predates this column, and every row that is not
+    // cancelled at all. `NOT NULL DEFAULT 'member'` would fill both in with a claim —
+    // it would retro-label every historical owner removal and penalty cascade as a
+    // self-cancellation, inventing exactly the fact this column exists to record. The
+    // UI treats 'member' and NULL identically for that reason.
+    //
+    // Write-once and never cleared: the three sites that write `status: 'cancelled'`
+    // (cancelBooking, ownerRemoveBooking, the markNoShow cascade) set it in the same
+    // `.set()`, and no path moves a row back OUT of 'cancelled' — `applySeating` only
+    // ever reads booked/waitlisted rows, `undoNoShow` restores a 'no_show' row and
+    // refuses anything else, and a re-book inserts a fresh row because
+    // `bookings_active_uq` is partial on booked/waitlisted. So there is no
+    // `cancelledReason: null` write anywhere, and nothing needs one.
+    cancelledReason: bookingCancelReasonEnum('cancelled_reason'),
     queuePosition: integer('queue_position'),
     slotIndex: integer('slot_index'),
     effectiveAt: timestamp('effective_at', { withTimezone: true }).notNull(),

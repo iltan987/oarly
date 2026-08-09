@@ -13,6 +13,12 @@ export const slotStatusEnum = pgEnum('slot_status', ['scheduled', 'open', 'close
 export const sessionStatusEnum = pgEnum('session_status', ['open', 'closed', 'cancelled']);
 export const bookingStatusEnum = pgEnum('booking_status', ['booked', 'waitlisted', 'cancelled', 'no_show', 'attended']);
 export const bookingSourceEnum = pgEnum('booking_source', ['member', 'owner', 'admin_prereservation']);
+// Who ended the booking, which `booking_status = 'cancelled'` cannot say on its own: a
+// member's own cancellation, an owner's removal and the ban cascade in `markNoShow` all
+// land on the same status. Deliberately NOT `booking_source` reused — that records who
+// CREATED the row, and the two answers differ routinely (an owner-added seat the member
+// later cancels).
+export const bookingCancelReasonEnum = pgEnum('booking_cancel_reason', ['member', 'owner', 'penalty']);
 export const holidaySourceEnum = pgEnum('holiday_source', ['auto', 'manual']);
 export const holidayStatusEnum = pgEnum('holiday_status', ['pending', 'approved']);
 export const notificationTypeEnum = pgEnum('notification_type', [
