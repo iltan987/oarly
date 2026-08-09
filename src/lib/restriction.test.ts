@@ -86,9 +86,31 @@ describe('restrictionState', () => {
   });
 
   /**
-   * Order, not just presence: a permanent ban whose leftover timed date has already
-   * lapsed must still be 'suspended'. Test the date first and this returns 'none' —
-   * an expelled member shown as a member in good standing.
+   * THE order test, and the ONLY fixture in this file that pins the order rather than the
+   * presence of the status branch: `status: 'banned'` with a still-FUTURE `banned_until`.
+   *
+   * This is the one shape where the two branches give different answers. Swap the two
+   * lines in `restrictionState` and this returns 'paused' — a permanently expelled member
+   * told "paused until 11 August, you can book again then". Every other case in this file
+   * agrees under either order, which is exactly how the defect would ship: someone
+   * reorders the branches for readability ("check the cheap date first"), `pnpm test` is
+   * green, and only the DB-gated integration suite notices.
+   *
+   * Reachable, not hypothetical: `recomputeBan` writes `resolveBan(...).bannedUntil` — the
+   * max over ALL rows — alongside `status = 'banned'`. A member with one permanent penalty
+   * and one live timed penalty lands here on their way to being expelled.
+   */
+  it('is suspended, not paused, when status is banned and the leftover date is still future', () => {
+    const now = new Date('2026-08-09T07:00:00.000Z');
+    const future = new Date('2026-08-11T05:00:00.000Z');
+    expect(restrictionState({ status: 'banned', bannedUntil: future }, now)).toBe('suspended');
+  });
+
+  /**
+   * Presence, not order — and the docblock says so because the fixture cannot say more.
+   * With the date already lapsed, the paused branch declines it under either ordering, so
+   * this kills only the DELETION of the status branch (it would return 'none': an expelled
+   * member shown as being in good standing). The test above is what pins the order.
    */
   it('is suspended when status is banned even though the leftover date has lapsed', () => {
     const now = new Date('2026-08-09T07:00:00.000Z');
@@ -164,6 +186,26 @@ describe('pickCause', () => {
       row({ createdAt: new Date('2026-08-06T00:00:00.000Z'), bannedUntil: new Date('2026-08-11T05:00:00.000Z'), sessionStartAt: new Date('2026-08-05T05:00:00.000Z') }),
     ];
     expect(pickCause(rows, 'suspended', null)?.sessionStartAt?.toISOString()).toBe(permanentSession.toISOString());
+  });
+
+  /**
+   * `createdAt` ties are REAL, not theoretical: `defaultNow()` is transaction time, so two
+   * penalty rows written in one transaction share an instant to the microsecond. Without
+   * the `id` tie-break the comparator returns 0, the sort is left holding whatever order
+   * the database happened to return, and the member sees a DIFFERENT session named on
+   * every page load. Which row wins is arbitrary; that the same one always wins is not.
+   */
+  it('is deterministic when two rows share a createdAt instant', () => {
+    const sameInstant = new Date('2026-08-01T00:00:00.000Z');
+    const a = { id: '00000000-0000-4000-8000-00000000000a', session: new Date('2026-07-05T05:00:00.000Z') };
+    const b = { id: '00000000-0000-4000-8000-00000000000b', session: new Date('2026-07-06T05:00:00.000Z') };
+    const mk = (r: typeof a) => row({ id: r.id, createdAt: sameInstant, permanent: true, sessionStartAt: r.session });
+
+    // Both input orders must agree, or the answer is the database's row order, not ours.
+    const forward = pickCause([mk(a), mk(b)], 'suspended', null);
+    const reversed = pickCause([mk(b), mk(a)], 'suspended', null);
+    expect(forward).toEqual(reversed);
+    expect(forward?.sessionStartAt).toEqual(b.session);
   });
 
   it('returns null rather than inventing a cause when no row explains the state', () => {

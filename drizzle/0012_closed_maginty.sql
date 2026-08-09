@@ -9,8 +9,9 @@
 -- operator retries with nothing applied, which is strictly the better outcome.
 --
 -- NOT CONCURRENTLY: `CREATE INDEX CONCURRENTLY` cannot run inside a transaction block,
--- and this migrator gives it one. The table is small enough today that the plain form
--- is a sub-second operation; if `penalties` ever grows to where that stops being true,
--- this index must be built out of band rather than by relaxing the batch.
+-- and this migrator gives it one. That is a constraint, not a judgement about how long
+-- the build takes — nothing here is measured. If `penalties` ever grows to where holding
+-- SHARE for the build is a real outage, this index must be built out of band rather than
+-- by relaxing the batch's single-transaction guarantee.
 SET LOCAL lock_timeout = '5s';--> statement-breakpoint
 CREATE INDEX "penalties_membership_idx" ON "penalties" USING btree ("membership_id");
