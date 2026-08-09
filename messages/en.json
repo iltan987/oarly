@@ -4,7 +4,9 @@
     "signIn": "Sign in",
     "signUp": "Sign up",
     "signOut": "Sign out",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "language": "Language",
+    "toggleTheme": "Toggle theme"
   },
   "home": {
     "heroTitle": "Book the boat, skip the group chat",

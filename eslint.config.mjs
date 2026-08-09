@@ -67,6 +67,11 @@ const eslintConfig = defineConfig([
     rules: {
       "simple-import-sort/imports": "off",
       "simple-import-sort/exports": "off",
+      // The CLI itself emits `import { type X } from "…"` (see toggle-group.tsx),
+      // which this rule flags as a side-effect import left behind by isolatedModules
+      // transpilation. Same hands-off reasoning as the import-sort rules above: we
+      // cannot hand-fix CLI output, so the rule is off for this directory instead.
+      "@typescript-eslint/no-import-type-side-effects": "off",
     },
   },
 

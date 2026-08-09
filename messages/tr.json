@@ -4,7 +4,9 @@
     "signIn": "Giriş yap",
     "signUp": "Kayıt ol",
     "signOut": "Çıkış yap",
-    "loading": "Yükleniyor…"
+    "loading": "Yükleniyor…",
+    "language": "Dil",
+    "toggleTheme": "Temayı değiştir"
   },
   "home": {
     "heroTitle": "Tekneyi ayırt, grup sohbetini boşver",
