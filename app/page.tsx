@@ -36,7 +36,7 @@ export default async function Home() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-10 p-8">
-        <div className="flex w-full items-center justify-between">
+        <div className="flex items-center justify-between">
           <span className="font-heading text-2xl font-bold text-brand">{t('appName')}</span>
           <AppControls />
         </div>
@@ -76,7 +76,7 @@ export default async function Home() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-8">
-      <div className="flex w-full items-center justify-between">
+      <div className="flex items-center justify-between">
         <span className="min-w-0 truncate font-heading text-2xl font-bold text-brand">{t('appName')}</span>
         <AppControls signOutUrl={apexUrl('/sign-in?signedout=1', origin)} />
       </div>

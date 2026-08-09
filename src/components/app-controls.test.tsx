@@ -43,10 +43,16 @@ describe('AppControls', () => {
     // The manage-layout overflow bug (fixed here) happened because the cluster COULD be
     // asked to shrink. Whatever the root's own shrink behaviour, the cluster wrapper
     // itself must always carry shrink-0, on every render shape.
+    //
+    // Assert against the cluster wrapper directly — `[role="group"]`'s parent — not via
+    // `.shrink-0` anywhere in the subtree. The shadcn primitives (button.tsx, toggle-group)
+    // already carry shrink-0 internally, so a bare `.querySelector('.shrink-0')` always
+    // matches something regardless of whether the wrapper itself has the class: it doesn't
+    // kill the mutation of removing shrink-0 from the wrapper.
     const { container: withSlot } = render(<AppControls><a href="/x">account</a></AppControls>);
     const { container: withoutSlot } = render(<AppControls />);
-    expect(withSlot.querySelector('.shrink-0')).toBeInTheDocument();
-    expect(withoutSlot.querySelector('.shrink-0')).toBeInTheDocument();
+    expect(withSlot.querySelector('[role="group"]')!.parentElement).toHaveClass('shrink-0');
+    expect(withoutSlot.querySelector('[role="group"]')!.parentElement).toHaveClass('shrink-0');
   });
 
   it("gives the root min-w-0 only when there's a leading slot to absorb the squeeze", () => {
