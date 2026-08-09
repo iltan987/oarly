@@ -156,7 +156,10 @@ async function markNoShowTx(db: DB, input: { clubId: string; bookingId: string; 
 
       for (const f of future) {
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${f.slotStartAt.toISOString()}))`);
-        await tx.update(bookings).set({ status: 'cancelled', queuePosition: null }).where(eq(bookings.id, f.bookingId));
+        // The one cancellation the member did not ask for and cannot otherwise account
+        // for: `cancelledReason` is what lets their bookings list say so instead of
+        // showing a bare "İptal edildi" next to seats they still expected to row.
+        await tx.update(bookings).set({ status: 'cancelled', cancelledReason: 'penalty', queuePosition: null }).where(eq(bookings.id, f.bookingId));
         const { promotedUserId } = await applySeating(tx, f.sessionId, f.capacity, row.multisportMode);
         cancelled.push({ bookingId: f.bookingId, sessionId: f.sessionId });
         if (promotedUserId) promoted.push({ userId: promotedUserId, sessionId: f.sessionId });

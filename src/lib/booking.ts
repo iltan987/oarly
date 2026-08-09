@@ -229,7 +229,7 @@ export async function cancelBooking(db: DB, input: CancelInput): Promise<CancelR
     // Serialize with the session's bookings under the same per-slot lock bookSeat uses.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${row.slotStartAt.toISOString()}))`);
 
-    await tx.update(bookings).set({ status: 'cancelled', queuePosition: null }).where(eq(bookings.id, input.bookingId));
+    await tx.update(bookings).set({ status: 'cancelled', cancelledReason: 'member', queuePosition: null }).where(eq(bookings.id, input.bookingId));
 
     const { promotedUserId } = await applySeating(tx, row.sessionId, row.capacity, row.multisportMode);
     return promotedUserId ? { ok: true, promoted: { userId: promotedUserId, sessionId: row.sessionId } } : { ok: true };
@@ -254,7 +254,10 @@ export async function ownerRemoveBooking(db: DB, input: { clubId: string; bookin
     if (!(ACTIVE as readonly string[]).includes(row.status)) return { ok: false, error: 'not_active' };
 
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${row.slotStartAt.toISOString()}))`);
-    await tx.update(bookings).set({ status: 'cancelled', queuePosition: null }).where(eq(bookings.id, input.bookingId));
+    // `cancelledReason: 'owner'`, not the row's `source`: source records who CREATED the
+    // booking, and the member's list needs to know who ENDED it. An owner-added seat the
+    // member later cancels has source='owner' and cancelledReason='member'.
+    await tx.update(bookings).set({ status: 'cancelled', cancelledReason: 'owner', queuePosition: null }).where(eq(bookings.id, input.bookingId));
     const { promotedUserId } = await applySeating(tx, row.sessionId, row.capacity, row.multisportMode);
     // Inside the transaction: the removal and its record commit together or not
     // at all. The early `not_found` / `not_active` returns above leave no row.

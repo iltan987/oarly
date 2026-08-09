@@ -241,6 +241,71 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
     expect(rows.find((r) => r.userId === u2)!.status).toBe('booked');
   });
 
+  /**
+   * `status = 'cancelled'` is true of all three cancellation paths and was true before
+   * `cancelledReason` existed, so asserting it proves nothing about the new column. Each
+   * test below reads the column back from the database and names the value.
+   *
+   * Both are deliberately set up so that `source` disagrees with `cancelledReason`: an
+   * implementation that copied `source` — the obvious wrong answer, since the two columns
+   * hold the same three-ish words — passes neither.
+   */
+  describe('cancelledReason records who ENDED the booking, not who created it', () => {
+    it("writes 'member' when the member cancels — even a seat the OWNER put them in", async () => {
+      const s = await scenario({ seats: 2 });
+      const u1 = await newMember(s.club.id, 'u1');
+      const added = await ownerAddBooking(db, { actorId: ownerId, clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, userId: u1, paymentType: 'regular', now: NOW });
+      if (!added.ok) throw new Error('setup');
+
+      const [before] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, added.bookingId));
+      // Asserted, not assumed: this is what makes the expectation below discriminating.
+      expect(before.source).toBe('owner');
+      expect(before.cancelledReason).toBeNull();
+
+      expect(await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: added.bookingId, now: NOW })).toMatchObject({ ok: true });
+
+      const [after] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, added.bookingId));
+      expect(after.status).toBe('cancelled');
+      expect(after.cancelledReason).toBe('member');
+    });
+
+    it("writes 'owner' when the owner removes a seat the MEMBER booked", async () => {
+      const s = await scenario({ seats: 2 });
+      const u1 = await newMember(s.club.id, 'u1');
+      const r = await bookSeat(db, { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular', userId: u1, idempotencyKey: key(), now: NOW });
+      if (!r.ok) throw new Error('setup');
+
+      const [before] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, r.bookingId));
+      expect(before.source).toBe('member');
+      expect(before.cancelledReason).toBeNull();
+
+      expect(await ownerRemoveBooking(db, { actorId: ownerId, clubId: s.club.id, bookingId: r.bookingId })).toMatchObject({ ok: true });
+
+      const [after] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, r.bookingId));
+      expect(after.status).toBe('cancelled');
+      expect(after.cancelledReason).toBe('owner');
+    });
+
+    it('puts no reason on the waitlister it promotes into the freed seat', async () => {
+      const s = await scenario({ seats: 1 });
+      const u1 = await newMember(s.club.id, 'u1');
+      const u2 = await newMember(s.club.id, 'u2');
+      const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular' as const };
+      const r1 = await bookSeat(db, { ...common, userId: u1, idempotencyKey: key(), now: NOW });
+      await bookSeat(db, { ...common, userId: u2, idempotencyKey: key(), now: NOW });
+      if (!r1.ok) throw new Error('setup');
+
+      await cancelBooking(db, { clubId: s.club.id, userId: u1, bookingId: r1.bookingId, now: NOW });
+
+      const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, s.club.id));
+      const promoted = rows.find((r) => r.userId === u2)!;
+      // `applySeating` rewrote this row (waitlisted -> booked), asserted first so the null
+      // below is not vacuously true of a row nothing ever touched.
+      expect(promoted.status).toBe('booked');
+      expect(promoted.cancelledReason).toBeNull();
+    });
+  });
+
   it('owner seats a member into a free seat, tagged source=owner', async () => {
     const s = await scenario({ seats: 2, allowedPayment: 'both' });
     const u1 = await newMember(s.club.id, 'u1');

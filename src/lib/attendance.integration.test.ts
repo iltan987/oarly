@@ -138,6 +138,45 @@ describe.skipIf(!url)('markNoShow', () => {
     expect(cancelled.status).toBe('cancelled');
   });
 
+  /**
+   * `status = 'cancelled'` was already true of this row before `cancelledReason` existed,
+   * so asserting it proves nothing about the new column. This reads the column back and
+   * names the value, and it is the assertion that fails if the `cancelledReason: 'penalty'`
+   * write is dropped from the cascade.
+   *
+   * The waitlister and the missed booking are checked in the same test on purpose: they
+   * are the two rows `markNoShow` also writes, and they are what tells a scoped write
+   * apart from a blanket one.
+   */
+  it("stamps 'penalty' on the seats the cascade takes away, and on nothing else it writes", async () => {
+    const ctx = await seed('1w');
+    const future = await seedFutureSeat(ctx, '2026-03-12');   // inside 10 Mar + 7d
+    const waiter = await seedMember(ctx, 'waiter');
+    await db.insert(schema.bookings).values({ sessionId: future.session.id, clubId: ctx.club.id, userId: waiter, paymentType: 'regular', status: 'waitlisted', queuePosition: 1, effectiveAt: NOW, bookingDate: '2026-03-12' });
+    const filler = await seedMember(ctx, 'filler');
+    await db.insert(schema.bookings).values({ sessionId: future.session.id, clubId: ctx.club.id, userId: filler, paymentType: 'regular', status: 'booked', effectiveAt: NOW, bookingDate: '2026-03-12' });
+
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    expect(result).toMatchObject({ ok: true });
+
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, ctx.club.id));
+    const byUser = (uid: string) => rows.filter((r) => r.userId === uid);
+
+    const [swallowed] = byUser(ctx.uid).filter((r) => r.id === future.booking.id);
+    expect(swallowed.cancelledReason).toBe('penalty');
+
+    // The missed booking is 'no_show' — nobody cancelled it, so no reason belongs on it.
+    const [missed] = byUser(ctx.uid).filter((r) => r.id === ctx.booking.id);
+    expect(missed.status).toBe('no_show');
+    expect(missed.cancelledReason).toBeNull();
+
+    // `applySeating` rewrote this row (waitlisted -> booked, asserted so the null below
+    // is not vacuously true of a row nothing touched); it must carry no reason.
+    const [promoted] = byUser(waiter);
+    expect(promoted.status).toBe('booked');
+    expect(promoted.cancelledReason).toBeNull();
+  });
+
   it('leaves a seat that falls after the ban ends', async () => {
     const ctx = await seed('1w');
     const later = await seedFutureSeat(ctx, '2026-03-25');    // beyond 10 Mar + 7d
@@ -147,6 +186,9 @@ describe.skipIf(!url)('markNoShow', () => {
     expect(result.cancelled).toEqual([]);
     const [kept] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, later.booking.id));
     expect(kept.status).toBe('booked');
+    // A cascade that stamped every future row rather than the ones it actually cancelled
+    // would show up here as well as in the status above.
+    expect(kept.cancelledReason).toBeNull();
   });
 
   it('cancels every future seat when the ban is permanent', async () => {
@@ -349,6 +391,10 @@ describe.skipIf(!url)('markNoShow', () => {
 
       const [still] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, future.booking.id));
       expect(still.status).toBe('cancelled');
+      // Write-once, never cleared — the property `cancelledReason` being nullable with no
+      // default depends on. The undo lifts the ban, but the seat this member lost to it
+      // was still lost to it, and the row must go on saying so.
+      expect(still.cancelledReason).toBe('penalty');
     });
 
     it('rejects a booking that was never marked', async () => {
