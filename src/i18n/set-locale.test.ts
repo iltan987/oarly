@@ -1,11 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Type-only, so it is erased before the module graph is built and never defeats the
+// `vi.mock` below.
+import type { enforceRateLimit as EnforceRateLimit } from '@/lib/rate-limit-guard';
+
 const cookieSet = vi.fn();
 const getCurrentUser = vi.fn();
 const setUserLocaleMock = vi.fn();
 const revalidatePath = vi.fn();
-const enforceRateLimit =
-  vi.fn(async (): Promise<{ limited: boolean; retryAfterSec?: number }> => ({ limited: false }));
+// Typed against the real export rather than a hand-copied shape, so the stand-in cannot
+// drift from the contract it replaces (`RateVerdict` is a discriminated union — a loose
+// `{ limited: boolean }` would let a test configure a verdict the real guard can never
+// return). It also gives the forwarding wrapper below a tuple parameter list, which is
+// what `tsc --noEmit` requires of a spread argument.
+const enforceRateLimit = vi.fn<typeof EnforceRateLimit>(async () => ({ limited: false }));
 
 vi.mock('next/headers', () => ({
   cookies: async () => ({ set: cookieSet }),
@@ -18,7 +26,7 @@ vi.mock('@/lib/user-locale', () => ({
   setUserLocale: (...a: unknown[]) => setUserLocaleMock(...a),
 }));
 vi.mock('@/lib/rate-limit-guard', () => ({
-  enforceRateLimit: (...a: unknown[]) => enforceRateLimit(...a),
+  enforceRateLimit: (...a: Parameters<typeof enforceRateLimit>) => enforceRateLimit(...a),
 }));
 vi.mock('@/lib/request-ip', () => ({ getClientIp: async () => '203.0.113.7' }));
 

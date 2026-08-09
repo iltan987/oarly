@@ -8,9 +8,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * production-like origin with a cookie domain configured — which is the entire reason
  * `secure` and `domain` exist on the cookie in the first place.
  */
-vi.mock('@/env', () => ({
-  env: { APP_URL: 'https://oarly.app', COOKIE_DOMAIN: '.oarly.app' as string | undefined },
+/**
+ * The stand-in for `@/env`, held in a `vi.hoisted` object rather than a plain top-level
+ * `const` because `vi.mock`'s factory is lifted above every other statement in the file —
+ * a plain `const` would still be in its temporal dead zone when the factory runs.
+ *
+ * The tests mutate THIS handle, not an `import { env } from '@/env'` binding: the real
+ * module types `env` as readonly, so assigning through that binding does not compile
+ * (TS2540). Silencing that with `as any` would also throw away the only check that this
+ * stand-in still resembles the real env — so the handle is typed explicitly instead.
+ */
+const mockEnv = vi.hoisted(() => ({
+  APP_URL: 'https://oarly.app',
+  COOKIE_DOMAIN: '.oarly.app' as string | undefined,
 }));
+
+vi.mock('@/env', () => ({ env: mockEnv }));
 
 const cookieSet = vi.fn();
 
@@ -25,14 +38,12 @@ vi.mock('@/lib/user-locale', () => ({ setUserLocale: vi.fn() }));
 vi.mock('@/lib/rate-limit-guard', () => ({ enforceRateLimit: async () => ({ limited: false }) }));
 vi.mock('@/lib/request-ip', () => ({ getClientIp: async () => '203.0.113.7' }));
 
-import { env } from '@/env';
-
 import { setLocale } from './set-locale';
 
 beforeEach(() => {
   cookieSet.mockClear();
-  env.APP_URL = 'https://oarly.app';
-  env.COOKIE_DOMAIN = '.oarly.app';
+  mockEnv.APP_URL = 'https://oarly.app';
+  mockEnv.COOKIE_DOMAIN = '.oarly.app';
 });
 
 describe('setLocale cookie attributes on an https origin with a cookie domain configured', () => {
@@ -49,7 +60,7 @@ describe('setLocale cookie attributes on an https origin with a cookie domain co
     // never reaches `env.COOKIE_DOMAIN` as `''` in production — but `set-locale.ts`'s
     // own `env.COOKIE_DOMAIN ? {...} : {}` guard is what actually enforces this, and
     // that guard is cheap to pin directly regardless of where the empty string came from.
-    env.COOKIE_DOMAIN = '';
+    mockEnv.COOKIE_DOMAIN = '';
     await setLocale('en');
     expect('domain' in cookieSet.mock.calls[0][2]).toBe(false);
   });
