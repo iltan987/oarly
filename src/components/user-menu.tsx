@@ -187,9 +187,9 @@ export function UserMenu({ session }: { session?: UserMenuSession | null }): Rea
           relationship and unreachable from the menu's arrow-key loop. Not a submenu
           either — two interactions for a two-item list, and a hover trap on touch.
 
-          Staying open on select is free here: `MenuRadioItem` defaults `closeOnClick` to
-          `false` (`MenuRadioItem.d.ts`), where `MenuItem` defaults it to `true`. A
-          preference control that dismisses its own menu is wrong.
+          Staying open on select is free here: `MenuRadioItem.js` defaults `closeOnClick`
+          to `false`, where `MenuItem.js` defaults it to `true`. A preference control that
+          dismisses its own menu is wrong.
 
           The `DropdownMenuLabel` lives INSIDE the group on purpose: `MenuGroupLabel`
           registers its id with the enclosing group, which is what gives this radio group
