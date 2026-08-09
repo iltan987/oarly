@@ -141,3 +141,70 @@ describe('the restriction vocabulary', () => {
     expect(trRestriction.causeNoShowUndated).toMatch(/katılmadığını/i);
   });
 });
+
+/**
+ * `booking.cancelledBy.*` renders on `/bookings` directly beneath the restriction card
+ * above, so it inherits that card's register or it contradicts it: an explanation of what
+ * the club RECORDED, never a verdict about the member. Same reason this file exists at
+ * all — every component test mocks next-intl and asserts on key names, so not one of them
+ * can see this copy.
+ */
+describe('the cancellation sub-line vocabulary', () => {
+  const trBooking = tr.booking as Record<string, Record<string, string>>;
+  const enBooking = en.booking as Record<string, Record<string, string>>;
+
+  it('still defines both keys in both locales', () => {
+    // First and separately: a rename would leave every check below comparing `undefined`
+    // against a regex, and passing without asserting anything.
+    for (const catalog of [trBooking, enBooking]) {
+      expect(typeof catalog.cancelledBy?.penalty).toBe('string');
+      expect(typeof catalog.cancelledBy?.owner).toBe('string');
+    }
+  });
+
+  /**
+   * The whole point of the column. "Katılmadığın KAYDEDİLDİĞİ için" attributes the absence
+   * to the club's record; "katılmadığın için" would state it as fact and turn a sub-line
+   * into a finding against the member — the exact framing Task 6 was written to remove
+   * from `booking.reasons.banned`.
+   */
+  it('attributes the absence to the record, not to the member', () => {
+    expect(trBooking.cancelledBy.penalty).toMatch(/kaydedil/i);
+    expect(enBooking.cancelledBy.penalty).toMatch(/recorded/i);
+  });
+
+  /**
+   * `askı` is the vocabulary of a judgement passed on a person, reserved for the permanent
+   * penalty. This line is about ONE SEAT; the member's standing is the card above's
+   * subject, and borrowing its heaviest word here says something the seat cannot support.
+   */
+  it('never reaches for the suspension word to describe a lost seat', () => {
+    expect(trBooking.cancelledBy.penalty).not.toMatch(SUSPENSION_ROOT);
+    expect(trBooking.cancelledBy.owner).not.toMatch(SUSPENSION_ROOT);
+  });
+
+  /**
+   * Three distinct strings, and the realistic regression is a collapse: the two reasons
+   * tidied into one, or either one reduced back to the pill's bare "İptal edildi" — which
+   * would restore precisely the ambiguity this task removed while leaving both the
+   * component test and the parity test green.
+   */
+  it('never lets the two reasons, or a reason and the pill, share a string', () => {
+    const pill = tr.booking as unknown as Record<string, string>;
+    expect(trBooking.cancelledBy.penalty).not.toBe(trBooking.cancelledBy.owner);
+    expect(trBooking.cancelledBy.penalty).not.toBe(pill.cancelled);
+    expect(trBooking.cancelledBy.owner).not.toBe(pill.cancelled);
+  });
+
+  /**
+   * The deliberate silence, guarded where a copywriter would look. `'member'` and `null`
+   * render nothing on purpose: for a historical row we do not know who ended it, and
+   * "you cancelled this" about what may have been an owner removal is worse than saying
+   * nothing. A `cancelledBy.member` key is how that decision gets undone by accident —
+   * it looks like the obvious missing third case.
+   */
+  it('offers no wording for a self-cancellation, which must stay silent', () => {
+    expect(trBooking.cancelledBy.member).toBeUndefined();
+    expect(enBooking.cancelledBy.member).toBeUndefined();
+  });
+});

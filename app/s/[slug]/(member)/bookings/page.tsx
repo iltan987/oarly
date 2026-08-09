@@ -27,7 +27,7 @@ export default async function MyBookingsPage({ params }: { params: Promise<{ slu
   const restriction = await getRestriction(db, membership, now);
 
   const rows = await db
-    .select({ id: bookings.id, status: bookings.status, queuePosition: bookings.queuePosition, boatName: boatTypes.name, startAt: slots.startAt, endAt: slots.endAt })
+    .select({ id: bookings.id, status: bookings.status, cancelledReason: bookings.cancelledReason, queuePosition: bookings.queuePosition, boatName: boatTypes.name, startAt: slots.startAt, endAt: slots.endAt })
     .from(bookings)
     .innerJoin(sessions, eq(sessions.id, bookings.sessionId))
     .innerJoin(slots, eq(slots.id, sessions.slotId))
@@ -40,7 +40,7 @@ export default async function MyBookingsPage({ params }: { params: Promise<{ slu
     const cutoffOk = club.cancelCutoffHours == null || now.getTime() < r.startAt.getTime() - club.cancelCutoffHours * 3600_000;
     return {
       id: r.id, boatName: r.boatName, startAt: r.startAt.toISOString(), endAt: r.endAt.toISOString(),
-      status: r.status, queuePosition: r.queuePosition,
+      status: r.status, cancelledReason: r.cancelledReason, queuePosition: r.queuePosition,
       canCancel: club.selfCancelEnabled && activeStatuses.has(r.status) && r.startAt.getTime() > now.getTime() && cutoffOk,
     };
   };

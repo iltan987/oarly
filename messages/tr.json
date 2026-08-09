@@ -645,6 +645,10 @@
       "rate_limited": "Çok fazla istek. Lütfen biraz bekleyip tekrar deneyin."
     },
     "cancelled": "İptal edildi",
+    "cancelledBy": {
+      "penalty": "Katılmadığın kaydedildiği için iptal edildi.",
+      "owner": "Kulüp tarafından iptal edildi."
+    },
     "noShow": "Gelmedi",
     "attended": "Katıldı",
     "cancelClosed": "İptal kapalı",

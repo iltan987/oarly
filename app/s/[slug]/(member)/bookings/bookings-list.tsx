@@ -16,6 +16,8 @@ export type BookingRow = {
   startAt: string; // ISO
   endAt: string; // ISO
   status: 'booked' | 'waitlisted' | 'cancelled' | 'no_show' | 'attended';
+  /** Null for every row that is not cancelled, and for every row cancelled before the column existed. */
+  cancelledReason: 'member' | 'owner' | 'penalty' | null;
   queuePosition: number | null;
   canCancel: boolean;
 };
@@ -51,6 +53,28 @@ function statusLabel(t: ReturnType<typeof useTranslations>, row: BookingRow): st
   return t('attended');
 }
 
+/**
+ * The one line that says which cancellation this was. The PILL stays `booking.cancelled`
+ * with its neutral tone for all four cases — the pill is the status, and the status really
+ * is the same one; this is the story underneath it.
+ *
+ * `'member'` and `null` both render nothing, and that is a decision, not a missing case:
+ *
+ * - `'member'` — the member did this themselves, and they were told so at the time. A line
+ *   telling them again is noise.
+ * - `null` — the row predates the column (or, harmlessly, is not cancelled at all). We do
+ *   not know who ended it. Defaulting those to "you cancelled this" would assert the one
+ *   thing this column exists to stop guessing at, and would be wrong for exactly the rows
+ *   that most need explaining: the owner removals and penalty cascades already in the
+ *   database. Silence is the honest rendering of "no record".
+ */
+function cancelledSubLine(t: ReturnType<typeof useTranslations>, row: BookingRow): string | null {
+  if (row.status !== 'cancelled') return null;
+  if (row.cancelledReason === 'penalty') return t('cancelledBy.penalty');
+  if (row.cancelledReason === 'owner') return t('cancelledBy.owner');
+  return null;
+}
+
 function Section({ slug, title, rows, timeZone, cancellable }: { slug: string; title: string; rows: BookingRow[]; timeZone: string; cancellable: boolean }) {
   const t = useTranslations('booking');
   const f = useFormatter();
@@ -61,7 +85,9 @@ function Section({ slug, title, rows, timeZone, cancellable }: { slug: string; t
         <p className="text-sm text-muted-foreground">{t('none')}</p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const why = cancelledSubLine(t, row);
+            return (
             <li key={row.id}>
               <Card size="sm">
                 <CardContent className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -70,6 +96,9 @@ function Section({ slug, title, rows, timeZone, cancellable }: { slug: string; t
                       {f.dateTime(new Date(row.startAt), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone })}
                     </span>
                     <span className="text-xs text-muted-foreground">{row.boatName}</span>
+                    {/* Under the boat name, not beside the pill: at 320px the pill row already
+                        wraps, and a sentence there would push the cancel affordance off-screen. */}
+                    {why && <span className="text-xs text-muted-foreground">{why}</span>}
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusPill tone={toneByStatus[row.status]}>{statusLabel(t, row)}</StatusPill>
@@ -78,7 +107,8 @@ function Section({ slug, title, rows, timeZone, cancellable }: { slug: string; t
                 </CardContent>
               </Card>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </section>

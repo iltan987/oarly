@@ -645,6 +645,10 @@
       "rate_limited": "Too many requests. Please wait a moment and try again."
     },
     "cancelled": "Cancelled",
+    "cancelledBy": {
+      "penalty": "Cancelled because the club recorded that you did not attend.",
+      "owner": "Cancelled by the club."
+    },
     "noShow": "No-show",
     "attended": "Attended",
     "cancelClosed": "Cancellation closed",
