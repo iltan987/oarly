@@ -99,11 +99,12 @@ export async function requireMemberView(
     redirect(`${apexUrl('/sign-in', origin)}?redirect=${encodeURIComponent(back)}`);
   }
   const membership = await self.getMembership(appDb, user.id, club.id);
-  if (!membership) notFound();
-  // `restrictionState(...) === 'suspended'` IS `status === 'banned'` — that mapping is
-  // the model's, and naming it here says what the second half of this condition is FOR
-  // (admit a suspended member so the page can explain itself) rather than restating a
-  // status literal the model already interprets.
-  if (membership.status !== 'approved' && restrictionState(membership, new Date()) !== 'suspended') notFound();
+  // Deliberately NOT routed through `restrictionState`, unlike `requireMember` above.
+  // This is an ADMITTANCE test over `status`, not a ban test: it asks which membership
+  // states may view the page at all. Writing it as `restrictionState(...) !== 'suspended'`
+  // says the same thing in a double negative, and dresses a status check up as a
+  // restriction check — the ban predicate it would appear to share is not the reason
+  // either status is listed here.
+  if (!membership || (membership.status !== 'approved' && membership.status !== 'banned')) notFound();
   return { club, user, membership };
 }

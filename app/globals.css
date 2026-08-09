@@ -38,6 +38,20 @@
   --warn-bg: #fbeedc;
   --bad: #b91c1c;
   --bad-bg: #fbebeb;
+  /*
+    Ink for a PARAGRAPH on the matching tinted surface, the way --brand-ink is ink on
+    --brand-tint. --warn on --warn-bg measures 4.39:1 in this theme — under the 4.5 AA
+    floor, and 14px font-medium is not WCAG "large text" (that needs >=18.66px bold).
+    Fine for the two-word StatusPill the pairing was designed for; not for prose.
+
+    Literal hex, not color-mix(in oklab, ... 85%, black): these are the exact sRGB values
+    that mix produces, and unlike --brand-ink (whose input is the runtime-overridable
+    --club-accent) these tones are fixed per theme, so nothing needs computing at runtime.
+    Hex is also what makes them machine-checkable — restriction-notice.contrast.test.ts
+    parses this file and fails below 4.5:1.
+  */
+  --warn-ink: #904106;
+  --bad-ink: #941414;
   --info: #1d4ed8;
   --info-bg: #e6eefd;
   --surface-2: #f3f7f9;
@@ -77,6 +91,9 @@
   --warn-bg: #2e2410;
   --bad: #f87171;
   --bad-bg: #2e1616;
+  /* Ink mixes toward WHITE here, as --brand-ink does. See the light block. */
+  --warn-ink: #fcc95a;
+  --bad-ink: #fc8886;
   --info: #60a5fa;
   --info-bg: #122238;
   --surface-2: #0f1b25;
@@ -112,8 +129,10 @@
   --color-ok-bg: var(--ok-bg);
   --color-warn: var(--warn);
   --color-warn-bg: var(--warn-bg);
+  --color-warn-ink: var(--warn-ink);
   --color-bad: var(--bad);
   --color-bad-bg: var(--bad-bg);
+  --color-bad-ink: var(--bad-ink);
   --color-info: var(--info);
   --color-info-bg: var(--info-bg);
   --color-surface-2: var(--surface-2);

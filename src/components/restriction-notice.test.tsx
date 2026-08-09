@@ -90,8 +90,10 @@ describe('RestrictionNoticeView', () => {
 
   /**
    * Tone read off the ROOT, which `getByRole('status')` returns by identity — not off a
-   * `.bg-warn-bg` selector, which would also match the pill nested inside it and could
-   * not distinguish a correct container from a wrong one.
+   * `container.querySelector('.bg-warn-bg')`, which would match any nested element
+   * carrying the same token and so could not distinguish a correct container from a
+   * wrong one. Root-by-identity is not that hazard: there is exactly one `status` role
+   * in this tree and it IS the element whose colour is being asserted.
    */
   it('carries the warn surface for a pause and the bad surface for a suspension', () => {
     const paused = render(view({ state: 'paused' }));
@@ -102,6 +104,49 @@ describe('RestrictionNoticeView', () => {
     render(view({ state: 'suspended' }));
     expect(screen.getByRole('status').className).toContain('bg-bad-bg');
     expect(screen.getByRole('status').className).not.toContain('bg-warn-bg');
+  });
+
+  /**
+   * The other half of `isCard`, by the same root-identity technique. The test above
+   * already kills a flipped `isCard` (the inline root has no tinted surface at all), but
+   * only for the card direction and only as a side effect; this states the inline
+   * contract directly — no tint, no border, no card padding, because it rides inside a
+   * list row that supplies all three.
+   */
+  it('gives the inline variant no surface of its own', () => {
+    render(view({ variant: 'inline' }));
+    const root = screen.getByRole('status');
+
+    expect(root.className).not.toContain('bg-warn-bg');
+    expect(root.className).not.toContain('bg-bad-bg');
+    expect(root.className).not.toContain('rounded-card');
+    expect(root.className).not.toContain('border');
+  });
+
+  /**
+   * The AA fix, guarded where it can actually regress. `restriction-notice.contrast.test.ts`
+   * proves `--warn-ink` clears 4.5:1 on `--warn-bg`; nothing there notices if this
+   * component stops USING it. Both elements are found by their text, so this is identity
+   * again rather than a class-selector sweep, and `split(' ')` matches whole class tokens
+   * — `toContain('text-warn')` on the raw string is satisfied by `text-warn-ink`, which
+   * would make the inline assertion below pass for the card's markup.
+   */
+  it('paints card prose with the AA-safe ink and inline prose with the brighter tone', () => {
+    const card = render(view({ state: 'paused', title: 'pausedTitle', lead: 'pausedUntil', variant: 'card' }));
+    expect(screen.getByText('pausedTitle').className.split(' ')).toContain('text-warn-ink');
+    expect(screen.getByText('pausedUntil').className.split(' ')).toContain('text-warn-ink');
+    card.unmount();
+
+    // Inline sits on `bg-card`, where the brighter `--warn` measures 5.02:1 and passes.
+    render(view({ state: 'paused', title: 'pausedTitle', lead: 'pausedUntil', variant: 'inline' }));
+    expect(screen.getByText('pausedTitle').className.split(' ')).toContain('text-warn');
+    expect(screen.getByText('pausedUntil').className.split(' ')).toContain('text-warn');
+  });
+
+  it('uses the bad ink on a suspension card, never the pill tone', () => {
+    render(view({ state: 'suspended', title: 'suspendedTitle', lead: 'suspendedBody', variant: 'card' }));
+    expect(screen.getByText('suspendedBody').className.split(' ')).toContain('text-bad-ink');
+    expect(screen.getByText('suspendedBody').className.split(' ')).not.toContain('text-bad');
   });
 
   it('drops the cause line rather than inventing one when no penalty explains the state', () => {

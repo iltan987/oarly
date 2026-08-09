@@ -59,6 +59,24 @@ export default async function ClubPublicPage({
   const ghost = buttonVariants({ variant: 'ghost', className: 'w-full' });
 
   /**
+   * Whether `requireOwner` would let this viewer into the console — the same conjunction,
+   * evaluated here so the page cannot offer a door that 404s (or hide one that works).
+   *
+   * A booking penalty and an admin console are DIFFERENT CONCERNS, and this is the line
+   * where that distinction is made. `viewerKindOf` puts `restricted` above `owner`, which
+   * is right for the notice: a restricted owner must be told they are restricted. It
+   * would be wrong for the Manage link, because a timed pause leaves `status: 'approved'`
+   * (`recomputeBan` only writes `'banned'` for a permanent row), so `requireOwner` still
+   * admits them and the console still works — it would simply have become unreachable.
+   * This page carries the only entry-point link to `/manage` outside the manage area, so
+   * "unreachable from here" means unreachable, for as long as the pause lasts.
+   *
+   * A SUSPENDED owner is `status: 'banned'`, fails this conjunction, and correctly gets
+   * no link — `requireOwner` would 404 them.
+   */
+  const canManage = membership?.role === 'owner' && membership.status === 'approved';
+
+  /**
    * One row per viewer kind, replacing six nested ternaries that could disagree with
    * `/book`'s and `/bookings`' own gates. Every branch is now named by the same function
    * those gates share, and every branch except `pending` has a destination — which was
@@ -104,7 +122,9 @@ export default async function ClubPublicPage({
     restricted: (
       <>
         <RestrictionNotice restriction={restriction} timeZone={club.timezone} clubPhone={club.phone} variant="card" />
-        <Link href="/bookings" className={primary}>{t('ctaMyBookings')}</Link>
+        {/* Leads for an owner: running the club is not what the penalty took away. */}
+        {canManage ? <Link href="/manage" className={primary}>{t('ctaManage')}</Link> : null}
+        <Link href="/bookings" className={canManage ? ghost : primary}>{t('ctaMyBookings')}</Link>
         <Link href="/book" className={ghost}>{t('ctaBookingCalendar')}</Link>
       </>
     ),

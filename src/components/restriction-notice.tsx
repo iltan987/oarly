@@ -72,7 +72,25 @@ export function RestrictionNoticeView({
   variant: RestrictionNoticeVariant;
 }): ReactElement {
   const isCard = variant === 'card';
-  const toneText = state === 'paused' ? 'text-warn' : 'text-bad';
+  /*
+    Two different tokens for the same tone, because the two variants sit on different
+    surfaces and only one of them is a tint.
+
+    - card: text on `bg-warn-bg` / `bg-bad-bg`. `--warn` there measures 4.39:1 — BELOW the
+      4.5 AA floor, and this is 14px `font-medium`, which is not WCAG "large text"
+      (>=18.66px bold). `--warn-ink` measures 6.24 light / 9.91 dark, `--bad-ink` 7.68 /
+      7.25. The pairing was inherited from `StatusPill`'s warn tone, which is fine for two
+      words and not for the paragraph carrying the date and the time.
+    - inline: text on plain `bg-card`, where `--warn` measures 5.02 light / 10.74 dark and
+      `--bad` 6.47 / 6.48. All four pass, so the brighter tone stays — it is the only
+      colour a list row gets.
+
+    Measured in Chrome (canvas-composited sRGB, black-on-white sanity-checked at 21:1),
+    not derived; `restriction-notice.contrast.test.ts` pins the card pairings.
+  */
+  const toneText = isCard
+    ? (state === 'paused' ? 'text-warn-ink' : 'text-bad-ink')
+    : (state === 'paused' ? 'text-warn' : 'text-bad');
 
   return (
     <div

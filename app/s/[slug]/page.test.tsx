@@ -204,16 +204,49 @@ describe('the club landing page', () => {
   });
 
   /**
-   * A restricted OWNER gets the member's doors, not the console — `viewerKindOf` puts the
-   * restriction above the owner role, and this is the page where that decision is visible.
+   * A SUSPENDED owner gets the member's doors, not the console. `status: 'banned'` is
+   * what a permanent penalty writes, and `requireOwner` 404s it — a Manage link here
+   * would lead to a 404.
    */
-  it('does not offer the console to a restricted owner', async () => {
+  it('does not offer the console to a suspended owner', async () => {
     getMembership.mockResolvedValue(membership({ role: 'owner', status: 'banned' }));
     getRestriction.mockResolvedValue({ state: 'suspended', cause: null });
     await renderPage();
 
     expect(hrefs()).not.toContain('/manage');
     expect(screen.getByTestId('notice')).toBeInTheDocument();
+  });
+
+  /**
+   * A PAUSED owner keeps the console, and this is the case the suspended test above
+   * cannot stand in for: `status` is still `'approved'`, so `requireOwner` still admits
+   * them and `/manage` still works — the link is the only thing that was missing.
+   *
+   * Reachable without anything unusual: an owner books a seat, a co-owner marks them
+   * absent under a 2-day policy, `recomputeBan` writes `banned_until` and leaves the
+   * status alone. This page carries the only entry-point link to `/manage` outside the
+   * manage area, and the apex row hides it for a restricted club too — so for 48 hours
+   * an owner could not navigate to their own club's console from anywhere in the product.
+   *
+   * The notice is asserted alongside it: the fix is "restricted AND owner", not "owner
+   * wins", and dropping the notice would be the other way of getting this wrong.
+   */
+  it('keeps the console for a paused owner, alongside the notice', async () => {
+    getMembership.mockResolvedValue(membership({ role: 'owner', status: 'approved', bannedUntil: new Date('2026-08-12T04:00:00Z') }));
+    getRestriction.mockResolvedValue({ state: 'paused', endsAt: new Date('2026-08-12T04:00:00Z'), cause: null });
+    await renderPage();
+
+    expect(screen.getByTestId('notice')).toHaveAttribute('data-state', 'paused');
+    // Manage leads; the member's own record and calendar follow.
+    expect(hrefs()).toEqual(['/manage', '/bookings', '/book']);
+  });
+
+  /** An unrestricted member must not acquire a console link from the branch above. */
+  it('never offers the console to a restricted non-owner', async () => {
+    getRestriction.mockResolvedValue({ state: 'paused', endsAt: new Date('2026-08-12T04:00:00Z'), cause: null });
+    await renderPage();
+
+    expect(hrefs()).toEqual(['/bookings', '/book']);
   });
 
   /**
