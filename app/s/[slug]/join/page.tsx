@@ -35,13 +35,15 @@ export default async function JoinPage({
     const back = `${clubUrl(slug, origin)}/join`;
     const signInHref = `${apexUrl('/sign-in', origin)}?redirect=${encodeURIComponent(back)}`;
     return (
-      <main className="relative mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 p-8 text-center">
-        <div className="absolute top-4 right-4">
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-8">
+        <div className="flex justify-end">
           <AppControls />
         </div>
-        <h1 className="font-heading text-2xl font-bold text-brand">{t('joinTitle', { name: club.name })}</h1>
-        <p className="text-muted-foreground">{t('joinBody')}</p>
-        <a href={signInHref} className={buttonVariants({ className: 'w-full' })}>{tj('signInToJoin')}</a>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+          <h1 className="font-heading text-2xl font-bold text-brand">{t('joinTitle', { name: club.name })}</h1>
+          <p className="text-muted-foreground">{t('joinBody')}</p>
+          <a href={signInHref} className={buttonVariants({ className: 'w-full' })}>{tj('signInToJoin')}</a>
+        </div>
       </main>
     );
   }
@@ -53,17 +55,19 @@ export default async function JoinPage({
     : null;
 
   return (
-    <main className="relative mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 p-8 text-center">
-      <div className="absolute top-4 right-4">
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-8">
+      <div className="flex justify-end">
         <AppControls />
       </div>
-      <h1 className="font-heading text-2xl font-bold text-brand">{t('joinTitle', { name: club.name })}</h1>
-      {error === 'rate_limited' && <p className="text-sm text-destructive">{tj('rateLimited')}</p>}
-      {membership ? (
-        <p className="text-muted-foreground">{statusMsg}</p>
-      ) : (
-        <JoinForm action={joinAction.bind(null, slug)} body={t('joinBody')} cta={tj('requestToJoin')} />
-      )}
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+        <h1 className="font-heading text-2xl font-bold text-brand">{t('joinTitle', { name: club.name })}</h1>
+        {error === 'rate_limited' && <p className="text-sm text-destructive">{tj('rateLimited')}</p>}
+        {membership ? (
+          <p className="text-muted-foreground">{statusMsg}</p>
+        ) : (
+          <JoinForm action={joinAction.bind(null, slug)} body={t('joinBody')} cta={tj('requestToJoin')} />
+        )}
+      </div>
     </main>
   );
 }

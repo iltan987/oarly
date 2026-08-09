@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
+import { AppControls } from '@/components/app-controls';
 import { requireUser } from '@/lib/session';
 
 import { RequestClubForm } from './request-club-form';
@@ -15,7 +16,10 @@ export default async function RequestClubPage({
 
   if (submitted === '1') {
     return (
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-8">
+      <main className="mx-auto max-w-md p-8">
+        <div className="mb-4 flex justify-end">
+          <AppControls />
+        </div>
         <h1 className="mb-4 font-heading text-2xl font-bold">{t('submittedTitle')}</h1>
         <p className="text-sm text-muted-foreground">{t('submittedBody')}</p>
       </main>
@@ -23,7 +27,10 @@ export default async function RequestClubPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-8">
+    <main className="mx-auto max-w-md p-8">
+      <div className="mb-4 flex justify-end">
+        <AppControls />
+      </div>
       <h1 className="mb-2 font-heading text-2xl font-bold">{t('title')}</h1>
       <p className="mb-6 text-sm text-muted-foreground">{t('body')}</p>
       <RequestClubForm />

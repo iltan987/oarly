@@ -6,7 +6,7 @@ export default async function PrivacyPage() {
   const t = await getTranslations('privacy');
   return (
     <main className="mx-auto max-w-2xl p-8">
-      <div className="mb-4 flex w-full justify-end">
+      <div className="mb-4 flex justify-end">
         <AppControls />
       </div>
       <h1 className="mb-4 font-heading text-2xl font-bold">{t('title')}</h1>

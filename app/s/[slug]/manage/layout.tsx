@@ -28,7 +28,7 @@ export default async function ManageLayout({
           */}
           <a
             href={apexUrl('/', origin)}
-            className="max-w-40 truncate rounded-field px-2 py-1 text-sm text-muted-foreground hover:text-foreground hover:underline"
+            className="min-w-0 max-w-40 truncate rounded-field px-2 py-1 text-sm text-muted-foreground hover:text-foreground hover:underline"
             title={user.email}
           >
             {user.name || user.email}
