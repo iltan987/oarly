@@ -26,6 +26,11 @@ import { setLocale } from './set-locale';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // `vi.clearAllMocks()` only clears call history, not implementations set via
+  // `mockRejectedValue`/`mockResolvedValue` — and this config sets no
+  // `restoreMocks`/`mockReset`. Reset explicitly any mock a test gives a one-off
+  // implementation to, so a rejection configured in one test cannot leak into the next.
+  setUserLocaleMock.mockReset();
   enforceRateLimit.mockResolvedValue({ limited: false });
   getCurrentUser.mockResolvedValue(null);
 });
@@ -92,6 +97,20 @@ describe('setLocale', () => {
     // a database error must not throw back into the switcher, which has no error surface.
     getCurrentUser.mockResolvedValue({ id: 'user-1' });
     setUserLocaleMock.mockRejectedValue(new Error('db down'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(setLocale('en')).resolves.toBeUndefined();
+    expect(cookieSet).toHaveBeenCalledTimes(1);
+    expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('still switches the UI when reading the session fails', async () => {
+    // `getCurrentUser()` is itself a DB query (through the same pool as everything
+    // else) and must be inside the same protected region as the `setUserLocale` write:
+    // a transient session-query failure must not throw back into a control that has no
+    // error surface, after the cookie has already been staged.
+    getCurrentUser.mockRejectedValue(new Error('session down'));
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     await expect(setLocale('en')).resolves.toBeUndefined();
     expect(cookieSet).toHaveBeenCalledTimes(1);

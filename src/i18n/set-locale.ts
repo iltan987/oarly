@@ -50,15 +50,16 @@ export async function setLocale(locale: Locale) {
 
   // `user.locale` is what transactional email renders from; the cookie is what the UI
   // reads. One action sets both so they cannot disagree. Best-effort: the cookie is
-  // already written and the page is about to re-render, so a database failure must not
-  // throw back into a control that has no way to report it.
-  const user = await getCurrentUser();
-  if (user) {
-    try {
+  // already written and the page is about to re-render, so a failure reading the
+  // session (`getCurrentUser` is itself a DB query through the same pool) or writing
+  // the row must not throw back into a control that has no way to report it.
+  try {
+    const user = await getCurrentUser();
+    if (user) {
       await setUserLocale(db, user.id, next);
-    } catch (error) {
-      console.error('setLocale: failed to persist user.locale', error);
     }
+  } catch (error) {
+    console.error('setLocale: failed to persist user.locale', error);
   }
 
   // NOT `router.refresh()` on the client: that re-renders only the current route and
