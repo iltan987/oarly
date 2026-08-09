@@ -10,6 +10,18 @@ describe('activeNavIndex', () => {
     expect(activeNavIndex('/admin/users', items)).toBe(1);
   });
 
+  it('an exact item alone refuses an un-owned descendant', () => {
+    // No competing item here, unlike the test above. With a sibling present, a bug
+    // that ignores `exact` and always prefix-matches the href is invisible: every path
+    // exercised there either equals '/admin' exactly (prefix and exact branches agree)
+    // or falls under a sibling/owns entry whose score already wins outright. Only a
+    // lone exact item, probed on a path that is a prefix-match but not an exact one,
+    // actually exercises the branch that says "no" when a prefix match would say "yes".
+    const items: NavItem[] = [{ href: '/admin', exact: true }];
+    expect(activeNavIndex('/admin', items)).toBe(0);
+    expect(activeNavIndex('/admin/foo', items)).toBe(-1);
+  });
+
   it('matches a prefix item on its descendants', () => {
     const items: NavItem[] = [{ href: '/admin/requests' }];
     expect(activeNavIndex('/admin/requests', items)).toBe(0);
