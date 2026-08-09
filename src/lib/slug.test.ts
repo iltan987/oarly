@@ -23,4 +23,10 @@ describe('validateSlug', () => {
     expect((validateSlug('sign-in') as { ok: false; reason: string }).reason).toBe('reserved');
     expect(RESERVED_SLUGS.has('api')).toBe(true);
   });
+  // Reserving an apex route also has to stop a club from claiming it as a slug: a club
+  // at `account` would own `account.oarly.sbs`, which is where every apex `/account`
+  // link would land if the reservation were ever dropped.
+  it('refuses `account` as a club slug', () => {
+    expect((validateSlug('account') as { ok: false; reason: string }).reason).toBe('reserved');
+  });
 });
