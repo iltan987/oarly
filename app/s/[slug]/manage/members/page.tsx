@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { db } from '@/db';
 import { memberships, skillLevels, user } from '@/db/schema';
 import { requireOwner } from '@/lib/membership';
+import { restrictionState } from '@/lib/restriction';
 
 import { ApproveButton, RejectButton } from './member-actions';
 import { SkillLevelSelect } from './skill-level-select';
@@ -28,7 +29,19 @@ export default async function ManageMembersPage({ params }: { params: Promise<{ 
   const levels = await db.select().from(skillLevels).where(eq(skillLevels.clubId, club.id)).orderBy(skillLevels.rank);
 
   const pending = rows.filter((r) => r.membership.status === 'pending');
-  const approved = rows.filter((r) => r.membership.status === 'approved' || r.membership.status === 'banned');
+  /*
+    The suspended/paused split is `restrictionState`'s, not this page's. It was
+    hand-rolled here — `status === 'banned'` for the red badge, `bannedUntil > now` for
+    the amber one — which is the module's whole job, including the strict `>` at the
+    boundary. Two copies of that predicate is how the owner's roster and the member's own
+    page start disagreeing about who is restricted.
+
+    `bannedUntil!` under `'paused'` is that state's invariant, not an assumption: the
+    model returns `paused` only when the date is non-null and in the future.
+  */
+  const approved = rows
+    .filter((r) => r.membership.status === 'approved' || r.membership.status === 'banned')
+    .map((r) => ({ ...r, restriction: restrictionState(r.membership, now) }));
 
   if (rows.length === 0) {
     return <p className="text-muted-foreground">{t('empty')}</p>;
@@ -75,10 +88,10 @@ export default async function ManageMembersPage({ params }: { params: Promise<{ 
                     <div className="flex flex-col gap-0.5">
                       <span className="font-heading text-sm font-semibold">{r.name}</span>
                       <span className="text-xs text-muted-foreground">{r.email}</span>
-                      {r.membership.status === 'banned' ? (
+                      {r.restriction === 'suspended' ? (
                         <StatusPill tone="bad">{t('bookings.bannedBadge')}</StatusPill>
-                      ) : r.membership.bannedUntil && r.membership.bannedUntil.getTime() > now.getTime() ? (
-                        <StatusPill tone="warn">{t('bookings.bannedUntilBadge', { date: r.membership.bannedUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: club.timezone }) })}</StatusPill>
+                      ) : r.restriction === 'paused' ? (
+                        <StatusPill tone="warn">{t('bookings.bannedUntilBadge', { date: r.membership.bannedUntil!.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: club.timezone }) })}</StatusPill>
                       ) : null}
                     </div>
                     {levels.length === 0 ? (

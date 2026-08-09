@@ -10,6 +10,7 @@ import { toMinutes, utcToClubDate, zonedWallClockToUtc } from './date-tz';
 import { checkEligibility, type EligibilityReason } from './eligibility';
 import { findOrCreateSlotTx, type MaterializeBoat } from './materialize';
 import { isUniqueViolation } from './pg-errors';
+import { restrictionState } from './restriction';
 import { resolveSeating } from './seating';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -316,7 +317,10 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
       // Not reachable on a closed day via the UI (the Bookings view hides the add form
       // there); this guards a direct action call.
       const [member] = await tx.select({ status: memberships.status, bannedUntil: memberships.bannedUntil }).from(memberships).where(and(eq(memberships.userId, input.userId), eq(memberships.clubId, input.clubId)));
-      if (!member || member.status !== 'approved' || (member.bannedUntil != null && member.bannedUntil.getTime() > now.getTime())) return { ok: false, error: 'not_a_member' };
+      // The ban half goes through `restrictionState`, which is where the `>` (never `>=`)
+      // at the boundary is decided; the query already selects exactly the two columns it
+      // reads, so nothing about this read changes.
+      if (!member || member.status !== 'approved' || restrictionState(member, now) !== 'none') return { ok: false, error: 'not_a_member' };
 
       const foc = await findOrCreateSlotTx(tx, { clubId: input.clubId, dateISO, startAt: input.startAt, endAt, windowId: input.windowId, boats: boatsSpec });
 

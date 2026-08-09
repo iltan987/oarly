@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { type DB, db as appDb } from '@/db';
 import { memberships } from '@/db/schema';
 import { env } from '@/env';
+import { restrictionState } from '@/lib/restriction';
 import { type CurrentUser, getCurrentUser } from '@/lib/session';
 import { type Club, getClubBySlug } from '@/lib/tenant';
 import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
@@ -68,8 +69,11 @@ export async function requireMember(
     redirect(`${apexUrl('/sign-in', origin)}?redirect=${encodeURIComponent(back)}`);
   }
   const membership = await self.getMembership(appDb, user.id, club.id);
-  const bannedActive = membership?.bannedUntil != null && membership.bannedUntil.getTime() > Date.now();
-  if (!membership || membership.status !== 'approved' || bannedActive) notFound();
+  // Through `restrictionState`, not a hand-rolled `bannedUntil > now`: the strictness of
+  // that comparison (`>`, never `>=`) is a decision the model owns and `checkEligibility`
+  // shares, and a second copy of it here is a second thing to keep in step.
+  if (!membership || membership.status !== 'approved') notFound();
+  if (restrictionState(membership, new Date()) !== 'none') notFound();
   return { club, user, membership };
 }
 
@@ -95,6 +99,11 @@ export async function requireMemberView(
     redirect(`${apexUrl('/sign-in', origin)}?redirect=${encodeURIComponent(back)}`);
   }
   const membership = await self.getMembership(appDb, user.id, club.id);
-  if (!membership || (membership.status !== 'approved' && membership.status !== 'banned')) notFound();
+  if (!membership) notFound();
+  // `restrictionState(...) === 'suspended'` IS `status === 'banned'` — that mapping is
+  // the model's, and naming it here says what the second half of this condition is FOR
+  // (admit a suspended member so the page can explain itself) rather than restating a
+  // status literal the model already interprets.
+  if (membership.status !== 'approved' && restrictionState(membership, new Date()) !== 'suspended') notFound();
   return { club, user, membership };
 }
