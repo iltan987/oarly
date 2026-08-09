@@ -172,8 +172,10 @@ installed `@base-ui/react` in `node_modules/@base-ui/react/toggle-group/ToggleGr
 ### 4.3 `AppControls` (`src/components/app-controls.tsx`)
 
 The cluster `LanguageToggle` + `ThemeToggle` (+ sign-out where the user is known) repeats
-across eight surfaces. A single server component owns it, so ordering, spacing, and
-future additions stay identical everywhere:
+across twelve surfaces, in eleven distinct files (`app/page.tsx` contributes two: its
+signed-out and signed-in branches are different surfaces sharing one file). A single
+server component owns it, so ordering, spacing, and future additions stay identical
+everywhere:
 
 ```tsx
 <AppControls signOutUrl={…}>{/* optional leading slot */}</AppControls>
@@ -201,13 +203,20 @@ today get a minimal one.
 | `app/s/[slug]/page.tsx` | **nothing** | add a control row |
 | `app/not-found.tsx` | **nothing** | add a control row |
 | `app/request-club/page.tsx` (both branches) | **nothing** | add a control row |
+| `src/components/club-unavailable.tsx` | **nothing** | add a control row |
 
-The last three were omissions in the first draft of this table, caught in review. The club's
-public landing page (`app/s/[slug]/page.tsx`) is reachable by anyone who has the subdomain
-— it is the most public surface in the product — and `not-found.tsx` is where a mistyped URL
-lands someone who may not read the language they are being apologised to in. Both were
-chrome-less. The goal stated at the top of this section is "every surface a user can reach",
-and these are surfaces a user can reach.
+The 9th–11th rows were omissions in the first draft of this table, caught in review. The
+club's public landing page (`app/s/[slug]/page.tsx`) is reachable by anyone who has the
+subdomain — it is the most public surface in the product — and `not-found.tsx` is where a
+mistyped URL lands someone who may not read the language they are being apologised to in.
+Both were chrome-less. The goal stated at the top of this section is "every surface a user
+can reach", and these are surfaces a user can reach.
+
+The 12th row was caught in the whole-branch review that followed: `app/s/[slug]/layout.tsx`
+renders `ClubUnavailable` **instead of** `children` for any club whose status isn't
+`active` (`pending` or `suspended`, per `SLUG_ADDRESSABLE_STATUSES`) — so for a club in
+that window, this is the *only* thing its subdomain serves, on every path, with no sibling
+route on that host to reach a control from.
 
 `app/(auth)/layout.tsx` matters most: it wraps sign-in, sign-up, forgot-password,
 reset-password and verify-email. It is where a first-time visitor lands, in a language
@@ -282,8 +291,8 @@ parity structurally and needs no change.
 - Renders language and theme controls; renders sign-out only when `signOutUrl` is given;
   `children` render before the toggles.
 
-Placement across the eight surfaces is verified by the reviewer against §4.4, not by
-eight brittle render tests.
+Placement across the twelve surfaces is verified by the reviewer against §4.4, not by
+twelve brittle render tests.
 
 ## 7. Risks
 

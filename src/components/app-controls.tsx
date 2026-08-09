@@ -7,9 +7,14 @@ import { ThemeToggle } from '@/components/theme-toggle';
 /**
  * The page-chrome control cluster, in one place.
  *
- * This pairing repeats on eleven surfaces. Owning it here is what keeps their order and
- * spacing identical, and means the next control added to the chrome lands on all of them
- * at once instead of on whichever ones someone remembered.
+ * This pairing repeats on twelve surfaces, in eleven distinct files (`app/page.tsx`
+ * contributes two — its signed-out and signed-in branches are different surfaces sharing
+ * one file). Owning it here is what keeps their order and spacing identical, and means the
+ * next control added to the chrome lands on all of them at once instead of on whichever
+ * ones someone remembered. See the design doc's §4.4 (under
+ * `docs/superpowers/specs/`) for the full list — including this component's own
+ * `club-unavailable.tsx` caller, easy to miss because it's reached through a layout swap
+ * rather than a route of its own.
  *
  * Order is deliberate: the text control first, then icons, so the row reads
  * left-to-right from widest to narrowest and the icon buttons stay adjacent.

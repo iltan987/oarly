@@ -51,5 +51,9 @@ export const RATE_LIMITS = {
   clubRequestPerAccount: { name: 'clubRequestPerAccount', limit: 5, windowSec: 60 * 60 },
   joinRequestPerAccount: { name: 'joinRequestPerAccount', limit: 20, windowSec: 60 * 60 },
   logoUploadPerAccount: { name: 'logoUploadPerAccount', limit: 20, windowSec: 60 * 60 },
+  // Amply sized: a language switch is a single deliberate click, not a synchronized rush.
+  // 60/min per egress IP is set against the shared-NAT case — a club's members behind one
+  // boathouse, gym, or office IP — not against a real attacker, same as every other
+  // *PerIp rule above.
   localePerIp: { name: 'localePerIp', limit: 60, windowSec: 60 },
 } satisfies Record<string, RateRule>;
