@@ -2,9 +2,8 @@ import { asc, eq } from 'drizzle-orm';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
+import { AppControls } from '@/components/app-controls';
 import { StatusPill } from '@/components/booking-status-badge';
-import { SignOutButton } from '@/components/sign-out-button';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -39,7 +38,7 @@ export default async function Home() {
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-10 p-8">
         <div className="flex w-full items-center justify-between">
           <span className="font-heading text-2xl font-bold text-brand">{t('appName')}</span>
-          <ThemeToggle />
+          <AppControls />
         </div>
 
         <div className="flex flex-col gap-2">
@@ -79,10 +78,7 @@ export default async function Home() {
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-8">
       <div className="flex w-full items-center justify-between">
         <span className="font-heading text-2xl font-bold text-brand">{t('appName')}</span>
-        <div className="flex items-center gap-1">
-          <ThemeToggle />
-          <SignOutButton redirectTo={apexUrl('/sign-in?signedout=1', origin)} />
-        </div>
+        <AppControls signOutUrl={apexUrl('/sign-in?signedout=1', origin)} />
       </div>
 
       <p className="text-sm text-muted-foreground">{tHome('signedInAs', { email: user.email })}</p>

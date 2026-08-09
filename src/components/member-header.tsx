@@ -1,8 +1,7 @@
 import Link from 'next/link';
 
+import { AppControls } from '@/components/app-controls';
 import { MemberTabs } from '@/components/member-tabs';
-import { SignOutButton } from '@/components/sign-out-button';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { env } from '@/env';
 import { apexUrl, parseAppOrigin } from '@/lib/urls';
@@ -34,10 +33,7 @@ export function MemberHeader({
           </Avatar>
           <span className="truncate font-heading text-lg font-semibold text-brand">{club.name}</span>
         </Link>
-        <div className="flex shrink-0 items-center gap-1">
-          <ThemeToggle />
-          <SignOutButton redirectTo={signOutUrl} />
-        </div>
+        <AppControls signOutUrl={signOutUrl} />
       </div>
       <MemberTabs />
     </header>

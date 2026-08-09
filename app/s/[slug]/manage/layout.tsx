@@ -2,8 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 
-import { SignOutButton } from '@/components/sign-out-button';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { AppControls } from '@/components/app-controls';
 import { env } from '@/env';
 import { requireOwner } from '@/lib/membership';
 import { apexUrl, parseAppOrigin } from '@/lib/urls';
@@ -21,7 +20,7 @@ export default async function ManageLayout({
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-heading text-2xl font-bold text-brand">{t('title')}</h1>
-        <div className="flex shrink-0 items-center gap-1">
+        <AppControls signOutUrl={apexUrl('/sign-in?signedout=1', origin)}>
           {/*
             Absolute apex link (not <Link>): the owner is on the club subdomain, so
             a relative href would stay on the tenant host. The apex home is where
@@ -34,9 +33,7 @@ export default async function ManageLayout({
           >
             {user.name || user.email}
           </a>
-          <ThemeToggle />
-          <SignOutButton redirectTo={apexUrl('/sign-in?signedout=1', origin)} />
-        </div>
+        </AppControls>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
         <Link href="/" className="text-muted-foreground hover:text-foreground hover:underline">

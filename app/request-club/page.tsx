@@ -15,18 +15,18 @@ export default async function RequestClubPage({
 
   if (submitted === '1') {
     return (
-      <div className="w-full">
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-8">
         <h1 className="mb-4 font-heading text-2xl font-bold">{t('submittedTitle')}</h1>
         <p className="text-sm text-muted-foreground">{t('submittedBody')}</p>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="w-full">
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-8">
       <h1 className="mb-2 font-heading text-2xl font-bold">{t('title')}</h1>
       <p className="mb-6 text-sm text-muted-foreground">{t('body')}</p>
       <RequestClubForm />
-    </div>
+    </main>
   );
 }
