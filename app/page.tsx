@@ -10,17 +10,9 @@ import { Card } from '@/components/ui/card';
 import { db } from '@/db';
 import { clubs, memberships } from '@/db/schema';
 import { env } from '@/env';
+import { initials } from '@/lib/initials';
 import { getCurrentUser } from '@/lib/session';
 import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
-}
 
 function computeIsBanned(row: { status: string; bannedUntil: Date | null }): boolean {
   const bannedActive = row.bannedUntil != null && row.bannedUntil.getTime() > Date.now();

@@ -4,16 +4,8 @@ import { AppControls } from '@/components/app-controls';
 import { MemberTabs } from '@/components/member-tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { env } from '@/env';
+import { initials } from '@/lib/initials';
 import { apexUrl, parseAppOrigin } from '@/lib/urls';
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
-}
 
 export function MemberHeader({
   club,

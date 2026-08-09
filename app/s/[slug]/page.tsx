@@ -9,20 +9,12 @@ import { buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { db } from '@/db';
 import { env } from '@/env';
+import { initials } from '@/lib/initials';
 import { getMembership } from '@/lib/membership';
 import { buildClubMetadata } from '@/lib/seo';
 import { getCurrentUser } from '@/lib/session';
 import { requireClub } from '@/lib/tenant';
 import { parseAppOrigin } from '@/lib/urls';
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
-}
 
 function computeIsBanned(membership: { status: string; bannedUntil: Date | null } | null): boolean {
   const bannedActive = membership?.bannedUntil != null && membership.bannedUntil.getTime() > Date.now();
