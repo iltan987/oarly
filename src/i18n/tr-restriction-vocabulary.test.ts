@@ -208,6 +208,36 @@ describe('the owner-facing roster badges', () => {
   });
 
   /**
+   * The control that ENDS a suspension, held to the same vocabulary as the badge it
+   * removes: `askı`, never `yasak`. "Yasağı kaldır" would describe the state as a
+   * prohibition on the way out, having spent this whole file refusing to describe it as
+   * one on the way in — and the owner reading that button is the person who decides
+   * whether the member deserves it.
+   */
+  it('names the lift with the suspension word the badge uses', () => {
+    expect(trManage.liftSuspension).toMatch(SUSPENSION_ROOT);
+    expect(trManage.liftSuspension).not.toMatch(/yasak/i);
+    expect(trManage.suspensionLifted).toMatch(SUSPENSION_ROOT);
+    expect(trManage.suspensionLifted).not.toMatch(/yasak/i);
+    expect(enManage.liftSuspension).toMatch(/suspension/i);
+    expect(enManage.suspensionLifted).toMatch(/suspension/i);
+  });
+
+  /**
+   * The mis-click this control's copy exists to prevent. Lifting a suspension and
+   * rejecting a membership are one careless tap apart on a phone, they are the two ends
+   * of the same axis, and only one of them ends somebody's membership with no way back.
+   * A label that opens with the other one's verb is how the wrong one gets pressed.
+   */
+  it('reads nothing like the reject control', () => {
+    for (const catalog of [trManage, enManage]) {
+      expect(catalog.liftSuspension).not.toBe(catalog.reject);
+      expect(catalog.liftSuspension.toLocaleLowerCase('tr'))
+        .not.toContain(catalog.reject.toLocaleLowerCase('tr'));
+    }
+  });
+
+  /**
    * The orphans, asserted gone. These lived under `manage.bookings` — a group they were
    * never rendered from — and the parity test compares the two catalogs to EACH OTHER, so
    * a dead key present in both is invisible to it forever. Re-adding either is how the

@@ -4,10 +4,8 @@ import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 
 import { AdminPagination } from '@/components/admin-pagination';
-import { StatusPill } from '@/components/booking-status-badge';
 import { EmptyState } from '@/components/empty-state';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { db } from '@/db';
 import { skillLevels } from '@/db/schema';
@@ -17,8 +15,8 @@ import { normalizePage } from '@/lib/pagination';
 import { restrictionState } from '@/lib/restriction';
 import { one } from '@/lib/search-params';
 
+import { MembersRoster } from './members-roster';
 import { PendingMembers } from './pending-members';
-import { SkillLevelSelect } from './skill-level-select';
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
@@ -142,19 +140,28 @@ export default async function ManageMembersPage({ params, searchParams }: {
           )
         ) : (
           /*
-            One Card with `divide-y` rows, not one Card per member: 25 cards at `gap-2` is
-            25 shadows and 25 gutters, and a 200-member club made that the whole page. The
-            idiom `app/admin/users/page.tsx:64` already uses for the same 25 people.
+            A client component for the whole list, not per row, and for the same reason the
+            pending queue above is one: it hoists the lift's `useActionState` so a success
+            toast is not dropped when the control that dispatched it disappears with the
+            badge. See its doc comment.
 
-            At `lg:` the ragged `flex-wrap justify-between` row becomes a three-column
-            grid, and the fixed `12rem` last column is what the width buys: `1fr` absorbs
-            every difference in name length and badge width, so every skill-level select
-            shares one left edge down the whole list. Assigning levels to 30 members is one
-            vertical pass instead of 30 horizontal hunts. Below `lg:` the stack is
-            unchanged.
+            Every locale-dependent decision is made HERE and passed down as a string. The
+            page is the only place with `getTranslations` and the club's timezone, which is
+            the convention `SkillLevelSelect` already follows with `label`/`noneLabel` —
+            and it keeps the roster's copy out of a component that would otherwise need its
+            own `useTranslations`.
           */
-          <Card className="gap-0 divide-y divide-border py-0">
-            {rows.map((r) => {
+          <MembersRoster
+            slug={slug}
+            skillLevels={levels}
+            labels={{
+              skillLevel: t('skillLevel'),
+              none: t('none'),
+              lift: t('liftSuspension'),
+              liftDone: t('suspensionLifted'),
+              error: t('actionError'),
+            }}
+            rows={rows.map((r) => {
               /*
                 The suspended/paused split is `restrictionState`'s, not this page's. Two
                 copies of that predicate is how the owner's roster and the member's own
@@ -165,47 +172,20 @@ export default async function ManageMembersPage({ params, searchParams }: {
                 in the future.
               */
               const restriction = restrictionState(r, now);
-              return (
-                <div
-                  key={r.membershipId}
-                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 p-4 lg:grid lg:grid-cols-[1fr_auto_12rem] lg:items-center lg:gap-4"
-                >
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="font-heading text-sm font-semibold break-words">{r.name}</span>
-                    <span className="text-xs break-words text-muted-foreground">{r.email}</span>
-                  </div>
-                  {/*
-                    Its own cell even when empty, so the select column below does not
-                    shift by the width of a badge.
-
-                    The words are `restriction`'s, not this page's second set. The owner
-                    badge said *yasaklı* ("banned") for the exact state the member is told
-                    is *Duraklatıldı* ("paused"), off the same predicate — so an owner
-                    reading the roster and a member reading their own page described one
-                    fact with two registers, one of which Task 6 removed on purpose.
-                    Guarded in `src/i18n/tr-restriction-vocabulary.test.ts`.
-                  */}
-                  <div>
-                    {restriction === 'suspended' ? (
-                      <StatusPill tone="bad">{t('suspendedBadge')}</StatusPill>
-                    ) : restriction === 'paused' ? (
-                      <StatusPill tone="warn">{t('pausedBadge', { date: day(r.bannedUntil!) })}</StatusPill>
-                    ) : null}
-                  </div>
-                  {levels.length > 0 && (
-                    <SkillLevelSelect
-                      slug={slug}
-                      membershipId={r.membershipId}
-                      skillLevels={levels}
-                      currentSkillLevelId={r.skillLevelId}
-                      label={t('skillLevel')}
-                      noneLabel={t('none')}
-                    />
-                  )}
-                </div>
-              );
+              return {
+                membershipId: r.membershipId,
+                name: r.name,
+                email: r.email,
+                skillLevelId: r.skillLevelId,
+                restriction,
+                badgeLabel:
+                  restriction === 'suspended' ? t('suspendedBadge')
+                  : restriction === 'paused' ? t('pausedBadge', { date: day(r.bannedUntil!) })
+                  : null,
+                liftLabel: t('liftSuspensionFor', { name: r.name }),
+              };
             })}
-          </Card>
+          />
         )}
 
         <AdminPagination
