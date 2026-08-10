@@ -571,6 +571,8 @@
       "closed": "Kulüp bu gün kapalı.",
       "prevDay": "Önceki gün",
       "nextDay": "Sonraki gün",
+      "daySeated": "{seated}/{capacity} dolu",
+      "dayWaitlisted": "{count} yedek",
       "remove": "Çıkar",
       "add": "Ekle",
       "selectMember": "Üye seçin",

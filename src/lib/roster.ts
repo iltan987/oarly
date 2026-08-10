@@ -32,6 +32,35 @@ export type RosterSession = {
 };
 export type RosterDay = { dateISO: string; closed: boolean; sessions: RosterSession[] };
 
+/** Only the three fields the day's totals are counted from — so a caller can pass a
+ *  session it has decorated (the bookings page adds penalty fields) and a test can build
+ *  one without inventing a boat. */
+export type CountableSession = Pick<RosterSession, 'seated' | 'waitlisted' | 'capacity'>;
+
+/**
+ * The day's three numbers, in ONE place: `/manage` renders them as `todaySummary` and
+ * `/manage/bookings` renders them beside the date control, and two copies of this
+ * arithmetic is how those two pages start disagreeing about how full the club is.
+ *
+ * The rule that matters is `status === 'booked'`. `seated` INCLUDES `no_show` rows — they
+ * are kept visible so an owner can undo the mark (see `VISIBLE` above) — so
+ * `s.seated.length` reports a session that had an absence as fuller than it is, and shows
+ * seats as taken that `freeSeats` (same rule, line 78) is simultaneously offering to the
+ * add form. `waitlisted` needs no such filter: `getDayRoster` puts only `waitlisted` rows
+ * in that bucket.
+ */
+export function rosterDayTotals(sessions: readonly CountableSession[]): { seated: number; waitlisted: number; capacity: number } {
+  let seated = 0;
+  let waitlisted = 0;
+  let capacity = 0;
+  for (const s of sessions) {
+    seated += s.seated.filter((m) => m.status === 'booked').length;
+    waitlisted += s.waitlisted.length;
+    capacity += s.capacity;
+  }
+  return { seated, waitlisted, capacity };
+}
+
 /** Owner-facing: the day's sessions (persisted + virtual), each with its booking roster. */
 export async function getDayRoster(db: DB, { clubId, dateISO }: { clubId: string; dateISO: string }): Promise<RosterDay> {
   const [day] = await computeCalendar(db, clubId, { fromDateISO: dateISO, days: 1 });

@@ -328,6 +328,72 @@ describe('BookingsRoster MultiSport toggle', () => {
   });
 });
 
+describe('BookingsRoster session grid', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** The <div> the session cards are laid out in: name -> header -> CardContent -> Card -> grid. */
+  function gridOf(boatName: string): HTMLElement {
+    const card = screen.getByText(new RegExp(boatName)).closest('[data-slot="card"]');
+    const grid = card?.parentElement;
+    if (!grid) throw new Error(`no grid around ${boatName}`);
+    return grid;
+  }
+
+  const two = () => [
+    makeSession({ sessionId: 's1', boatName: 'Dört tek' }),
+    makeSession({ sessionId: 's2', boatName: 'İki tek' }),
+  ];
+
+  /**
+   * jsdom cannot lay out, so what is pinned here is the declaration; the measurement —
+   * a neighbouring card's last button not moving by a pixel when the other card of the
+   * same grid row takes an optimistic seat — is in the task report.
+   *
+   * Asserted on the shared parent of the two cards, found by walking UP from a card,
+   * rather than on `container.querySelector('.items-start')`: `Card`, `CardContent` and
+   * the shadcn primitives inside a row carry their own layout classes, so a class query
+   * would happily match a nested element and pass with this container reverted to
+   * `flex flex-col`.
+   */
+  it('lays the sessions out as a two-column grid at lg, in one container', () => {
+    render(<BookingsRoster slug="club" sessions={two()} timezone="UTC" multisportEnabled />);
+    const grid = gridOf('Dört tek');
+    expect(grid).toBe(gridOf('İki tek'));
+    expect(grid).toHaveClass('grid', 'grid-cols-1', 'lg:grid-cols-2');
+    // The single column below `lg:` is half the pair: `grid-cols-2` alone would put two
+    // cards side by side on a 360px phone.
+    expect(grid).not.toHaveClass('flex-col');
+  });
+
+  /**
+   * `items-start` is the one class in this file that protects the invariant `:56-60`
+   * exists for, and it is invisible in every other assertion here.
+   *
+   * A grid item stretches to its row's height by default. Without `items-start`, the two
+   * cards of a row are always the same height, so an optimistic seat added to ONE card
+   * grows the row and stretches the OTHER — moving a different member's `Remove` control
+   * at t≈0 and back again at round-trip completion, on a card the operator never touched.
+   * That is precisely the delayed reflow that made `PendingButton` fade in place rather
+   * than unmount.
+   *
+   * Deliberate break: delete `items-start` from the container and this assertion fails.
+   */
+  it('lets each session card keep its own height, so an add on one cannot move the other', () => {
+    render(<BookingsRoster slug="club" sessions={two()} timezone="UTC" multisportEnabled />);
+    expect(gridOf('Dört tek')).toHaveClass('items-start');
+  });
+
+  // The container is the roster's own, not the page's: with one session there is still a
+  // grid, and the card is still its direct child. (A single session at `lg:` occupies one
+  // of the two columns, which is what `lg:max-w-5xl` on the canvas makes readable.)
+  it('renders a single session as a direct child of the same grid', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession({ boatName: 'Tek kişilik' })]} timezone="UTC" multisportEnabled />);
+    expect(gridOf('Tek kişilik')).toHaveClass('grid', 'items-start');
+  });
+});
+
 describe('BookingsRoster mark-absent flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();

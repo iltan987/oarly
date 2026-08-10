@@ -2,6 +2,11 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as RosterModule from '@/lib/roster';
+
+import en from '../../../../../messages/en.json';
+import tr from '../../../../../messages/tr.json';
+
 // `@/db` reads server-only env at module load. Left unmocked under jsdom it fails and
 // takes the whole FILE down — `0 test`, which is an absent assertion, not a failing one.
 vi.mock('@/db', () => ({ db: {} }));
@@ -11,9 +16,21 @@ const { requireOwner, getDayRoster } = vi.hoisted(() => ({
   getDayRoster: vi.fn(),
 }));
 vi.mock('@/lib/membership', () => ({ requireOwner }));
-vi.mock('@/lib/roster', () => ({ getDayRoster }));
+/**
+ * The LOADER is stubbed; `rosterDayTotals` is the real one, spread in from the actual
+ * module. Re-implementing it in this factory would make every totals assertion below a
+ * comparison of the mock with itself — the trap `members/page.test.tsx` documents for
+ * `MEMBERS_PAGE_SIZE`, where the `no_show` rule could be inverted in `src/lib/roster.ts`
+ * with this file still green. (`roster.ts` imports `DB` as a type only, so importing it
+ * for real here pulls in no database.)
+ */
+vi.mock('@/lib/roster', async (importOriginal) => ({
+  ...await importOriginal<typeof RosterModule>(),
+  getDayRoster,
+}));
 vi.mock('next-intl/server', () => ({
-  getTranslations: () => Promise.resolve((key: string) => key),
+  getTranslations: () => Promise.resolve((key: string, values?: Record<string, unknown>) =>
+    (values ? `${key}:${JSON.stringify(values)}` : key)),
 }));
 // Client components with their own next-intl boundary; this file is about which date
 // the page resolves and what it puts in its own navigation links.
@@ -87,5 +104,106 @@ describe('ManageBookingsPage ?date', () => {
     await renderAt('2024-02-29');
     expect(getDayRoster).toHaveBeenCalledWith({}, { clubId: CLUB.id, dateISO: '2024-02-29' });
     expect(hrefs()).toEqual(['/manage/bookings?date=2024-02-28', '/manage/bookings?date=2024-03-01']);
+  });
+});
+
+type Session = RosterModule.RosterSession;
+
+function seat(bookingId: string, status: Session['seated'][number]['status']): Session['seated'][number] {
+  return { bookingId, name: bookingId, paymentType: 'regular', queuePosition: null, status };
+}
+
+function mkSession(over: Partial<Session> = {}): Session {
+  return {
+    sessionId: `s-${Math.random()}`, windowId: 'w1',
+    startAt: new Date(`${TODAY}T06:00:00Z`), endAt: new Date(`${TODAY}T07:00:00Z`),
+    boatTypeId: 'bt1', boatName: 'Dört tek', capacity: 4, status: 'open',
+    seated: [], waitlisted: [], freeSeats: 4, waitlistCapacity: 2, ...over,
+  };
+}
+
+async function renderWith(sessions: Session[]) {
+  getDayRoster.mockResolvedValue({ dateISO: TODAY, closed: false, sessions });
+  await renderAt();
+}
+
+describe('ManageBookingsPage day totals', () => {
+  /**
+   * The numbers that were one nav click away on `/manage`, put beside the control that
+   * changes the day they describe. They are summed across every session of the day, so a
+   * club running six boats reads one figure rather than six headers.
+   */
+  it('sums the day across its sessions, beside the date control', async () => {
+    await renderWith([
+      mkSession({ capacity: 8, seated: [seat('a', 'booked'), seat('b', 'booked')], waitlisted: [] }),
+      mkSession({ capacity: 12, seated: [seat('c', 'booked')], waitlisted: [{ ...seat('w', 'waitlisted'), queuePosition: 1 }] }),
+    ]);
+    expect(screen.getByText(/daySeated/)).toHaveTextContent('daySeated:{"seated":3,"capacity":20}');
+    expect(screen.getByText(/dayWaitlisted/)).toHaveTextContent('dayWaitlisted:{"count":1}');
+  });
+
+  /**
+   * The rule that separates `seated` from "everyone in the seated array", asserted at the
+   * page rather than only at the helper: `getDayRoster` keeps `no_show` rows in `seated`
+   * so the owner can undo the mark, and counting them would report 3/4 above a roster
+   * that is offering the fourth seat AND the third to the add form.
+   */
+  it('does not count a no-show as a filled seat', async () => {
+    await renderWith([
+      mkSession({ capacity: 4, seated: [seat('a', 'booked'), seat('b', 'no_show'), seat('c', 'booked')] }),
+    ]);
+    expect(screen.getByText(/daySeated/)).toHaveTextContent('daySeated:{"seated":2,"capacity":4}');
+  });
+
+  // Nothing to say about a waitlist nobody is on — "· 0 yedek" beside the date is a
+  // permanent zero on the majority of days.
+  it('says nothing about the waitlist when nobody is waiting', async () => {
+    await renderWith([mkSession({ capacity: 4, seated: [seat('a', 'booked')] })]);
+    expect(screen.getByText(/daySeated/)).toBeInTheDocument();
+    expect(screen.queryByText(/dayWaitlisted/)).toBeNull();
+  });
+
+  // And nothing at all on a day with no sessions: "0/0 dolu" beside the date duplicates
+  // the roster's own empty sentence with a number that reads like a fault.
+  it('renders no totals at all on a day with no sessions', async () => {
+    await renderWith([]);
+    expect(screen.queryByText(/daySeated/)).toBeNull();
+    expect(screen.queryByText(/dayWaitlisted/)).toBeNull();
+  });
+
+  /**
+   * The control row is centred while the canvas is narrow and left-aligned once it is
+   * 1024px wide — a date control floating in the middle of that canvas is what the width
+   * would otherwise buy. Asserted on the row itself (found by walking up from the prev-day
+   * link) rather than by class query, so a nested primitive carrying `justify-center`
+   * cannot satisfy it.
+   */
+  it('centres the date control only until the canvas is wide', async () => {
+    await renderWith([mkSession()]);
+    const row = screen.getByRole('link', { name: 'prevDay' }).parentElement;
+    expect(row).toHaveClass('justify-center', 'lg:justify-start');
+    // The totals share that row, and wrap below it rather than widening the page.
+    expect(row).toContainElement(screen.getByText(/daySeated/));
+    expect(row).toHaveClass('flex-wrap');
+  });
+});
+
+describe('bookings message catalogs', () => {
+  // NOT superseded by src/i18n/messages-parity.test.ts: that test compares the two
+  // catalogs against EACH OTHER, so a key deleted from BOTH is invisible to it by
+  // construction. Naming the keys is the only thing that catches it, and Turkish is the
+  // app default — an English-only key ships as a missing-message warning to every real
+  // user of this page.
+  it.each([['en', en], ['tr', tr]] as const)('%s carries the day-totals keys', (_locale, messages) => {
+    expect(messages.manage.bookings.daySeated).toBeTruthy();
+    expect(messages.manage.bookings.dayWaitlisted).toBeTruthy();
+  });
+
+  // Both placeholders, in both catalogs: `{seated}/{capacity}` with one of them dropped
+  // renders a half-sentence that the key-presence check above cannot see.
+  it.each([['en', en], ['tr', tr]] as const)('%s interpolates both halves of the seat count', (_locale, messages) => {
+    expect(messages.manage.bookings.daySeated).toContain('{seated}');
+    expect(messages.manage.bookings.daySeated).toContain('{capacity}');
+    expect(messages.manage.bookings.dayWaitlisted).toContain('{count}');
   });
 });

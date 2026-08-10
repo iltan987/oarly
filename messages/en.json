@@ -571,6 +571,8 @@
       "closed": "The club is closed this day.",
       "prevDay": "Previous day",
       "nextDay": "Next day",
+      "daySeated": "{seated}/{capacity} booked",
+      "dayWaitlisted": "{count} waitlisted",
       "remove": "Remove",
       "add": "Add",
       "selectMember": "Select member",
