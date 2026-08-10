@@ -16,7 +16,9 @@
     "privacy": "Privacy",
     "requestClub": "Request a club",
     "copyright": "© {year} Oarly",
-    "appDescription": "Session and booking management for rowing clubs."
+    "appDescription": "Session and booking management for rowing clubs.",
+    "loadError": "Couldn't load this page.",
+    "retry": "Try again"
   },
   "home": {
     "heroTitle": "Book the boat, skip the group chat",
@@ -687,8 +689,6 @@
     "confirmCancelBody": "Your seat goes to the first person waiting. If the session fills up, you may not get it back.",
     "confirmCancelCta": "Give up my seat",
     "confirmCancelKeep": "Keep my seat",
-    "cancelledToast": "Booking cancelled",
-    "loadError": "Couldn't load this page.",
-    "retry": "Try again"
+    "cancelledToast": "Booking cancelled"
   }
 }

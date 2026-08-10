@@ -16,7 +16,9 @@
     "privacy": "Gizlilik",
     "requestClub": "Kulüp başvurusu",
     "copyright": "© {year} Oarly",
-    "appDescription": "Kürek kulüpleri için seans ve rezervasyon yönetimi."
+    "appDescription": "Kürek kulüpleri için seans ve rezervasyon yönetimi.",
+    "loadError": "Bu sayfa yüklenemedi.",
+    "retry": "Tekrar dene"
   },
   "home": {
     "heroTitle": "Tekneyi ayırt, grup sohbetini boşver",
@@ -687,8 +689,6 @@
     "confirmCancelBody": "Yerin bekleme listesindeki ilk kişiye geçer. Seans dolarsa geri alamayabilirsin.",
     "confirmCancelCta": "Yerimi bırak",
     "confirmCancelKeep": "Yerimi koru",
-    "cancelledToast": "Rezervasyon iptal edildi",
-    "loadError": "Bu sayfa yüklenemedi.",
-    "retry": "Tekrar dene"
+    "cancelledToast": "Rezervasyon iptal edildi"
   }
 }
