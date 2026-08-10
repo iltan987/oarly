@@ -362,7 +362,6 @@
     "todayNone": "No sessions scheduled today.",
     "todayClosed": "The club is closed today.",
     "todayCta": "Open roster",
-    "setupCompleteSummary": "Setup complete",
     "setupTitle": "Finish setting up your club",
     "setupIntro": "Complete these to open bookings later.",
     "setupSkill": "Add skill levels",
@@ -385,6 +384,16 @@
     "skillSaved": "Skill level saved.",
     "actionError": "Something went wrong. Try again.",
     "cancel": "Cancel",
+    "settings": {
+      "navLabel": "Settings",
+      "title": "Settings",
+      "intro": "Your club's setup and booking rules.",
+      "profileSummary": "{filled, plural, =0 {Nothing filled in yet} other {# of 3 details filled in}} · {socials, plural, =0 {no social links} one {# social link} other {# social links}}",
+      "skillLevelsSummary": "{count, plural, =0 {No levels yet} one {# level} other {# levels}}",
+      "boatsSummary": "{count, plural, =0 {No boats yet} one {# boat · {active, plural, =0 {none active} other {# active}}} other {# boats · {active, plural, =0 {none active} other {# active}}}}",
+      "scheduleSummary": "{windows, plural, =0 {No windows yet} one {# window across {days} days} other {# windows across {days} days}}",
+      "policiesSummary": "{mode, select, lead {Bookings open {leadDays, plural, one {# day} other {# days}} ahead} other {Bookings always open}} · {selfCancel, select, on {members can cancel} other {members cannot cancel}} · {waitlist, plural, =0 {waitlist not capped} other {waitlist capped at #}}"
+    },
     "skillLevels": {
       "navLabel": "Skill levels",
       "title": "Skill levels",

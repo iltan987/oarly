@@ -362,7 +362,6 @@
     "todayNone": "Bugün planlanmış seans yok.",
     "todayClosed": "Kulüp bugün kapalı.",
     "todayCta": "Listeyi aç",
-    "setupCompleteSummary": "Kurulum tamamlandı",
     "setupTitle": "Kulüp kurulumunu tamamlayın",
     "setupIntro": "Daha sonra rezervasyonları açmak için bunları tamamlayın.",
     "setupSkill": "Seviye ekle",
@@ -385,6 +384,16 @@
     "skillSaved": "Seviye kaydedildi",
     "actionError": "Bir şeyler ters gitti. Lütfen tekrar dene.",
     "cancel": "Vazgeç",
+    "settings": {
+      "navLabel": "Ayarlar",
+      "title": "Ayarlar",
+      "intro": "Kulübünüzün kurulumu ve rezervasyon kuralları.",
+      "profileSummary": "{filled, plural, =0 {Hiçbir alan doldurulmadı} other {3 alanın # tanesi dolu}} · {socials, plural, =0 {sosyal bağlantı yok} other {# sosyal bağlantı}}",
+      "skillLevelsSummary": "{count, plural, =0 {Henüz seviye yok} other {# seviye}}",
+      "boatsSummary": "{count, plural, =0 {Henüz tekne yok} other {# tekne · {active, plural, =0 {hiçbiri etkin değil} other {# tanesi etkin}}}}",
+      "scheduleSummary": "{windows, plural, =0 {Henüz zaman aralığı yok} other {{days} günde # aralık}}",
+      "policiesSummary": "{mode, select, lead {Rezervasyonlar {leadDays, plural, other {# gün}} önce açılır} other {Rezervasyonlar her zaman açık}} · {selfCancel, select, on {üye iptali açık} other {üye iptali kapalı}} · {waitlist, plural, =0 {yedek listesi sınırsız} other {yedek listesi en fazla #}}"
+    },
     "skillLevels": {
       "navLabel": "Seviyeler",
       "title": "Seviyeler",
