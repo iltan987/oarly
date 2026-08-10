@@ -5,7 +5,7 @@ import { nextCookies } from 'better-auth/next-js';
 import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { renderResetEmail, renderVerifyEmail } from '@/emails';
-import { env, trustedOrigins } from '@/env';
+import { deriveTrustedOrigins, env } from '@/env';
 import {
   authRateLimitAfter,
   authRateLimitBefore,
@@ -14,6 +14,14 @@ import {
 } from '@/lib/auth-rate-limit';
 import { recordSignupConsent } from '@/lib/consent';
 import { sendEmail } from '@/lib/email';
+
+/**
+ * Derived here rather than in `src/env.ts` because that module is imported by a client
+ * component (`forgot-password-form.tsx`, for `NEXT_PUBLIC_APP_URL`) and a module-scope read
+ * of a `server:` key throws in the browser during module evaluation. See the note above
+ * `deriveTrustedOrigins`. This file is server-only, so the read is safe here.
+ */
+const trustedOrigins = deriveTrustedOrigins(env.TRUSTED_ORIGINS, env.APP_URL);
 
 /** Better Auth doesn't type our `locale` additionalField on the user object. */
 function userLocale(user: object): 'tr' | 'en' {
