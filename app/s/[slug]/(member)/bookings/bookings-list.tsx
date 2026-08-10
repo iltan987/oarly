@@ -252,11 +252,11 @@ export function BookingsList({ slug, upcoming, past, timeZone, restricted }: {
           is not a `<button>` — and the documented fix, `nativeButton={false}`, is worse
           here: it stamps `role="button"` onto the anchor, so a control that NAVIGATES
           stops announcing itself as a link and drops out of a screen reader's links list.
-          The class-only form keeps the anchor an anchor and looks identical. (Five older
-          sites still use the `render={<Link/>}` form and log the same error —
-          `app/s/[slug]/manage/page.tsx:34,109,124` and `app/admin/audit/page.tsx:95,98`.
-          Dev-console only: `@base-ui/utils/error` gates on `NODE_ENV !== 'production'`.
-          Out of scope here.)
+          The class-only form keeps the anchor an anchor and looks identical.
+          (`app/s/[slug]/manage/page.tsx` and `app/admin/audit/page.tsx` used to be the
+          same five leftover call sites — now converted, so this is the only shape left
+          in the app. Dev-console only: `@base-ui/utils/error` gates on
+          `NODE_ENV !== 'production'`.)
 
           A RESTRICTED member gets the title and nothing else — no invitation, no button.
 

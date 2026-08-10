@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
-import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { db } from '@/db';
 import { memberships } from '@/db/schema';
@@ -31,9 +31,15 @@ function Checklist({ items, doneLabel, todoLabel }: { items: ChecklistItem[]; do
                 : <Circle aria-hidden className="size-4 shrink-0 text-muted-foreground" />}
               <span className={item.done ? 'text-muted-foreground line-through' : 'font-medium'}>{item.label}</span>
             </span>
-            <Button size="sm" variant={item.done ? 'ghost' : 'outline'} render={<Link href={item.href} />}>
+            {/* `buttonVariants` on the `<Link>`, not `<Button render={<Link/>}>` — the
+                latter logs a dev-console "expected a native <button>" error on every
+                render (Base UI's `Button` is `nativeButton` by default), and its
+                documented escape hatch, `nativeButton={false}`, stamps `role="button"`
+                onto the anchor and drops it out of a screen reader's links list. See
+                `bookings-list.tsx`'s `Section` prop for the full history. */}
+            <Link href={item.href} className={buttonVariants({ size: 'sm', variant: item.done ? 'ghost' : 'outline' })}>
               {item.done ? doneLabel : todoLabel}
-            </Button>
+            </Link>
           </div>
         ))}
       </CardContent>
@@ -106,9 +112,9 @@ export default async function ManageOverviewPage({ params }: { params: Promise<{
               <span className="font-medium">{t('requestsHeading')}</span>
               <span className="text-sm text-muted-foreground">{t('requestsPending', { count: pendingCount })}</span>
             </div>
-            <Button size="sm" variant={pendingCount > 0 ? 'outline' : 'ghost'} render={<Link href="/manage/members" />}>
+            <Link href="/manage/members" className={buttonVariants({ size: 'sm', variant: pendingCount > 0 ? 'outline' : 'ghost' })}>
               {t('requestsCta')}
-            </Button>
+            </Link>
           </div>
           <div className="flex items-center justify-between gap-3 p-3 last:pb-0">
             <div className="flex min-w-0 flex-col">
@@ -121,9 +127,9 @@ export default async function ManageOverviewPage({ params }: { params: Promise<{
                     : t('todaySummary', { seated, capacity, sessions: today.sessions.length, waitlisted })}
               </span>
             </div>
-            <Button size="sm" variant="ghost" render={<Link href="/manage/bookings" />}>
+            <Link href="/manage/bookings" className={buttonVariants({ size: 'sm', variant: 'ghost' })}>
               {t('todayCta')}
-            </Button>
+            </Link>
           </div>
         </CardContent>
       </Card>

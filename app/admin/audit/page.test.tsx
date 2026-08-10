@@ -75,6 +75,18 @@ describe('AdminAuditPage', () => {
     expect(url.searchParams.get('cursor')).toBe(`${NEXT.createdAt.toISOString()}~${NEXT.id}`);
   });
 
+  // `buttonVariants` on the `<Link>`, not `<Button render={<Link/>}>` — the href
+  // assertions above pass either way, since Base UI leaves the anchor alone in both
+  // shapes. This is the assertion that would fail if the styling were dropped instead
+  // (e.g. a bare `<Link>` with no classes at all), which the href checks cannot catch.
+  it('renders the Older link with button styling, not a bare anchor', async () => {
+    listAuditRows.mockReturnValue(result(NEXT));
+    await renderPage({});
+    const older = screen.getByRole('link', { name: 'auditNext' });
+    expect(older.tagName).toBe('A');
+    expect(older.className).toContain('inline-flex');
+  });
+
   it('offers no Older link on the last page, and no Newest link on the first', async () => {
     await renderPage({});
     expect(screen.queryByRole('link', { name: 'auditNext' })).toBeNull();
@@ -85,6 +97,10 @@ describe('AdminAuditPage', () => {
     await renderPage({ clubId: CLUB, cursor: `2026-08-08T09:00:00.000Z~${UUID}` });
     const first = screen.getByRole('link', { name: 'auditFirst' });
     expect(first.getAttribute('href')).toBe(`/admin/audit?clubId=${CLUB}`);
+    // Same reasoning as the Older link: the href alone would still pass if this
+    // dropped back to a bare `<Link>` with no button classes.
+    expect(first.tagName).toBe('A');
+    expect(first.className).toContain('inline-flex');
   });
 
   // "Clear" submits the form, so the browser resends every field it still holds.
