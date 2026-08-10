@@ -103,11 +103,15 @@ describe('ProfileForm', () => {
   /**
    * The bug this file exists for. React 19 resets an uncontrolled form after ANY completed
    * form action (pinned as a premise in `app/account/account-form.test.tsx`), so before the
-   * fix a refused save silently replaced a rewritten description with the stored one. The
-   * action now hands the submitted values back and bumps `attempt`, which re-keys the form
-   * so it remounts seeded with them.
+   * fix a refused save silently replaced a rewritten description with the stored one.
    *
-   * Remove either half — the echo or `attempt` in the key — and this fails.
+   * The action now hands the submitted values back, and the form re-renders with them as the
+   * inputs' new `defaultValue`s. React writes a changed `defaultValue` to the value ATTRIBUTE
+   * during the mutation phase and the reset runs at the end of that same commit, so it
+   * restores what the owner typed. Nothing remounts — see the focus test below for why that
+   * matters.
+   *
+   * Remove the echo and this fails.
    */
   it('keeps the owner\'s edits after a refusal, ready to retry', async () => {
     refuseEchoingSubmission();

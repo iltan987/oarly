@@ -9,7 +9,36 @@ import { isUuid } from '@/lib/uuid';
 
 import type { ManageActionResult } from '../action-result';
 
-export type WindowFormState = { status: 'idle' | 'ok' | 'error'; error: WindowError | null };
+/**
+ * The three fields the owner TYPES into a window form, exactly as submitted.
+ *
+ * The boat rows are absent because they are React state in `window-form.tsx` (a hidden input
+ * per row, driven by `rows`), and a form reset does not touch React state.
+ */
+export type WindowFormValues = {
+  startTime: string;
+  endTime: string;
+  defaultSessionMinutes: string;
+};
+
+/**
+ * `values` is present on every refusal for the reason `manage/action-result.ts` sets out:
+ * React 19 resets an uncontrolled form after ANY completed form action, so without the echo
+ * a refusal snapped `startTime`, `endTime` and `defaultSessionMinutes` back to the stored
+ * window while the form stayed open showing the error.
+ *
+ * This form is squarely over that file's line, and by ordinary use rather than by a crafted
+ * payload: `end_before_start`, `uneven_tiling` and `overlap` are all plain owner mistakes,
+ * and each one destroyed all three fields at once. `<input type="time">` does not stop an end
+ * before a start, and `(end - start) % defaultSessionMinutes !== 0` (`src/lib/schedule.ts:59`)
+ * means an 08:00-10:00 window in 45-minute sessions — 120 minutes, which 45 does not divide —
+ * is refused.
+ */
+export type WindowFormState = {
+  status: 'idle' | 'ok' | 'error';
+  error: WindowError | null;
+  values?: WindowFormValues;
+};
 
 function refresh(slug: string) {
   revalidatePath(`/s/${slug}/manage/schedule`);
@@ -18,6 +47,12 @@ function refresh(slug: string) {
 
 export async function saveWindowAction(slug: string, _prev: WindowFormState, formData: FormData): Promise<WindowFormState> {
   const { club, user } = await requireOwner(slug, '/manage/schedule');
+  const submitted: WindowFormValues = {
+    startTime: String(formData.get('startTime') ?? ''),
+    endTime: String(formData.get('endTime') ?? ''),
+    defaultSessionMinutes: String(formData.get('defaultSessionMinutes') ?? ''),
+  };
+  const refuse = (error: WindowError | null): WindowFormState => ({ status: 'error', error, values: submitted });
   const boatTypeIds = formData.getAll('boatTypeId').map(String);
   const quantities = formData.getAll('quantity').map((q) => Number(q));
   const parsed = windowSchema.safeParse({
@@ -27,17 +62,17 @@ export async function saveWindowAction(slug: string, _prev: WindowFormState, for
     defaultSessionMinutes: formData.get('defaultSessionMinutes'),
     boats: boatTypeIds.map((boatTypeId, i) => ({ boatTypeId, quantity: quantities[i] })),
   });
-  if (!parsed.success) return { status: 'error', error: null }; // shows the generic message
+  if (!parsed.success) return refuse(null); // null error shows the generic message
   // Absent/empty means "create" — the field is only rendered when editing, so those
   // semantics are unchanged. PRESENT means "update THIS window", and that id is bound
   // into a `uuid` column, so a malformed one is a refusal rather than a silent create
   // of a second window.
   const windowId = String(formData.get('windowId') ?? '');
-  if (windowId !== '' && !isUuid(windowId)) return { status: 'error', error: null };
+  if (windowId !== '' && !isUuid(windowId)) return refuse(null);
   const result = windowId
     ? await updateWindow(db, { clubId: club.id, windowId, actorId: user.id, ...parsed.data })
     : await createWindow(db, club.id, parsed.data, user.id);
-  if (!result.ok) return { status: 'error', error: result.error };
+  if (!result.ok) return refuse(result.error);
   refresh(slug);
   return { status: 'ok', error: null };
 }

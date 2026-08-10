@@ -80,6 +80,30 @@ describe('auth user.additionalFields validators', () => {
     expect(accepts('gender', '')).toBe(false);
   });
 
+  /**
+   * `birthday` is the door coercion does NOT close. `/update-user` types its body as
+   * `z.record(z.string(), z.any())`, and better-auth's only date handling is
+   * `new Date(value)` in a `try` — which never throws for garbage, because `new Date('banana')`
+   * returns Invalid Date. That Invalid Date reaches node-postgres (drizzle's `PgDateString`
+   * has no `mapToDriverValue`) and serialises to `0NaN-NaN-NaN…`, i.e. a Postgres 22007 and a
+   * 500 out of an auth endpoint.
+   *
+   * `2026-02-31` is in the rejected set for the reason `dateOverrideSchema` gives: it matches
+   * `/^\d{4}-\d{2}-\d{2}$/`, is not a date, and lands as 22008 rather than as a refusal.
+   */
+  it.each(['1990-04-17', '2024-02-29'])('accepts the real date %s', (birthday) => {
+    expect(accepts('birthday', birthday)).toBe(true);
+  });
+  it('accepts a Date and a null birthday', () => {
+    expect(accepts('birthday', new Date('1990-04-17'))).toBe(true);
+    expect(accepts('birthday', null)).toBe(true);
+  });
+  it.each(['banana', '2026-02-31', '2026-13-45', '17/04/1990', '1990-4-7', ''])(
+    'refuses the non-date birthday %s', (birthday) => {
+      expect(accepts('birthday', birthday)).toBe(false);
+    },
+  );
+
   // `default_payment_type` is a pg ENUM, so an unpinned string reaches Postgres as 22P02 —
   // a 500 out of an auth endpoint rather than a refusal.
   it.each(PAYMENT_TYPES)('accepts the payment type %s', (paymentType) => {

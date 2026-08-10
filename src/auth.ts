@@ -14,6 +14,7 @@ import {
   authRateLimitStorage,
 } from '@/lib/auth-rate-limit';
 import { recordSignupConsent } from '@/lib/consent';
+import { isDateISO } from '@/lib/date-iso';
 import { sendEmail } from '@/lib/email';
 import { GENDER_OPTIONS, PAYMENT_TYPES } from '@/lib/schemas';
 
@@ -117,15 +118,31 @@ export const auth = betterAuth({
      *
      * `gender` and `defaultPaymentType` are pinned to the same constant the UI renders from,
      * so a crafted `/update-user` cannot put an unknown answer in a KVKK-sensitive column or
-     * a non-enum string in front of the `payment_type` pg enum. `.nullable()` on `gender`
-     * keeps "never answered" writable; `birthday` is a `date` field Better Auth already
-     * coerces.
+     * a non-enum string in front of the `payment_type` pg enum. `.nullable()` on both keeps
+     * "never answered" writable.
+     *
+     * `birthday` is validated here too, and NOT because Better Auth coerces it — a coercion
+     * that cannot reject is not a validation, and this one cannot reject. `/update-user`'s
+     * body schema is `z.record(z.string(), z.any())` (update-user.mjs:11) with no per-field
+     * typing, so `parseInputData` copies the value through verbatim; the only date handling
+     * is `value = new Date(value)` inside a `try` in
+     * `@better-auth/core/dist/db/adapter/factory.mjs:115-117`, and `new Date('banana')`
+     * returns Invalid Date WITHOUT throwing, so that catch never fires. `date('birthday')`
+     * builds drizzle's `PgDateString`, which has no `mapToDriverValue`, so the Invalid Date
+     * reaches node-postgres and `prepareValue` serialises it — measured — as
+     * `0NaN-NaN-NaNTNaN:NaN:NaN.NaN+NaN:NaN`, which Postgres rejects as 22007. That is a 500
+     * out of an auth endpoint where the contract promises a refusal, and it is the same class
+     * `dateOverrideSchema` and `accountProfileSchema` already guard with `isDateISO`.
+     *
+     * `Date` is accepted alongside the string because a programmatic caller may pass one, and
+     * `isDateISO` rather than a shape regex because `2026-02-31` matches the shape, is not a
+     * date, and lands as 22008.
      */
     additionalFields: {
       firstName: { type: 'string', required: false, validator: { input: z.string().max(80) } },
       lastName: { type: 'string', required: false, validator: { input: z.string().max(80) } },
       phone: { type: 'string', required: false, validator: { input: z.string().max(40) } },
-      birthday: { type: 'date', required: false },
+      birthday: { type: 'date', required: false, validator: { input: z.union([z.date(), z.string().refine(isDateISO, 'YYYY-MM-DD'), z.null()]) } },
       gender: { type: 'string', required: false, validator: { input: z.enum(GENDER_OPTIONS).nullable() } },
       defaultPaymentType: { type: 'string', required: false, defaultValue: 'regular', validator: { input: z.enum(PAYMENT_TYPES) } },
       locale: { type: 'string', required: false, defaultValue: 'tr' },

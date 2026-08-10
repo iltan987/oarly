@@ -116,6 +116,11 @@ afterEach(() => {
  * So: read the component's own source, take every literal `t('...')` it renders, and require
  * each one under `account.*` in every catalogue. Self-maintaining for this file — add a key
  * to the form without adding it to the messages and this fails.
+ *
+ * Two things it is brittle about, stated so a future failure reads correctly: a COMMENT in
+ * account-form.tsx containing a literal `t('someKey')` would be scanned as if it were
+ * rendered, and the `readFileSync` runs at collection time, so renaming or moving the
+ * component fails this whole file with an ENOENT rather than a legible assertion.
  */
 describe('AccountForm message keys', () => {
   const source = readFileSync(resolve(process.cwd(), 'app/account/account-form.tsx'), 'utf8');
@@ -442,11 +447,12 @@ describe('AccountForm', () => {
 
   /**
    * …and the fix for it. A refused save hands the submitted values back
-   * (`AccountActionResult.values`) and bumps `attempt`, which re-keys the form so the
-   * uncontrolled inputs remount seeded with those values instead of the stored row.
+   * (`AccountActionResult.values`), and the form re-renders with them as the inputs' new
+   * `defaultValue`s. React writes a changed `defaultValue` to the input's value ATTRIBUTE
+   * during the mutation phase, and the reset above runs at the end of that same commit, so
+   * it restores the submitted value rather than the stored one. Nothing remounts.
    *
-   * Remove either half — the echo or the `attempt` in the key — and React's reset above
-   * wins: 'Ada' becomes 'İltan' again and this fails.
+   * Remove the echo and React's reset wins: 'Ada' becomes 'İltan' again and this fails.
    */
   it('keeps the member\'s edits after a refusal, ready to retry', async () => {
     refuseEchoingSubmission('invalid');
@@ -527,6 +533,26 @@ describe('AccountForm', () => {
     const alerts = screen.getAllByRole('alert').map((a) => a.textContent);
     expect(alerts).toContain('errorFieldInvalid');
     expect(alerts).toContain('errorInvalid');
+  });
+
+  /**
+   * The two closed sets are marked as well, and this is the case that says so. They cannot be
+   * mistyped, so a refusal naming one means a crafted payload — but leaving them unmarked
+   * would reproduce exactly the "check the fields, which one?" this change removed, since
+   * `state.fields` carries every zod path including theirs.
+   */
+  it.each(['gender', 'defaultPaymentType'])('marks the closed-set control %s when named', async (field) => {
+    refuseEchoingSubmission('invalid', [field]);
+    render(<AccountForm profile={PROFILE} />);
+
+    await submitAndSettle();
+
+    const alerts = screen.getAllByRole('alert').map((a) => a.textContent);
+    expect(alerts).toContain('errorFieldInvalid');
+    // …and the control still offers a usable answer rather than a blank, because the echo
+    // falls back to the stored value for a member of neither set.
+    expect(screen.getByRole('combobox', { name: 'gender' })).toHaveTextContent('genderUnset');
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
   });
 
   // A rate-limited refusal names no field: the member's fields are fine.

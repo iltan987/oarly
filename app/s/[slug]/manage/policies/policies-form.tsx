@@ -90,6 +90,20 @@ function PoliciesFields({ settings, labels, state, formAction }: {
   // `defaultChecked`) specifically so unchecking it can be intercepted here.
   const [confirmingDisable, setConfirmingDisable] = useState(false);
 
+  /*
+   * What a refused save hands back, taking precedence over the stored settings for the two
+   * fields that are uncontrolled here. React 19 resets an uncontrolled form after any
+   * completed form action, refusal included. The refusal this form actually produces is
+   * `invalid_input` — switch to "lead" mode, leave the days blank, and the schema's refine
+   * rejects it before `updateSchedulingSettings` runs — and its message is the GENERIC one,
+   * naming no field. The reset then also reverted `waitlistCapacity`, which the owner may
+   * have changed in the same save. Re-rendering with the submitted values as the new
+   * `defaultValue`s restores both; nothing remounts (`PoliciesFields` is keyed on
+   * `updatedAt`, which a refusal cannot move), so focus and every controlled field are
+   * untouched.
+   */
+  const rejected = state.status === 'error' ? state.values : undefined;
+
   // Base UI's <Select.Value> renders the raw item VALUE unless the root is given
   // an `items` map — without it the trigger reads "always" instead of the label,
   // even though the popup items are labelled correctly.
@@ -131,7 +145,7 @@ function PoliciesFields({ settings, labels, state, formAction }: {
         {bookingOpenMode === 'lead' && (
           <Field>
             <FieldLabel htmlFor="bookingOpenLeadDays">{labels.leadDays}</FieldLabel>
-            <Input id="bookingOpenLeadDays" name="bookingOpenLeadDays" type="number" min={1} max={365} defaultValue={settings.bookingOpenLeadDays ?? ''} />
+            <Input id="bookingOpenLeadDays" name="bookingOpenLeadDays" type="number" min={1} max={365} defaultValue={rejected?.bookingOpenLeadDays ?? settings.bookingOpenLeadDays ?? ''} />
           </Field>
         )}
         <label className="flex items-center gap-2 text-sm">
@@ -146,7 +160,7 @@ function PoliciesFields({ settings, labels, state, formAction }: {
         )}
         <Field>
           <FieldLabel htmlFor="waitlistCapacity">{labels.waitlistCapacity}</FieldLabel>
-          <Input id="waitlistCapacity" name="waitlistCapacity" type="number" min={0} max={999} defaultValue={settings.waitlistCapacity ?? ''} />
+          <Input id="waitlistCapacity" name="waitlistCapacity" type="number" min={0} max={999} defaultValue={rejected?.waitlistCapacity ?? settings.waitlistCapacity ?? ''} />
           <p className="text-xs text-muted-foreground">{labels.waitlistCapacityHint}</p>
         </Field>
         <Field>

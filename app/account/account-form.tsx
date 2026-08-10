@@ -138,6 +138,15 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
   const bad = (name: string) => badFields.includes(name);
 
   /*
+   * MARKED, not excluded — every name `fields` can carry has a control here that can show it.
+   * The two closed sets cannot be mistyped, so a refusal naming one means a hand-crafted
+   * payload; but leaving them unmarked would put the form back in the state this change
+   * removed — the summary saying "check the fields" and nothing saying which. The
+   * `rejected*` guards below then fall back to the stored answer for exactly those values,
+   * so the marked control shows a usable option rather than a blank.
+   */
+
+  /*
    * The two closed sets are echoed back only if the refused value is actually one of the
    * answers this form offers. They cannot be mistyped — they are a Select and a RadioGroup
    * — so a value outside the set means a hand-crafted POST, and seeding a `defaultValue`
@@ -219,7 +228,7 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
         (the same note profile-form.tsx carries), and `name` is what gives the Select its
         hidden form control, so this submits without any local state.
       */}
-      <Field>
+      <Field data-invalid={bad('gender')}>
         <FieldLabel htmlFor="gender">{t('gender')}</FieldLabel>
         <Select
           name="gender"
@@ -240,6 +249,7 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
           </SelectContent>
         </Select>
         <FieldDescription>{t('genderDescription')}</FieldDescription>
+        {bad('gender') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
       </Field>
 
       {/*
@@ -257,7 +267,7 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
         row stays clickable, the native input beneath keeps the focus ring and arrow-key
         navigation, and the label drives the native input even before hydration.
       */}
-      <FieldSet>
+      <FieldSet data-invalid={bad('defaultPaymentType')}>
         <FieldLegend variant="label">{t('paymentType')}</FieldLegend>
         <FieldDescription>{t('paymentTypeDescription')}</FieldDescription>
         <RadioGroup
@@ -278,6 +288,7 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
             </label>
           ))}
         </RadioGroup>
+        {bad('defaultPaymentType') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
       </FieldSet>
 
       {/*
