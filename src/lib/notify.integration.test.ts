@@ -11,7 +11,7 @@ import { sendEmail } from '@/lib/email';
 
 import { decideClubRequest } from './clubs-admin';
 import { zonedWallClockToUtc } from './date-tz';
-import { notifyBookingCancellation, notifyBookingConfirmation, notifyClubDecision, notifyOwnerRemoval, notifyWaitlistPromotion } from './notify';
+import { notifyBookingCancellation, notifyBookingConfirmation, notifyClubDecision, notifyOwnerRemoval, notifyPenaltyLift, notifyWaitlistPromotion } from './notify';
 
 vi.mock('@/lib/email', () => ({ sendEmail: vi.fn() }));
 const sendMock = vi.mocked(sendEmail);
@@ -126,5 +126,67 @@ describe.skipIf(!url)('notify', () => {
 
     const [row] = await db.select({ status: schema.clubs.status }).from(schema.clubs).where(eq(schema.clubs.id, club.id));
     expect(row.status).toBe('active');
+  });
+
+  /**
+   * The lift notice, which is keyed on a MEMBERSHIP rather than on a booking — the
+   * suspension it reverses is a fact about the membership, and the session behind it may
+   * be months gone. So this is the one notify helper `loadCtx` cannot serve, and these
+   * tests exist to check the join it uses instead.
+   */
+  describe('notifyPenaltyLift', () => {
+    async function seedMembership(locale?: string) {
+      const t = `lift-${randomUUID()}`;
+      const [club] = await db.insert(schema.clubs)
+        .values({ slug: t, name: `Club ${t}`, status: 'active', timezone: TZ }).returning();
+      const id = `${t}-u`;
+      await db.insert(schema.user).values({ id, name: 'Rower', email: `${id}@t.co`, ...(locale ? { locale } : {}) });
+      const [membership] = await db.insert(schema.memberships)
+        .values({ userId: id, clubId: club.id, status: 'approved' }).returning();
+      return { club, membership, email: `${id}@t.co` };
+    }
+
+    it('sends one email to the member, naming the club', async () => {
+      const s = await seedMembership();
+      await notifyPenaltyLift(db, { membershipId: s.membership.id });
+      expect(sendMock).toHaveBeenCalledTimes(1);
+      expect(sendMock.mock.calls[0][0]).toMatchObject({ to: s.email });
+      // The club row is the only context this mail carries, so an unnamed club would
+      // leave a member of two clubs unable to tell which one reinstated them.
+      expect(sendMock.mock.calls[0][0].html).toContain(s.club.name);
+    });
+
+    /**
+     * The member's OWN locale, read off the user row — not the club's and not a default.
+     * Asserted on the rendered subject rather than on an argument, because the locale is
+     * resolved inside `renderPenaltyLift` and a helper that read the wrong column would
+     * still pass an "it was called with a string" check.
+     */
+    it('renders in the member\'s locale', async () => {
+      const en = await seedMembership('en');
+      await notifyPenaltyLift(db, { membershipId: en.membership.id });
+      expect(sendMock.mock.calls[0][0].subject).toBe('Oarly — Your booking access has reopened');
+
+      sendMock.mockReset();
+      const tr = await seedMembership('tr');
+      await notifyPenaltyLift(db, { membershipId: tr.membership.id });
+      expect(sendMock.mock.calls[0][0].subject).toBe('Oarly — Rezervasyon erişiminiz yeniden açıldı');
+    });
+
+    it('is a no-op for a membership that no longer exists', async () => {
+      await expect(notifyPenaltyLift(db, { membershipId: randomUUID() })).resolves.toBeUndefined();
+      expect(sendMock).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Best-effort, like every other helper in this file: the lift has already COMMITTED by
+     * the time the action calls this from `after()`, so a mailer outage must cost the
+     * member their notice and never their reinstatement.
+     */
+    it('never throws when sendEmail fails', async () => {
+      const s = await seedMembership();
+      sendMock.mockRejectedValueOnce(new Error('resend down'));
+      await expect(notifyPenaltyLift(db, { membershipId: s.membership.id })).resolves.toBeUndefined();
+    });
   });
 });

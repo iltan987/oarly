@@ -243,8 +243,10 @@ describe('requestClubAction rate limiting', () => {
 
     const state = await requestClubAction({}, fd);
     // `getTranslations` is stubbed to echo the key, so this asserts the exact i18n key the
-    // form renders, not just "some error".
-    expect(state).toEqual({ errors: { form: 'errorTooManyRequests' } });
+    // form renders, not just "some error". `toMatchObject`, because the refusal also carries
+    // `values` — the submitted name and slug, echoed back so the rate-limited visitor does
+    // not find an emptied form (see `app/request-club/actions.ts`).
+    expect(state).toMatchObject({ errors: { form: 'errorTooManyRequests' } });
   });
 });
 
@@ -286,7 +288,7 @@ describe('saveAccountAction rate limiting', () => {
       expect(await saveAccountAction(null, accountFormData())).toEqual({ ok: true });
     }
     expect(await saveAccountAction(null, accountFormData()))
-      .toEqual({ ok: false, reason: 'rate_limited' });
+      .toMatchObject({ ok: false, reason: 'rate_limited' });
   });
 
   it('refuses BEFORE parsing, so an exhausted caller costs nothing', async () => {
@@ -298,7 +300,7 @@ describe('saveAccountAction rate limiting', () => {
     vi.mocked(updateUserProfile).mockClear();
 
     expect(await saveAccountAction(null, new FormData()))
-      .toEqual({ ok: false, reason: 'rate_limited' });
+      .toMatchObject({ ok: false, reason: 'rate_limited' });
     expect(updateUserProfile).not.toHaveBeenCalled();
   });
 
@@ -306,7 +308,7 @@ describe('saveAccountAction rate limiting', () => {
     currentUserId = 'account-window-user';
     for (let i = 0; i < LIMIT; i += 1) await saveAccountAction(null, accountFormData());
     expect(await saveAccountAction(null, accountFormData()))
-      .toEqual({ ok: false, reason: 'rate_limited' });
+      .toMatchObject({ ok: false, reason: 'rate_limited' });
 
     vi.setSystemTime(T0 + RATE_LIMITS.accountUpdatePerAccount.windowSec * 1000);
     expect(await saveAccountAction(null, accountFormData())).toEqual({ ok: true });
@@ -318,7 +320,7 @@ describe('saveAccountAction rate limiting', () => {
     currentUserId = 'account-a';
     for (let i = 0; i < LIMIT; i += 1) await saveAccountAction(null, accountFormData());
     expect(await saveAccountAction(null, accountFormData()))
-      .toEqual({ ok: false, reason: 'rate_limited' });
+      .toMatchObject({ ok: false, reason: 'rate_limited' });
 
     currentUserId = 'account-b';
     expect(await saveAccountAction(null, accountFormData())).toEqual({ ok: true });

@@ -56,6 +56,25 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-for-in-array": "error",
+
+      // `<Button render={<Link/>}>` logs a Base UI dev-console error on every render
+      // (`nativeButton` defaults to true and a `<Link>` isn't a `<button>`), and its
+      // documented "fix" — `nativeButton={false}` — is worse: it stamps `role="button"`
+      // onto an anchor that navigates, dropping it out of a screen reader's links list.
+      // `app/s/[slug]/(member)/bookings/bookings-list.tsx`, `app/admin/page.tsx` and
+      // `app/admin/audit/page.tsx` carry the full history; the last five leftover call
+      // sites were converted rather than warned about, because the two rendered
+      // identically enough that a test asserting only `getByRole('link')` and the href
+      // could not tell them apart — this rule is the mechanical guard a sixth site
+      // needed. Use `buttonVariants({ size, variant })` as the `<Link>`'s className
+      // instead; it needs no Base UI component at all, so there is nothing to warn.
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='render'] JSXOpeningElement[name.name='Link']",
+          message: "Don't render a <Link> through Button's `render` prop — Base UI logs a dev-console error, and `nativeButton={false}` trades it for a real accessibility regression. Use buttonVariants({ size, variant }) as the <Link>'s className instead.",
+        },
+      ],
     },
   },
 

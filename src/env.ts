@@ -41,4 +41,22 @@ export function deriveTrustedOrigins(raw: string | undefined, appUrl: string): s
   return raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [appUrl];
 }
 
-export const trustedOrigins = deriveTrustedOrigins(env.TRUSTED_ORIGINS, env.APP_URL);
+/**
+ * NOTHING IN THIS MODULE MAY READ A `server:` VARIABLE AT MODULE SCOPE.
+ *
+ * `env` is a proxy: on the client its `get` trap throws
+ * "❌ Attempted to access a server-side environment variable on the client" — and at module
+ * scope that throw happens during *module evaluation*, so it takes down every client
+ * component that imports `@/env` for a `NEXT_PUBLIC_*` value, whether or not that component
+ * touches the server key.
+ *
+ * This is not hypothetical: `export const trustedOrigins = deriveTrustedOrigins(
+ * env.TRUSTED_ORIGINS, env.APP_URL)` lived here and broke `/forgot-password` outright —
+ * `forgot-password-form.tsx` imports `@/env` for `NEXT_PUBLIC_APP_URL`, so the page rendered
+ * the auth error boundary, and its "try again" could never help because the module error is
+ * cached by the bundler. It is derived in `src/auth.ts` now, at its only consumer.
+ * `env.client.test.ts` guards this.
+ *
+ * Reading a server variable inside a server-only function body is fine — it is the
+ * *module-scope* read that is fatal.
+ */

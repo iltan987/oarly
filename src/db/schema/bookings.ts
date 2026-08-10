@@ -99,6 +99,26 @@ export const penalties = pgTable(
     // imposes no ban. resolveBan needs to tell them apart.
     permanent: boolean('permanent').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * When an owner reversed this penalty. NULL means it still counts.
+     *
+     * A lift MARKS rather than deletes, and the distinction is the whole reason this
+     * column exists rather than a `DELETE FROM penalties`. Reversing a suspension is
+     * precisely the decision an owner is later asked to account for, and a delete erases
+     * both halves of the account: what the member did, and that somebody undid it. The
+     * row keeps its `reason`, its `session_id` and its `booking_id`; the audit row
+     * (`member.penalty_lift`) names who lifted it and when.
+     *
+     * Every read that asks "is this member restricted?" must exclude these rows —
+     * `recomputeBan` (`src/lib/attendance.ts`), which is what `resolveBan` folds, and
+     * `getRestrictions` (`src/lib/restriction.ts`), which explains the restriction to
+     * the member. A read that forgets is a lift that does not lift.
+     *
+     * Deliberately NOT indexed. Every read of this table is already narrowed by
+     * `membership_id` through `penalties_membership_idx`, and one member's penalty rows
+     * are a handful — a second index would be paid for on every mark to save nothing.
+     */
+    liftedAt: timestamp('lifted_at', { withTimezone: true }),
   },
   (t) => [
     uniqueIndex('penalties_booking_uq').on(t.bookingId),

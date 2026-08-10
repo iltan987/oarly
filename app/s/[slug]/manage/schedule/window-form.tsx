@@ -23,6 +23,19 @@ export function WindowForm({ slug, weekday, window, boats, labels, onClose }: {
   slug: string; weekday: number; window?: WindowData; boats: Boat[]; labels: Labels; onClose: () => void;
 }) {
   const [state, formAction] = useActionState(saveWindowAction.bind(null, slug), initial);
+  /*
+   * What a refused save hands back (`WindowFormState.values`), taking precedence over the
+   * stored window for the three TYPED fields.
+   *
+   * React 19 resets an uncontrolled form after any completed form action, refusal included
+   * (react-dom 19.2.8, `startHostTransition` -> `requestFormReset`), and this form stays open
+   * on a refusal to show the error — so without the echo the owner read "sessions do not tile
+   * evenly", looked back at the fields, and found all three already reverted to the stored
+   * window. Re-rendering with the submitted values as the new `defaultValue`s is enough:
+   * React writes them to the value attributes before the reset runs in the same commit. No
+   * remount, so focus and the boat rows stay put.
+   */
+  const rejected = state.status === 'error' ? state.values : undefined;
   const [rows, setRows] = useState<BoatRow[]>(
     window?.boats.map((b) => ({ boatTypeId: b.boatTypeId, quantity: b.quantity })) ?? [{ boatTypeId: boats[0].id, quantity: 1 }],
   );
@@ -36,15 +49,15 @@ export function WindowForm({ slug, weekday, window, boats, labels, onClose }: {
       <div className="grid grid-cols-3 gap-3">
         <Field>
           <FieldLabel htmlFor="startTime">{labels.startTime}</FieldLabel>
-          <Input id="startTime" name="startTime" type="time" defaultValue={window?.startTime.slice(0, 5) ?? '08:00'} required />
+          <Input id="startTime" name="startTime" type="time" defaultValue={rejected?.startTime ?? window?.startTime.slice(0, 5) ?? '08:00'} required />
         </Field>
         <Field>
           <FieldLabel htmlFor="endTime">{labels.endTime}</FieldLabel>
-          <Input id="endTime" name="endTime" type="time" defaultValue={window?.endTime.slice(0, 5) ?? '11:00'} required />
+          <Input id="endTime" name="endTime" type="time" defaultValue={rejected?.endTime ?? window?.endTime.slice(0, 5) ?? '11:00'} required />
         </Field>
         <Field>
           <FieldLabel htmlFor="defaultSessionMinutes">{labels.sessionMinutes}</FieldLabel>
-          <Input id="defaultSessionMinutes" name="defaultSessionMinutes" type="number" min={5} step={5} defaultValue={window?.defaultSessionMinutes ?? 60} required />
+          <Input id="defaultSessionMinutes" name="defaultSessionMinutes" type="number" min={5} step={5} defaultValue={rejected?.defaultSessionMinutes ?? window?.defaultSessionMinutes ?? 60} required />
         </Field>
       </div>
       <div className="flex flex-col gap-2">

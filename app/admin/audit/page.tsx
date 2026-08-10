@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { db } from '@/db';
 import { type AuditCursor, listAuditRows } from '@/lib/audit';
 import { one } from '@/lib/search-params';
@@ -91,13 +91,17 @@ export default async function AdminAuditPage({ searchParams }: {
       <div className="mt-4 flex justify-between">
         {/* Rendered only when we are actually past the head: a "Newest" control on
             the newest page is a link to the page you are already on. */}
+        {/* `buttonVariants` on the `<Link>`, not `<Button render={<Link/>}>` — see
+            `bookings-list.tsx`'s `Section` prop for why: the latter logs a dev-console
+            error on every render, and its documented fix strips the anchor's link
+            semantics instead of fixing the warning. */}
         {cursor ? (
-          <Button size="sm" variant="ghost" render={<Link href={firstHref} />}>{t('auditFirst')}</Button>
+          <Link href={firstHref} className={buttonVariants({ size: 'sm', variant: 'ghost' })}>{t('auditFirst')}</Link>
         ) : <span />}
         {nextCursor && (
-          <Button size="sm" variant="ghost" render={<Link href={`/admin/audit?${nextQuery}`} />}>
+          <Link href={`/admin/audit?${nextQuery}`} className={buttonVariants({ size: 'sm', variant: 'ghost' })}>
             {t('auditNext')}
-          </Button>
+          </Link>
         )}
       </div>
     </>

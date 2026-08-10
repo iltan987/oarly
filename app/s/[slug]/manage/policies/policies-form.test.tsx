@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Every user-visible string arrives via the `labels` prop except the
@@ -54,6 +54,9 @@ function submit() {
   if (!form) throw new Error('form not found');
   fireEvent.submit(form);
 }
+
+/** A refusal echo carrying the stored values, for the cases that are not about the echo. */
+const NO_EDITS = { bookingOpenLeadDays: '', waitlistCapacity: '' };
 
 describe('PoliciesForm', () => {
   beforeEach(() => {
@@ -121,7 +124,7 @@ describe('PoliciesForm', () => {
   });
 
   it('shows the field-level error for a Zod failure and the lead-day error for the domain failure', async () => {
-    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'error', cause: 'invalid_input' });
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'error', cause: 'invalid_input', values: NO_EDITS });
 
     const { unmount } = render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
     submit();
@@ -133,7 +136,7 @@ describe('PoliciesForm', () => {
     // The other cause must produce the OTHER message. Without this case the test
     // passes with both branches hardcoded to errorInvalidInput — which is the
     // "one message for both causes" defect spec 5.1 exists to correct.
-    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'error', cause: 'invalid_lead' });
+    vi.mocked(savePoliciesAction).mockResolvedValueOnce({ status: 'error', cause: 'invalid_lead', values: NO_EDITS });
 
     render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
     submit();
@@ -333,5 +336,47 @@ describe('PoliciesForm nested settings', () => {
 
     const parsed = parseSubmitted(formData);
     expect(parsed.success).toBe(true);
+  });
+});
+
+describe('PoliciesForm refusal', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  /**
+   * The cross-field loss this echo exists for, and the reason a field COUNT was the wrong
+   * test for whether a form needs one.
+   *
+   * `invalid_input` — switch to "lead" mode, leave the days blank, and the schema's refine
+   * rejects it before `updateSchedulingSettings` is reached — is the refusal this form
+   * actually produces, and its message is the GENERIC one, naming no field. React 19's
+   * post-action reset then also reverted `waitlistCapacity`, which the owner may have changed
+   * in the same save. One field, silently, with the error naming nothing.
+   *
+   * `act` rather than `waitFor(value)`: the field already holds the typed number the moment
+   * it is typed, so waiting on the value passes before the action is even called.
+   */
+  async function submitAndSettle() {
+    await act(async () => {
+      const form = document.querySelector('form');
+      if (!form) throw new Error('form not found');
+      fireEvent.submit(form);
+    });
+  }
+
+  it('keeps a waitlist edit that the refusal never mentioned', async () => {
+    vi.mocked(savePoliciesAction).mockImplementation(async (_slug, _prev, formData) => ({
+      status: 'error' as const,
+      cause: 'invalid_input' as const,
+      values: {
+        bookingOpenLeadDays: String(formData.get('bookingOpenLeadDays') ?? ''),
+        waitlistCapacity: String(formData.get('waitlistCapacity') ?? ''),
+      },
+    }));
+    render(<PoliciesForm slug="test-club" updatedAt={1} settings={settings} labels={labels} />);
+
+    fireEvent.change(screen.getByLabelText(labels.waitlistCapacity), { target: { value: '7' } });
+    await submitAndSettle();
+
+    expect(screen.getByLabelText(labels.waitlistCapacity)).toHaveValue(7);
   });
 });

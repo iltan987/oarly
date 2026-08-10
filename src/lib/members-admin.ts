@@ -1,7 +1,8 @@
-import { and, asc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, ilike, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { DbOrTx } from '@/db';
-import { memberships, skillLevels, user } from '@/db/schema';
+import { memberships, penalties, skillLevels, user } from '@/db/schema';
+import { recomputeBan } from '@/lib/attendance';
 import { logAudit } from '@/lib/audit';
 import type { DB } from '@/lib/membership';
 import { clampPage } from '@/lib/pagination';
@@ -282,5 +283,129 @@ export async function assignSkillLevel(
       actingAsRole: 'owner',
     });
     return true;
+  });
+}
+
+/**
+ * Reverse the penalties a member is currently serving, and restore their standing.
+ *
+ * This is the only thing in the product that undoes a PERMANENT suspension. Nothing else
+ * can: `setMembershipStatus('approved')` writes the status and leaves the permanent
+ * penalty row exactly where it was, so the next `recomputeBan` — the next absence anyone
+ * marks, or the next undo — folds it back in and re-bans the member. The escape hatch has
+ * to remove the rows from the fold, and that is what this does.
+ *
+ * ## Which rows are "in force"
+ *
+ * `lifted_at IS NULL AND (permanent OR banned_until > now)`. Two halves, each excluding
+ * something for its own reason:
+ *
+ *  - **Already lifted** rows are skipped so a second click cannot re-stamp them. The
+ *    stamp is a record of who reversed what and when; overwriting it with a later
+ *    owner's no-op relabels a decision that person did not take.
+ *  - **Lapsed** rows — a timed penalty from March, on a membership permanently suspended
+ *    in July — are skipped because they are not part of what is being reversed. Stamping
+ *    them would enter, in the audit trail this whole design exists to keep, the claim
+ *    that an owner reversed a penalty which had already expired on its own four months
+ *    earlier. Leaving them costs nothing: `resolveBan` still folds them and they fold to
+ *    a date in the past, which `restrictionState` reads as no restriction at all. So the
+ *    member's `banned_until` after this call may be a PAST date rather than null, and
+ *    that is correct.
+ *
+ * Rows with no ban at all (`off` policy: no end date, not permanent) are excluded by the
+ * same predicate, which is right — they record an absence and restrict nothing, so there
+ * is nothing about them to reverse.
+ *
+ * Everything in force goes, not just the permanent row. A member with a permanent
+ * penalty AND a live timed one would otherwise come out of a "lift the suspension" still
+ * paused until December, and — since the owner's control only appears on suspended rows —
+ * with nothing left on screen to finish the job.
+ *
+ * ## What it does NOT undo: the seats the ban already took
+ *
+ * When a ban bites, `markNoShow` cancels every future booking the member holds at this
+ * club inside the ban's reach, with `cancelled_reason = 'penalty'`
+ * (`src/lib/attendance.ts:170-200`). Neither this function nor `undoNoShow` restores them,
+ * and neither should pretend to: each freed seat is immediately offered to the waitlist in
+ * the same transaction, so by the time an owner lifts the suspension those seats may
+ * belong to other members who have already been told they are in. Un-cancelling would
+ * either overrun the boat or take a seat back off somebody.
+ *
+ * So a lift restores STANDING — the member may book again — not their old bookings. If the
+ * sessions have not yet run, they have to re-book, and the seat may be gone. That is
+ * pre-existing behaviour shared with `undoNoShow`, and it is recorded here because this
+ * enumeration is what the next reader will trust.
+ *
+ * ## Concurrency
+ *
+ * `FOR UPDATE` on the membership row first, exactly as `markNoShow` and `undoNoShow` now
+ * take it, and for the reason set out at length on `recomputeBan`: this is a
+ * read-modify-write over the same ban those two rewrite, and without the lock an owner
+ * lifting while another marks an absence commits a membership reading 'approved' with a
+ * fresh un-lifted permanent penalty under it.
+ *
+ * The UPDATE is expressed as a predicate rather than as `WHERE id IN (…ids read a moment
+ * ago…)`. Under READ COMMITTED that second form re-evaluates identity alone against the
+ * committed row and will happily stamp a row whose state changed in between — the defect
+ * `markNoShow`'s cascade documents having shipped once already, where a `WHERE` on the
+ * primary key relabelled a member's own cancellation as a penalty. Here the same shape
+ * would stamp `lifted_at` on a row another transaction had just lifted, or on one that
+ * lapsed between the read and the write.
+ *
+ * `ok: true` for a no-op, `ok: false` only for "no such membership in this club" — the
+ * same meanings `setMembershipStatus` documents, and for the same reason: a stale page
+ * whose member is no longer suspended is not an error the owner can act on. A no-op
+ * writes no audit row, because an audit row means the thing happened.
+ *
+ * `lifted` is that no-op, made READABLE. It is not decoration and not a count for a
+ * toast: `liftSuspensionAction` emails the member that their restriction is over, and the
+ * only honest source for "was there a restriction" is the transaction that decided it.
+ * Anything else — a second read after the commit, or the roster row the owner clicked
+ * from — can answer for a different moment, and the failure it buys is mail telling a
+ * member their suspension has been lifted when the click was a stale-page double-submit
+ * and nothing happened. `lifted: 0` with `ok: true` is exactly that case.
+ */
+export type LiftResult = { ok: false } | { ok: true; lifted: number };
+
+export async function liftPenalties(
+  db: DB,
+  input: { membershipId: string; clubId: string; actorId: string; now?: Date },
+): Promise<LiftResult> {
+  const now = input.now ?? new Date();
+  return db.transaction(async (tx) => {
+    const [membership] = await tx
+      .select({ id: memberships.id, status: memberships.status })
+      .from(memberships)
+      .where(and(eq(memberships.id, input.membershipId), eq(memberships.clubId, input.clubId)))
+      .limit(1)
+      .for('update');
+    // No such membership, or it belongs to another club. No audit row: noise here makes
+    // the log less trustworthy, not more.
+    if (!membership) return { ok: false };
+
+    const lifted = await tx.update(penalties)
+      .set({ liftedAt: now })
+      .where(and(
+        eq(penalties.membershipId, membership.id),
+        isNull(penalties.liftedAt),
+        or(eq(penalties.permanent, true), gt(penalties.bannedUntil, now)),
+      ))
+      .returning({ id: penalties.id });
+    // Nothing was in force. The state the caller asked for is the state that holds, so
+    // there is nothing to recompute, nothing happened to record — and nothing to tell the
+    // member about.
+    if (lifted.length === 0) return { ok: true, lifted: 0 };
+
+    // Restores `status` and clears `bannedUntil` on its own, from the rows that are left.
+    await recomputeBan(tx, membership.id, membership.status);
+
+    await logAudit(tx, {
+      actorUserId: input.actorId,
+      clubId: input.clubId,
+      action: 'member.penalty_lift',
+      target: input.membershipId,
+      actingAsRole: 'owner',
+    });
+    return { ok: true, lifted: lifted.length };
   });
 }

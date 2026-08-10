@@ -28,6 +28,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { asLocale, type Locale, locales } from '@/i18n/config';
 import { setLocale } from '@/i18n/set-locale';
 import { initials } from '@/lib/initials';
+import { type ThemeChoice, THEMES } from '@/lib/theme';
 
 /**
  * Autonyms — each language named in itself — because a user who cannot read the current
@@ -46,9 +47,6 @@ const LANGUAGE_NAMES: Record<Locale, string> = {
   tr: 'Türkçe',
   en: 'English',
 };
-
-const THEMES = ['light', 'dark', 'system'] as const;
-type ThemeChoice = (typeof THEMES)[number];
 
 const THEME_LABEL_KEYS: Record<ThemeChoice, 'themeLight' | 'themeDark' | 'themeSystem'> = {
   light: 'themeLight',

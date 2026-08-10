@@ -1,8 +1,8 @@
 import { and, eq, type SQL } from 'drizzle-orm';
 
 import type { DB } from '@/db';
-import { boatTypes, bookings, clubs, notifications, sessions, slots, user } from '@/db/schema';
-import { renderBookingCancellation, renderBookingConfirmation, renderClubDecision, renderNoShowPenalty, renderOwnerRemoval, renderWaitlistPromotion } from '@/emails';
+import { boatTypes, bookings, clubs, memberships, notifications, sessions, slots, user } from '@/db/schema';
+import { renderBookingCancellation, renderBookingConfirmation, renderClubDecision, renderNoShowPenalty, renderOwnerRemoval, renderPenaltyLift, renderWaitlistPromotion } from '@/emails';
 import { env } from '@/env';
 import { sendEmail } from '@/lib/email';
 import { clubUrl, parseAppOrigin } from '@/lib/urls';
@@ -92,6 +92,43 @@ export async function notifyNoShowPenalty(
     await sendEmail({ to: ctx.toEmail, subject: email.subject, html: email.html, text: email.text });
   } catch (err) {
     console.error('notifyNoShowPenalty failed', err);
+  }
+}
+
+/**
+ * Best-effort: tells the member their restriction is over. Never throws.
+ *
+ * The counterpart of `notifyNoShowPenalty`, and the reason it exists: imposing a
+ * suspension mails the member, so reversing one has to as well. Without this, a member is
+ * told in writing that their booking access is closed and will not reopen by itself, and
+ * then it silently reopens weeks later with nothing sent — their `/book` page and the
+ * `/book` tab simply come back and they find out by chance.
+ *
+ * Keyed on the MEMBERSHIP, not on a booking: a suspension is a fact about the membership,
+ * and by the time it is lifted the session behind it may be months in the past. So this
+ * does not reuse `loadCtx` — there is no booking to join through — and shares
+ * `notifyClubDecision`'s shape instead: one join, the member's own `locale`, an early
+ * return if the row is gone.
+ *
+ * CALL IT AFTER THE TRANSACTION HAS COMMITTED, from `after()`, exactly as
+ * `markNoShowAction` calls `notifyNoShowPenalty`: a mail outage must not be able to roll
+ * back a reinstatement (spec §5.4), and the failure it must not have is a member told
+ * they can book again while the lift is rolled back under them.
+ */
+export async function notifyPenaltyLift(db: DB, { membershipId }: { membershipId: string }): Promise<void> {
+  try {
+    const [row] = await db
+      .select({ toEmail: user.email, locale: user.locale, clubName: clubs.name })
+      .from(memberships)
+      .innerJoin(user, eq(user.id, memberships.userId))
+      .innerJoin(clubs, eq(clubs.id, memberships.clubId))
+      .where(eq(memberships.id, membershipId))
+      .limit(1);
+    if (!row) return;
+    const email = await renderPenaltyLift(row.locale, { clubName: row.clubName });
+    await sendEmail({ to: row.toEmail, subject: email.subject, html: email.html, text: email.text });
+  } catch (err) {
+    console.error('notifyPenaltyLift failed', err);
   }
 }
 

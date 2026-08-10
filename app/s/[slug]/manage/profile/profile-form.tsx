@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import type { ManageActionResult } from '../action-result';
-import { addSocialAction, removeSocialAction, saveProfileAction } from './actions';
+import { addSocialAction, type ProfileSaveResult, removeSocialAction, saveProfileAction } from './actions';
 import { LogoUpload } from './logo-upload';
 
 type Social = { id: string; platform: string; handle: string };
@@ -19,13 +19,10 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
   const t = useTranslations('manage.profile');
   const tm = useTranslations('manage');
   const [headingFont, setHeadingFont] = useState(club.headingFont);
-  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(saveProfileAction.bind(null, slug), null);
+  const [state, formAction] = useActionState<ProfileSaveResult | null, FormData>(saveProfileAction.bind(null, slug), null);
 
-  // The toast lives here in the stable ProfileForm (the <form> below remounts on
-  // save via its `key`, but this hook does not), so the success/failure toast
-  // always fires. A failed save returns { ok: false } WITHOUT revalidating, so
-  // `club.updatedAt` is unchanged, the form does not remount, and the user's
-  // edits are preserved to retry.
+  // The toast lives here in the stable ProfileForm (the <form> below remounts on a
+  // successful save via its `key`, but this hook does not), so the toast always fires.
   useEffect(() => {
     if (state === null) return;
     if (state.ok) toast.success(t('saved'));
@@ -45,13 +42,39 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
     else toast.error(tm('actionError'));
   }, [rmState, t, tm]);
 
-  // The Base UI inputs below are uncontrolled — they seed their state from
-  // `defaultValue` at mount. After a successful save, the server action refreshes
-  // this route and re-feeds the just-saved values as new `defaultValue`s on the
-  // live inputs, which Base UI warns about. Keying the form on the club's
-  // `updatedAt` remounts it with fresh defaults after each save (and only
-  // then — the timestamp changes when the row is persisted, never while
-  // typing), which is the intended "reset to saved state" behaviour.
+  /*
+   * The Base UI inputs below are uncontrolled — they seed their state from `defaultValue`
+   * at mount, and `defaultValue` is where a refused save's edits come back from.
+   *
+   * React 19 resets an uncontrolled form after ANY completed form action, success or
+   * failure: `<form action>` schedules the reset before the action even runs (react-dom
+   * 19.2.8, `startHostTransition` -> `requestFormReset`) and it lands as a native `.reset()`
+   * on the form node. Measured in Chrome — the same `<form>` node survived, a `reset` event
+   * fired on it, and a 2001-character description became the stored two-character one.
+   *
+   * What fixes it is `state.values` alone: on a refusal this component re-renders with the
+   * submitted values as the new `defaultValue`s, React writes those to the inputs' value
+   * ATTRIBUTES during the mutation phase, and the reset that follows in the same commit
+   * restores the NEW default. Measured: the 2001 characters survive. No remount is involved
+   * and none is wanted — remounting would destroy the focused node, and an owner who tabbed
+   * into the description and was refused would be thrown to `<body>` on every retry.
+   *
+   * The COST of not remounting is a Base UI dev warning, and it is accepted deliberately:
+   * feeding a live uncontrolled input a new `defaultValue` logs "A component is changing the
+   * default value state of an uncontrolled FieldControl after being initialized". That
+   * warning does not exist in a production build — `@base-ui/utils/useControlled.js:25` wraps
+   * the whole check in `process.env.NODE_ENV !== 'production'` and
+   * `@base-ui/utils/error.js:9-19` no-ops there — so it costs a dev console line, while
+   * remounting would cost every keyboard and screen-reader user their place in the form.
+   *
+   * `key={club.updatedAt.getTime()}` stays, and only for the SUCCESS path it was written
+   * for: a persisted save revalidates this route and re-feeds the just-saved values, and the
+   * timestamp moves only when the row is persisted, never while typing. Measured on a
+   * successful save: the form node was REPLACED and the field showed the typed text because
+   * the revalidation had re-fed it — the same screen as a preserved form, a different cause,
+   * and not the bug this file is about.
+   */
+  const rejected = state !== null && !state.ok ? state.values : null;
   return (
     <div className="flex flex-col gap-6">
       <form key={club.updatedAt.getTime()} action={formAction} className="flex flex-col gap-4">
@@ -59,25 +82,25 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
         <LogoUpload slug={slug} initialUrl={club.logoUrl} labels={{ logo: t('logo'), logoUpload: t('logoUpload'), logoUploading: t('logoUploading'), logoError: t('logoError'), logoRemove: t('logoRemove') }} />
         <Field>
           <FieldLabel htmlFor="name">{t('name')}</FieldLabel>
-          <Input id="name" name="name" defaultValue={club.name} required minLength={2} maxLength={80} />
+          <Input id="name" name="name" defaultValue={rejected?.name ?? club.name} required minLength={2} maxLength={80} />
         </Field>
         <Field>
           <FieldLabel htmlFor="tagline">{t('tagline')}</FieldLabel>
-          <Input id="tagline" name="tagline" defaultValue={club.tagline ?? ''} maxLength={120} />
+          <Input id="tagline" name="tagline" defaultValue={rejected?.tagline ?? club.tagline ?? ''} maxLength={120} />
         </Field>
         <Field>
           <FieldLabel htmlFor="description">{t('description')}</FieldLabel>
-          <textarea id="description" name="description" defaultValue={club.description ?? ''} maxLength={2000} rows={4}
+          <textarea id="description" name="description" defaultValue={rejected?.description ?? club.description ?? ''} maxLength={2000} rows={4}
             className="min-h-20 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs" />
         </Field>
         <Field>
           <FieldLabel htmlFor="phone">{t('phone')}</FieldLabel>
-          <Input id="phone" name="phone" type="tel" defaultValue={club.phone ?? ''} maxLength={40} />
+          <Input id="phone" name="phone" type="tel" defaultValue={rejected?.phone ?? club.phone ?? ''} maxLength={40} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field>
             <FieldLabel htmlFor="brandAccent">{t('brandAccent')}</FieldLabel>
-            <Input id="brandAccent" name="brandAccent" type="color" defaultValue={club.brandAccent ?? '#0E9E93'} className="h-9 w-full" />
+            <Input id="brandAccent" name="brandAccent" type="color" defaultValue={rejected?.brandAccent || club.brandAccent || '#0E9E93'} className="h-9 w-full" />
           </Field>
           <Field>
             <FieldLabel htmlFor="headingFont">{t('headingFont')}</FieldLabel>

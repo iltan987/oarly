@@ -53,6 +53,16 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit
 
+      # `drizzle-kit generate` reads only the schema files and the drizzle/meta journal —
+      # it never opens `dbCredentials.url`, so the dummy DATABASE_URL above is enough and
+      # no service container is needed here. Every integration test reaches the database
+      # through `migrate()` applying drizzle/*.sql, never through src/db/schema/*, so a
+      # schema change that never got `db:generate`'d (e.g. a `.default()` added to a
+      # column but not regenerated into SQL) is invisible to all 1500+ of them. This
+      # regenerates and fails the build if the output differs from what's committed.
+      - name: Schema drift
+        run: pnpm db:generate && git diff --exit-code drizzle/
+
       - name: Unit tests
         run: pnpm test
 

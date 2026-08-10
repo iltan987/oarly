@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { bookings, clubs, memberships, penalties, sessions, slots } from '@/db/schema';
@@ -22,12 +22,40 @@ export type MarkNoShowResult =
     }
   | { ok: false; error: 'not_found' | 'not_started' | 'not_booked' | 'already_marked' };
 
-/** Recompute the membership's ban from its remaining penalty rows and persist it. */
-async function recomputeBan(tx: Tx, membershipId: string, currentStatus: string): Promise<{ bannedUntil: Date | null; permanent: boolean }> {
+/**
+ * Recompute the membership's ban from its remaining penalty rows and persist it.
+ *
+ * ## Its caller must already hold a row lock on the membership
+ *
+ * This is a read-modify-write over a resource — the membership's ban — that no single
+ * statement owns: it SELECTs the penalty rows, folds them, and writes the result. Two
+ * transactions that both reach the SELECT before either writes will each fold a set the
+ * other has already changed, and the second to commit wins with an answer computed from
+ * a state that no longer exists.
+ *
+ * That is not theoretical. `markNoShow` writing a penalty while `liftPenalties`
+ * (`src/lib/members-admin.ts`) stamps `lifted_at` produced exactly it: the membership
+ * committed as 'approved' with a fresh, un-lifted permanent penalty row underneath it,
+ * waiting for the next recompute to re-ban a member an owner had just reinstated.
+ *
+ * So every caller takes `SELECT … FOR UPDATE` on the membership row FIRST, before any
+ * other lock, and holds it for the rest of the transaction. Three of them exist —
+ * `markNoShowTx`, `undoNoShowTx` and `liftPenalties` — and they all order it the same
+ * way: membership row, THEN the per-slot advisory locks. Taking it first is what keeps
+ * that order acyclic; taking it after a slot lock in any one of them would introduce
+ * the deadlock the ascending-slot-order rule below exists to avoid.
+ *
+ * ## Lifted rows are excluded
+ *
+ * `lifted_at IS NULL` is what makes a lift a lift. `resolveBan` is a max over whatever it
+ * is handed, so a lifted row left in this SELECT would keep folding into the ban and the
+ * reversal would be invisible in the only place that decides anything.
+ */
+export async function recomputeBan(tx: Tx, membershipId: string, currentStatus: string): Promise<{ bannedUntil: Date | null; permanent: boolean }> {
   const rows = await tx
     .select({ bannedUntil: penalties.bannedUntil, permanent: penalties.permanent })
     .from(penalties)
-    .where(eq(penalties.membershipId, membershipId));
+    .where(and(eq(penalties.membershipId, membershipId), isNull(penalties.liftedAt)));
   const ban = resolveBan(rows);
 
   // Only ever move status between 'approved' and 'banned', and only when the
@@ -97,10 +125,16 @@ async function markNoShowTx(db: DB, input: { clubId: string; bookingId: string; 
     if (row.status !== 'booked') return { ok: false, error: 'not_booked' };
     if (now.getTime() < row.slotStartAt.getTime()) return { ok: false, error: 'not_started' };
 
+    // `FOR UPDATE`, and BEFORE the slot lock below: everything from here to the
+    // `recomputeBan` call is a read-modify-write over this membership's ban, and an
+    // owner lifting a suspension (`liftPenalties`) does the same thing to the same rows.
+    // See `recomputeBan`'s doc comment for what the two produce without it and why the
+    // membership row is taken ahead of every advisory lock rather than after.
     const [membership] = await tx
       .select({ id: memberships.id, status: memberships.status })
       .from(memberships)
-      .where(and(eq(memberships.userId, row.userId), eq(memberships.clubId, input.clubId)));
+      .where(and(eq(memberships.userId, row.userId), eq(memberships.clubId, input.clubId)))
+      .for('update');
     if (!membership) return { ok: false, error: 'not_found' };
 
     // Same per-slot lock every other seat mutation in this repo takes, so a
@@ -240,10 +274,14 @@ async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string; 
     if (!row || row.clubId !== input.clubId || !row.userId) return { ok: false, error: 'not_found' };
     if (row.status !== 'no_show') return { ok: false, error: 'not_marked' };
 
+    // `FOR UPDATE`, before the slot lock, for `recomputeBan`'s reason — this deletes a
+    // penalty row and refolds the ban, which is the same read-modify-write `markNoShow`
+    // and `liftPenalties` perform on the same rows.
     const [membership] = await tx
       .select({ id: memberships.id, status: memberships.status })
       .from(memberships)
-      .where(and(eq(memberships.userId, row.userId), eq(memberships.clubId, input.clubId)));
+      .where(and(eq(memberships.userId, row.userId), eq(memberships.clubId, input.clubId)))
+      .for('update');
     if (!membership) return { ok: false, error: 'not_found' };
 
     // Same per-slot advisory lock every other seat mutation on this session
@@ -258,9 +296,12 @@ async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string; 
 
     // Re-validate before restoring: between the mark and this undo, an owner may
     // have seated someone else into the freed seat (ownerAddBooking waives the
-    // booking-open gate and, like here, counts only active statuses) or the
+    // booking-open gate, and bounds capacity on 'booked' rows only — the same
+    // count as THIS function's capacity check below, not the ACTIVE set its
+    // duplicate-row check uses; see the two-counts note) or the
     // waitlist may have been promoted into it (a second absence + removal can
-    // empty a session and applySeating fills it). Either way the seat this
+    // empty a session and applySeating fills it — the removal path, not the
+    // owner add, which promotes nobody). Either way the seat this
     // booking used to hold may no longer be free, or the member may already
     // hold a fresh active row here (the owner re-seating "the same person,
     // wrong row"). resolveSeating's sticky rule never demotes a booked row to

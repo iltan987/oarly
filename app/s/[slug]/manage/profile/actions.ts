@@ -15,18 +15,71 @@ function refresh(slug: string) {
   revalidatePath(`/s/${slug}`); // public club page + metadata
 }
 
-export async function saveProfileAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
+/**
+ * The five fields the owner TYPES into, exactly as they were submitted — untrimmed, so a
+ * refused save hands back the characters the owner actually has in front of them rather
+ * than a normalised version of them.
+ *
+ * `headingFont` and `logoUrl` are deliberately absent: both are hidden inputs whose value
+ * comes from React state (`ProfileForm`'s `headingFont`, `LogoUpload`'s `url`), and a form
+ * reset does not touch React state — React re-syncs a controlled input's value on the next
+ * render. Echoing them would only give them a second, staler source of truth.
+ */
+export type ProfileFormValues = {
+  name: string;
+  tagline: string;
+  description: string;
+  phone: string;
+  brandAccent: string;
+};
+
+/**
+ * Wider than `ManageActionResult` on the refusal side, and that is the whole point.
+ *
+ * React 19 resets an uncontrolled form after ANY completed form action — `<form action>`
+ * schedules the reset before the action even runs (`startHostTransition` ->
+ * `requestFormReset`, react-dom 19.2.8), so a refusal wiped the owner's edits back to the
+ * stored text. Measured in Chrome: same `<form>` DOM node, a native `reset` event, and a
+ * 2001-character description replaced by the stored one.
+ *
+ * Returning the refused values is what lets `profile-form.tsx` hand them back to the inputs
+ * as their new `defaultValue`: React writes that to the value attribute before the reset
+ * runs in the same commit, so the reset restores what the owner typed instead of what is
+ * stored. No remount is needed and none is used — see that file's comment for why
+ * remounting would be worse.
+ *
+ * Returned FROM THE SERVER rather than snapshotted in the client so it also works on the
+ * pre-hydration path, where the refusal arrives as a full-page POST and the form is
+ * rendered on the server from this result.
+ *
+ * Size: the echo is bounded by Next's server-action `bodySizeLimit` (1 MB by default),
+ * which already capped the request this echoes.
+ */
+export type ProfileSaveResult =
+  | { ok: true }
+  | { ok: false; values: ProfileFormValues };
+
+export async function saveProfileAction(slug: string, _prev: ProfileSaveResult | null, formData: FormData): Promise<ProfileSaveResult> {
   const { club, user } = await requireOwner(slug, '/manage/profile');
+  const submitted: ProfileFormValues = {
+    name: String(formData.get('name') ?? ''),
+    tagline: String(formData.get('tagline') ?? ''),
+    description: String(formData.get('description') ?? ''),
+    phone: String(formData.get('phone') ?? ''),
+    brandAccent: String(formData.get('brandAccent') ?? ''),
+  };
+  const refuse = (): ProfileSaveResult => ({ ok: false, values: submitted });
+
   const parsed = clubProfileSchema.safeParse({
-    name: String(formData.get('name') ?? '').trim(),
-    tagline: String(formData.get('tagline') ?? '').trim() || undefined,
-    description: String(formData.get('description') ?? '').trim() || undefined,
-    phone: String(formData.get('phone') ?? '').trim() || undefined,
-    brandAccent: String(formData.get('brandAccent') ?? '').trim() || undefined,
+    name: submitted.name.trim(),
+    tagline: submitted.tagline.trim() || undefined,
+    description: submitted.description.trim() || undefined,
+    phone: submitted.phone.trim() || undefined,
+    brandAccent: submitted.brandAccent.trim() || undefined,
     headingFont: formData.get('headingFont') ?? 'default',
     logoUrl: String(formData.get('logoUrl') ?? '').trim() || undefined,
   });
-  if (!parsed.success) return { ok: false };
+  if (!parsed.success) return refuse();
   const d = parsed.data;
   const ok = await updateClubProfile(db, club.id, {
     name: d.name,
@@ -37,7 +90,7 @@ export async function saveProfileAction(slug: string, _prev: ManageActionResult 
     headingFont: d.headingFont,
     logoUrl: d.logoUrl ? d.logoUrl : null,
   }, user.id);
-  if (!ok) return { ok: false };
+  if (!ok) return refuse();
   refresh(slug);
   return { ok: true };
 }

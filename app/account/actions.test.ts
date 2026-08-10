@@ -111,7 +111,7 @@ describe('saveAccountAction', () => {
     // caller costs no validation pass and no DB round trip.
     const res = await saveAccountAction(null, form({ ...VALID, firstName: '' }));
 
-    expect(res).toEqual({ ok: false, reason: 'rate_limited' });
+    expect(res).toMatchObject({ ok: false, reason: 'rate_limited' });
     expect(updateUserProfile).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
   });
@@ -129,9 +129,65 @@ describe('saveAccountAction', () => {
   ])('refuses %s without writing or revalidating', async (_label, patch) => {
     const res = await saveAccountAction(null, form({ ...VALID, ...patch }));
 
-    expect(res).toEqual({ ok: false, reason: 'invalid' });
+    expect(res).toMatchObject({ ok: false, reason: 'invalid' });
     expect(updateUserProfile).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Every refusal hands the SUBMITTED values back, untrimmed. That is what `AccountForm`
+   * re-seeds its uncontrolled inputs from after React 19 resets them, so without it a
+   * refused save silently discards whatever the member had typed.
+   *
+   * Both refusals, because they leave the action at different points: `rate_limited` returns
+   * above the parse, so the values have to be read before the limiter runs.
+   */
+  it.each([
+    ['invalid', { limited: false }],
+    ['rate_limited', { limited: true, retryAfterSec: 60 }],
+  ] as const)('hands the submitted values back on a %s refusal', async (reason, verdict) => {
+    enforceRateLimit.mockResolvedValue(verdict);
+    const submitted = { ...VALID, firstName: '  ', lastName: '  Lovelace  ' };
+
+    expect(await saveAccountAction(null, form(submitted))).toMatchObject({
+      ok: false,
+      reason,
+      // Untrimmed: the member gets back the characters they have in front of them.
+      values: { ...submitted },
+    });
+  });
+
+  /**
+   * …and an `invalid` refusal names the fields, from the zod issue paths. The member whose
+   * stored name predates `signUpSchema`'s length bounds is refused on every save — `maxLength`
+   * does not truncate an already-too-long value — and a form-level "check the fields" would
+   * never tell them which one to shorten.
+   */
+  it('names exactly the invalid fields, and no others', async () => {
+    const res = await saveAccountAction(null, form({ ...VALID, firstName: '  ', birthday: '2026-02-31' }));
+
+    expect(res).toMatchObject({ ok: false, reason: 'invalid' });
+    // eslint-disable-next-line vitest/no-conditional-expect
+    if (!res.ok) expect([...(res.fields ?? [])].sort()).toEqual(['birthday', 'firstName']);
+  });
+
+  it('bounds each field at the width signUpSchema states', async () => {
+    expect(await saveAccountAction(null, form({ ...VALID, firstName: 'x'.repeat(80) }))).toEqual({ ok: true });
+    expect(await saveAccountAction(null, form({ ...VALID, firstName: 'x'.repeat(81) })))
+      .toMatchObject({ ok: false, reason: 'invalid', fields: ['firstName'] });
+    expect(await saveAccountAction(null, form({ ...VALID, phone: '5'.repeat(41) })))
+      .toMatchObject({ ok: false, reason: 'invalid', fields: ['phone'] });
+  });
+
+  // A rate-limited refusal names no field: the member's fields are fine, they just waited
+  // too little. `AccountForm` must not mark anything red for it.
+  it('names no field when the refusal is a rate limit', async () => {
+    enforceRateLimit.mockResolvedValue({ limited: true, retryAfterSec: 60 });
+    const res = await saveAccountAction(null, form(VALID));
+
+    expect(res).toMatchObject({ ok: false, reason: 'rate_limited' });
+    // eslint-disable-next-line vitest/no-conditional-expect
+    if (!res.ok) expect(res.fields).toBeUndefined();
   });
 
   it('trims each field before parsing, so a padded but valid name is accepted', async () => {

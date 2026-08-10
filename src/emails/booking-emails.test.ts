@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderBookingCancellation, renderBookingConfirmation, renderNoShowPenalty, renderWaitlistPromotion } from './index';
+import { renderBookingCancellation, renderBookingConfirmation, renderNoShowPenalty, renderPenaltyLift, renderWaitlistPromotion } from './index';
 
 const base = {
   clubName: 'Bebek Rowing',
@@ -67,5 +67,69 @@ describe('renderNoShowPenalty', () => {
   it('renders in Turkish', async () => {
     const email = await renderNoShowPenalty('tr', { ...when, bannedUntil: new Date('2026-03-17T04:00:00Z'), cancelledCount: 1 });
     expect(email.subject).toBe('Katılmadığınız kaydedildi');
+  });
+});
+
+/**
+ * The other half of the penalty notice, and the copy IS the feature — so it is asserted
+ * as copy, not as "a non-empty string was rendered".
+ *
+ * The two things it must say, and the three it must not, come from the same fact: the
+ * owner may be reinstating somebody who genuinely missed sessions. Mail that apologises,
+ * congratulates, or calls the original penalty a mistake puts a position in the club's
+ * mouth that the club did not take — and the member has the club's earlier, formal
+ * "Katılmadığınız kaydedildi" sitting in the same inbox to compare it against.
+ *
+ * The negatives are asserted per-word rather than as one blob because a rewrite that
+ * reintroduces exactly one of them is the realistic regression, and a single combined
+ * assertion would name the wrong one in its failure message.
+ */
+describe('renderPenaltyLift', () => {
+  const data = { clubName: 'Bebek Rowing' };
+
+  it.each(['tr', 'en'] as const)('names the club and renders both bodies (%s)', async (locale) => {
+    const email = await renderPenaltyLift(locale, data);
+    expect(email.subject.length).toBeGreaterThan(0);
+    expect(email.html).toContain('Bebek Rowing');
+    expect(email.text).toContain('Bebek Rowing');
+  });
+
+  it('tells a Turkish member the restriction is over and that they can book again', async () => {
+    const email = await renderPenaltyLift('tr', data);
+    expect(email.subject).toBe('Oarly — Rezervasyon erişiminiz yeniden açıldı');
+    // "the restriction is over": the club lifted it — the same verb `restriction.contact`
+    // uses to tell the member only the club can ("Bu kısıtlamayı yalnızca kulüp kaldırabilir").
+    expect(email.text).toMatch(/kısıtlamayı kaldırdı/i);
+    // "you can book again", which is the actionable half and the one a rewrite drops first.
+    expect(email.text).toMatch(/yeniden seans ayırtabilirsiniz/i);
+  });
+
+  it('tells an English member the same two things', async () => {
+    const email = await renderPenaltyLift('en', data);
+    expect(email.subject).toBe('Oarly — Your booking access has reopened');
+    expect(email.text).toMatch(/has lifted the restriction/i);
+    expect(email.text).toMatch(/can book sessions again/i);
+  });
+
+  it.each(['tr', 'en'] as const)('does not apologise on the club\'s behalf (%s)', async (locale) => {
+    const email = await renderPenaltyLift(locale, data);
+    expect(email.text).not.toMatch(/özür|üzgün|apolog|sorry|regret/i);
+  });
+
+  it.each(['tr', 'en'] as const)('does not congratulate the member (%s)', async (locale) => {
+    const email = await renderPenaltyLift(locale, data);
+    expect(email.text).not.toMatch(/tebrik|kutlu|congratul|good news|müjde/i);
+  });
+
+  it.each(['tr', 'en'] as const)('does not call the original penalty a mistake (%s)', async (locale) => {
+    const email = await renderPenaltyLift(locale, data);
+    expect(email.text).not.toMatch(/hata|yanlış|yanlışlık|sehven|mistake|error|in error|incorrect/i);
+  });
+
+  // An unknown locale is not a reason to send nothing, and not a reason to send English:
+  // `toLocale` defaults to the app default, which is what every other template does.
+  it('falls back to Turkish for a locale the app does not have', async () => {
+    const email = await renderPenaltyLift('de', data);
+    expect(email.subject).toBe('Oarly — Rezervasyon erişiminiz yeniden açıldı');
   });
 });

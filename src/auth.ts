@@ -1,11 +1,13 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { nextCookies } from 'better-auth/next-js';
+import * as z from 'zod';
 
 import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { renderResetEmail, renderVerifyEmail } from '@/emails';
-import { env, trustedOrigins } from '@/env';
+import { deriveTrustedOrigins, env } from '@/env';
+import { locales } from '@/i18n/config';
 import {
   authRateLimitAfter,
   authRateLimitBefore,
@@ -13,7 +15,18 @@ import {
   authRateLimitStorage,
 } from '@/lib/auth-rate-limit';
 import { recordSignupConsent } from '@/lib/consent';
+import { isDateISO } from '@/lib/date-iso';
 import { sendEmail } from '@/lib/email';
+import { GENDER_OPTIONS, PAYMENT_TYPES } from '@/lib/schemas';
+import { THEMES } from '@/lib/theme';
+
+/**
+ * Derived here rather than in `src/env.ts` because that module is imported by a client
+ * component (`forgot-password-form.tsx`, for `NEXT_PUBLIC_APP_URL`) and a module-scope read
+ * of a `server:` key throws in the browser during module evaluation. See the note above
+ * `deriveTrustedOrigins`. This file is server-only, so the read is safe here.
+ */
+const trustedOrigins = deriveTrustedOrigins(env.TRUSTED_ORIGINS, env.APP_URL);
 
 /** Better Auth doesn't type our `locale` additionalField on the user object. */
 function userLocale(user: object): 'tr' | 'en' {
@@ -82,15 +95,81 @@ export const auth = betterAuth({
   },
 
   user: {
+    /*
+     * `validator.input` is where these columns are actually bounded, and it is the only
+     * place that binds every writer.
+     *
+     * `src/lib/schemas.ts` is the CLIENT's mirror: `signUpSchema` reaches the browser as a
+     * zodResolver and never runs on the server, and `accountProfileSchema` only guards the
+     * `/account` server action. Neither is in the path of `POST /api/auth/sign-up/email`,
+     * `POST /api/auth/update-user`, or the Google profile mapping below — all three write
+     * these columns directly, and `first_name`/`last_name`/`phone` are `text`, so before
+     * this they took a value of any length and `gender` took any string at all.
+     *
+     * Better Auth 1.6.26 applies these: `parseInputData` (better-auth/dist/db/schema.mjs:78)
+     * runs `validator.input` through the Standard Schema interface and raises a 400
+     * VALIDATION_ERROR on a failure, and it is reached from `parseUserInput` on both sign-up
+     * (create) and update-user (update) and from
+     * `parseAdditionalUserInputFromProviderProfile` for the OAuth path. `undefined` skips
+     * validation, which is what keeps a partial `/update-user` working.
+     *
+     * The widths are `signUpSchema`'s, deliberately the same numbers — see that file for
+     * where they come from. Consequence worth knowing: a Google account whose `given_name`
+     * exceeds 80 characters is refused rather than truncated, because silently mangling
+     * someone's own name is the worse of the two failures.
+     *
+     * `gender`, `defaultPaymentType`, `locale` and `theme` are pinned to the same constants
+     * the UI renders from, so a crafted `/update-user` cannot put an unknown answer in a
+     * KVKK-sensitive column or a non-enum string in front of the `payment_type` pg enum.
+     * `.nullable()` on `gender` keeps "never answered" writable.
+     *
+     * `locale` and `theme` were the two fields this block argued about and then left out.
+     * Both are `text NOT NULL` (`src/db/schema/auth.ts:25-26`), so `/update-user` wrote an
+     * arbitrary-length string into either — no `.nullable()`, because NULL is not a value
+     * they can hold. The blast radius is small, and that is the whole argument for binding
+     * them rather than against: `userLocale()` above narrows on READ and
+     * `next-themes` is handed `theme` client-side, so a junk value is invisible until
+     * something starts trusting the column. `locales` is `@/i18n/config`'s, the same list
+     * `asLocale` narrows to and the same one `messages/{tr,en}.json` exist for; `THEMES` is
+     * `@/lib/theme`'s, the three `user-menu.tsx` renders as radio items. Neither import
+     * pulls anything client-only into this module.
+     *
+     * `birthday` is validated here too, and NOT because Better Auth coerces it — a coercion
+     * that cannot reject is not a validation, and this one cannot reject. `/update-user`'s
+     * body schema is `z.record(z.string(), z.any())` (update-user.mjs:11) with no per-field
+     * typing, so `parseInputData` copies the value through verbatim; the only date handling
+     * is `value = new Date(value)` inside a `try` in
+     * `@better-auth/core/dist/db/adapter/factory.mjs:115-117`, and `new Date('banana')`
+     * returns Invalid Date WITHOUT throwing, so that catch never fires. `date('birthday')`
+     * builds drizzle's `PgDateString`, which has no `mapToDriverValue`, so the Invalid Date
+     * reaches node-postgres and `prepareValue` serialises it — measured — as
+     * `0NaN-NaN-NaNTNaN:NaN:NaN.NaN+NaN:NaN`, which Postgres rejects as 22007. That is a 500
+     * out of an auth endpoint where the contract promises a refusal, and it is the same class
+     * `dateOverrideSchema` and `accountProfileSchema` already guard with `isDateISO`.
+     *
+     * `Date` is accepted alongside the string because a programmatic caller may pass one, and
+     * `isDateISO` rather than a shape regex because `2026-02-31` matches the shape, is not a
+     * date, and lands as 22008.
+     *
+     * ONE THING THIS BOUND DOES NOT FIX, stated because the path above is documented in
+     * detail and would otherwise imply it does: once the value is valid, the coercion still
+     * hands a `Date` to a `date` column through pg's LOCAL-offset serialisation. Measured
+     * under `TZ=America/New_York`, `1990-04-17` leaves `prepareValue` as
+     * `1990-04-16T20:00:00.000-04:00` and Postgres stores 1990-04-16 — off by one on any
+     * server west of UTC. It is pre-existing and unreachable from this app's own UI
+     * (`saveAccountAction` writes the string straight through drizzle's `PgDateString`,
+     * which does not build a `Date` at all); it would bite the first caller to write a
+     * birthday through Better Auth. Passing `YYYY-MM-DD` rather than a `Date` avoids it.
+     */
     additionalFields: {
-      firstName: { type: 'string', required: false },
-      lastName: { type: 'string', required: false },
-      phone: { type: 'string', required: false },
-      birthday: { type: 'date', required: false },
-      gender: { type: 'string', required: false },
-      defaultPaymentType: { type: 'string', required: false, defaultValue: 'regular' },
-      locale: { type: 'string', required: false, defaultValue: 'tr' },
-      theme: { type: 'string', required: false, defaultValue: 'system' },
+      firstName: { type: 'string', required: false, validator: { input: z.string().max(80) } },
+      lastName: { type: 'string', required: false, validator: { input: z.string().max(80) } },
+      phone: { type: 'string', required: false, validator: { input: z.string().max(40) } },
+      birthday: { type: 'date', required: false, validator: { input: z.union([z.date(), z.string().refine(isDateISO, 'YYYY-MM-DD'), z.null()]) } },
+      gender: { type: 'string', required: false, validator: { input: z.enum(GENDER_OPTIONS).nullable() } },
+      defaultPaymentType: { type: 'string', required: false, defaultValue: 'regular', validator: { input: z.enum(PAYMENT_TYPES) } },
+      locale: { type: 'string', required: false, defaultValue: 'tr', validator: { input: z.enum(locales) } },
+      theme: { type: 'string', required: false, defaultValue: 'system', validator: { input: z.enum(THEMES) } },
       isAdmin: { type: 'boolean', required: false, defaultValue: false, input: false },
     },
   },

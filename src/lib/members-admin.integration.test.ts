@@ -8,10 +8,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
+import { markNoShow } from './attendance';
+import { bookSeat } from './booking';
+import { utcToClubDate, zonedWallClockToUtc } from './date-tz';
 import {
-  assignSkillLevel, type ClubMemberRow, listPendingMembers, MEMBERS_PAGE_SIZE, PENDING_CAP,
-  searchClubMembers, setMembershipStatus,
+  assignSkillLevel, type ClubMemberRow, liftPenalties, listPendingMembers, MEMBERS_PAGE_SIZE,
+  PENDING_CAP, searchClubMembers, setMembershipStatus,
 } from './members-admin';
+import { resolveBan } from './penalty';
+import { getRestriction, restrictionState } from './restriction';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -534,6 +539,485 @@ describe.skipIf(!url)('members-admin', () => {
         skillLevelId: lvl.id, status: 'banned',
       });
       expect(res.rows[0].bannedUntil?.toISOString()).toBe(until.toISOString());
+    });
+  });
+
+  /*
+    ── Lifting a suspension ────────────────────────────────────────────────────────────
+
+    The product could permanently suspend a member (`noshow_penalty = 'never'`) and had
+    nothing anywhere that undid it, while the member's own screen told them to contact
+    the club. These tests are about the operation that closes that, and every one of them
+    reaches the suspension through the REAL `markNoShow` path rather than by inserting a
+    penalty row by hand — a hand-inserted row tests `liftPenalties`, not the fix.
+  */
+  describe('liftPenalties', () => {
+    const TZ = 'Europe/Istanbul';
+    /** The missed session. Tuesday, so `NEXT_WEEK` below shares its weekday. */
+    const MISSED_DAY = '2026-03-10';
+    const NEXT_WEEK = '2026-03-17';
+    const MISSED_START = zonedWallClockToUtc(MISSED_DAY, '07:00', TZ);
+    /** The evening after the missed session — every mark and every lift happens here. */
+    const NOW = zonedWallClockToUtc(MISSED_DAY, '20:00', TZ);
+    const NEXT_WEEK_START = zonedWallClockToUtc(NEXT_WEEK, '07:00', TZ);
+
+    type Policy = 'off' | '2d' | '1w' | '2w' | '1m' | 'never';
+
+    /**
+     * A club with a real weekly window (so `bookSeat` has something to book), one
+     * approved member, and that member seated on a session that has already started.
+     */
+    async function seedSeatedMember(policy: Policy) {
+      const t = tag('lift');
+      const [club] = await db.insert(schema.clubs)
+        .values({ slug: t, name: t, status: 'active', timezone: TZ, noshowPenalty: policy }).returning();
+      const [boat] = await db.insert(schema.boatTypes)
+        .values({ clubId: club.id, name: 'Quad', seats: 2, allowedPayment: 'both' }).returning();
+      const { weekday } = utcToClubDate(MISSED_START, TZ);
+      const [win] = await db.insert(schema.scheduleWindows)
+        .values({ clubId: club.id, weekday, startTime: '07:00', endTime: '08:00', defaultSessionMinutes: 60 }).returning();
+      await db.insert(schema.windowBoats).values({ windowId: win.id, boatTypeId: boat.id, quantity: 1 });
+      const { id: userId } = await mkUser();
+      const [membership] = await db.insert(schema.memberships)
+        .values({ userId, clubId: club.id, status: 'approved' }).returning();
+      const seat = await seedStartedSeat({ club, boat, userId }, MISSED_DAY, '07:00');
+      return { club, boat, win, userId, membership, ...seat };
+    }
+
+    /** Another session of the same club that has ALREADY started, with this member seated on it. */
+    async function seedStartedSeat(
+      ctx: { club: { id: string }; boat: { id: string }; userId: string },
+      dateISO: string,
+      hhmm: string,
+    ) {
+      const startAt = zonedWallClockToUtc(dateISO, hhmm, TZ);
+      const [slot] = await db.insert(schema.slots)
+        .values({ clubId: ctx.club.id, date: dateISO, startAt, endAt: new Date(startAt.getTime() + 3_600_000) }).returning();
+      const [session] = await db.insert(schema.sessions)
+        .values({ slotId: slot.id, clubId: ctx.club.id, boatTypeId: ctx.boat.id, capacity: 2 }).returning();
+      const [booking] = await db.insert(schema.bookings)
+        .values({ sessionId: session.id, clubId: ctx.club.id, userId: ctx.userId, paymentType: 'regular', status: 'booked', effectiveAt: startAt, bookingDate: dateISO }).returning();
+      return { slot, session, booking };
+    }
+
+    /** A seat the member holds on a slot in the FUTURE — what `markNoShow`'s cascade walks. */
+    async function seedFutureSeat(ctx: { club: { id: string }; boat: { id: string }; userId: string }, dateISO = NEXT_WEEK) {
+      const startAt = zonedWallClockToUtc(dateISO, '07:00', TZ);
+      const [slot] = await db.insert(schema.slots)
+        .values({ clubId: ctx.club.id, date: dateISO, startAt, endAt: new Date(startAt.getTime() + 3_600_000) }).returning();
+      const [session] = await db.insert(schema.sessions)
+        .values({ slotId: slot.id, clubId: ctx.club.id, boatTypeId: ctx.boat.id, capacity: 2 }).returning();
+      await db.insert(schema.bookings)
+        .values({ sessionId: session.id, clubId: ctx.club.id, userId: ctx.userId, paymentType: 'regular', status: 'booked', effectiveAt: NOW, bookingDate: NEXT_WEEK });
+      return { slot, session };
+    }
+
+    const membershipRow = async (id: string) =>
+      (await db.select().from(schema.memberships).where(eq(schema.memberships.id, id)))[0];
+
+    const penaltyRows = async (membershipId: string) =>
+      db.select().from(schema.penalties)
+        .where(eq(schema.penalties.membershipId, membershipId))
+        .orderBy(asc(schema.penalties.createdAt), asc(schema.penalties.id));
+
+    /**
+     * THE invariant this whole slice has to preserve, and the only honest assertion for a
+     * race: the membership's persisted ban must be exactly what `resolveBan` folds from
+     * the penalty rows that are still live. Either outcome of a race is acceptable — what
+     * is not acceptable is a lifted ban sitting next to an un-lifted penalty nobody
+     * notices, or a lift silently undone, and both of those are a mismatch here.
+     */
+    async function expectBanMatchesLivePenalties(membershipId: string) {
+      const m = await membershipRow(membershipId);
+      const live = (await penaltyRows(membershipId)).filter((p) => p.liftedAt === null);
+      const expected = resolveBan(live);
+      expect({ status: m.status, bannedUntil: m.bannedUntil?.toISOString() ?? null }).toEqual({
+        status: expected.permanent ? 'banned' : 'approved',
+        bannedUntil: expected.bannedUntil?.toISOString() ?? null,
+      });
+      return { membership: m, live };
+    }
+
+    /**
+     * The premise the whole design rests on, asserted rather than assumed: re-approving
+     * the membership is NOT the escape hatch. The permanent penalty row survives, so the
+     * very next `recomputeBan` folds it back in and the member is banned again.
+     *
+     * The second absence is marked under the `off` policy on purpose — that row imposes
+     * no ban of its own, so the re-ban can only have come from the surviving permanent
+     * row. Under any other policy the test would pass for the wrong reason.
+     */
+    it('is needed because re-approving the membership does not survive the next recompute', async () => {
+      const owner = await mkUser();
+      const ctx = await seedSeatedMember('never');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+      expect((await membershipRow(ctx.membership.id)).status).toBe('banned');
+
+      expect(await setMembershipStatus(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, status: 'approved', actorId: owner.id })).toBe(true);
+      expect((await membershipRow(ctx.membership.id)).status).toBe('approved');
+
+      await db.update(schema.clubs).set({ noshowPenalty: 'off' }).where(eq(schema.clubs.id, ctx.club.id));
+      const second = await seedStartedSeat(ctx, MISSED_DAY, '09:00');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+
+      // Back to banned, off a penalty row nobody ever removed.
+      expect((await membershipRow(ctx.membership.id)).status).toBe('banned');
+    });
+
+    it('restores a permanently suspended member end to end, down to being able to book again', async () => {
+      const owner = await mkUser();
+      const ctx = await seedSeatedMember('never');
+
+      const marked = await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW });
+      expect(marked).toMatchObject({ ok: true, permanent: true });
+
+      const suspended = await membershipRow(ctx.membership.id);
+      expect(suspended.status).toBe('banned');
+      expect(restrictionState(suspended, NOW)).toBe('suspended');
+      expect(await getRestriction(db, suspended, NOW)).toMatchObject({ state: 'suspended' });
+      // The member's own door, closed: this is the state the copy tells them to contact
+      // the club about.
+      expect(await bookSeat(db, {
+        clubId: ctx.club.id, userId: ctx.userId, windowId: ctx.win.id, boatTypeId: ctx.boat.id,
+        startAt: NEXT_WEEK_START, paymentType: 'regular', idempotencyKey: randomUUID(), now: NOW,
+      })).toEqual({ ok: false, error: 'ineligible', reason: 'banned' });
+
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toEqual({ ok: true, lifted: 1 });
+
+      const after = await membershipRow(ctx.membership.id);
+      expect(after.status).toBe('approved');
+      expect(after.bannedUntil).toBeNull();
+      expect(restrictionState(after, NOW)).toBe('none');
+      expect(await getRestriction(db, after, NOW)).toEqual({ state: 'none' });
+      // The whole point. Anything short of this tests the function rather than the fix.
+      expect(await bookSeat(db, {
+        clubId: ctx.club.id, userId: ctx.userId, windowId: ctx.win.id, boatTypeId: ctx.boat.id,
+        startAt: NEXT_WEEK_START, paymentType: 'regular', idempotencyKey: randomUUID(), now: NOW,
+      })).toMatchObject({ ok: true, outcome: 'seated' });
+    });
+
+    /**
+     * The mixed history the predicate exists for: a timed penalty that lapsed months ago
+     * and a permanent one issued today.
+     *
+     * Only the permanent row is IN FORCE, so only it is stamped. Stamping the lapsed row
+     * as well would record that an owner reversed a penalty that had already expired on
+     * its own — a false entry in the very audit trail this design keeps rows for. Leaving
+     * it unlifted costs nothing: `resolveBan` still folds it, and it folds to a date in
+     * the past, which `restrictionState` reads as no restriction at all.
+     */
+    it('lifts only the penalties in force, and leaves a lapsed one alone', async () => {
+      const owner = await mkUser();
+      const ctx = await seedSeatedMember('2d');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+      const lapsedEndsAt = (await membershipRow(ctx.membership.id)).bannedUntil;
+      expect(lapsedEndsAt).not.toBeNull();
+
+      // Four months on, the club has switched to the permanent policy and the member
+      // misses another session. The March ban lapsed long ago.
+      const JULY = '2026-07-14';
+      const JULY_EVENING = zonedWallClockToUtc(JULY, '20:00', TZ);
+      await db.update(schema.clubs).set({ noshowPenalty: 'never' }).where(eq(schema.clubs.id, ctx.club.id));
+      const july = await seedStartedSeat(ctx, JULY, '07:00');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: july.booking.id, actorId: owner.id, now: JULY_EVENING })).ok).toBe(true);
+      expect(restrictionState(await membershipRow(ctx.membership.id), JULY_EVENING)).toBe('suspended');
+
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: JULY_EVENING })).toEqual({ ok: true, lifted: 1 });
+
+      const rows = await penaltyRows(ctx.membership.id);
+      expect(rows).toHaveLength(2);
+      const [march, julyRow] = rows;
+      expect(march.permanent).toBe(false);
+      expect(march.liftedAt).toBeNull();
+      expect(julyRow.permanent).toBe(true);
+      expect(julyRow.liftedAt).not.toBeNull();
+
+      const after = await membershipRow(ctx.membership.id);
+      expect(after.status).toBe('approved');
+      // NOT null: the lapsed March row is still live and `resolveBan` still folds it.
+      expect(after.bannedUntil?.toISOString()).toBe(lapsedEndsAt!.toISOString());
+      expect(restrictionState(after, JULY_EVENING)).toBe('none');
+    });
+
+    /**
+     * `lifted` is COUNTED, not assumed — and this is the only case that can tell.
+     *
+     * Every other test here lifts exactly one row, so a hardcoded `lifted: 1` would pass
+     * all of them. It matters because `liftSuspensionAction` reads this number to decide
+     * whether to mail the member, and the number has to come from the UPDATE rather than
+     * from the shape of the common case.
+     *
+     * Two live rows at once is also the case the doc comment's "everything in force goes,
+     * not just the permanent row" is about: a member under a permanent suspension AND a
+     * timed pause would otherwise come out of a lift still paused, with the owner's
+     * control gone from the roster because it only renders on suspended rows.
+     */
+    it('lifts every row in force at once and reports how many', async () => {
+      const owner = await mkUser();
+      const ctx = await seedSeatedMember('2d');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+
+      // A second absence the same evening, under the permanent policy. The first row's
+      // two-day ban has not lapsed, so both are in force when the lift lands.
+      await db.update(schema.clubs).set({ noshowPenalty: 'never' }).where(eq(schema.clubs.id, ctx.club.id));
+      const second = await seedStartedSeat(ctx, MISSED_DAY, '09:00');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+      expect(restrictionState(await membershipRow(ctx.membership.id), NOW)).toBe('suspended');
+
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW }))
+        .toEqual({ ok: true, lifted: 2 });
+
+      const rows = await penaltyRows(ctx.membership.id);
+      expect(rows).toHaveLength(2);
+      expect(rows.every((p) => p.liftedAt !== null)).toBe(true);
+      const after = await membershipRow(ctx.membership.id);
+      expect(after.status).toBe('approved');
+      expect(after.bannedUntil).toBeNull();
+      expect(restrictionState(after, NOW)).toBe('none');
+    });
+
+    /**
+     * The reason rows are stamped rather than deleted. An owner reversing a suspension is
+     * exactly the decision they will later be asked to account for, and a DELETE erases
+     * both halves of that: what the member did, and that anyone undid it.
+     */
+    it('keeps the lifted penalty in the table, intact, and attributable to the owner who lifted it', async () => {
+      const owner = await mkUser();
+      const ctx = await seedSeatedMember('never');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+      const [before] = await penaltyRows(ctx.membership.id);
+
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toEqual({ ok: true, lifted: 1 });
+
+      const [after] = await penaltyRows(ctx.membership.id);
+      expect(after).toMatchObject({
+        id: before.id, membershipId: before.membershipId, sessionId: before.sessionId,
+        bookingId: before.bookingId, reason: 'no_show', permanent: true,
+      });
+      expect(after.createdAt.toISOString()).toBe(before.createdAt.toISOString());
+      expect(after.liftedAt?.toISOString()).toBe(NOW.toISOString());
+
+      const audit = await db.select().from(schema.auditLog)
+        .where(eq(schema.auditLog.target, ctx.membership.id));
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        action: 'member.penalty_lift', actorUserId: owner.id, clubId: ctx.club.id, actingAsRole: 'owner',
+      });
+      // The absence itself is still on the log too — one row explains the suspension,
+      // the other explains the reversal, and together they are the account.
+      const noshow = await db.select().from(schema.auditLog)
+        .where(eq(schema.auditLog.target, ctx.booking.id));
+      expect(noshow.map((a) => a.action)).toEqual(['attendance.noshow']);
+    });
+
+    it('writes no audit row and changes nothing when there is nothing in force to lift', async () => {
+      const owner = await mkUser();
+      const ctx = await seedSeatedMember('never');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toEqual({ ok: true, lifted: 1 });
+      const first = await penaltyRows(ctx.membership.id);
+
+      // The stale-page second click. `true`, because the state asked for is the state
+      // that holds — but no second audit row naming a second actor for one act, and no
+      // re-stamping of `lifted_at`, which would relabel who reversed the decision and when.
+      const second = await mkUser();
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: second.id, now: new Date(NOW.getTime() + 60_000) })).toEqual({ ok: true, lifted: 0 });
+
+      const rows = await penaltyRows(ctx.membership.id);
+      expect(rows.map((p) => p.liftedAt?.toISOString())).toEqual(first.map((p) => p.liftedAt?.toISOString()));
+      const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, ctx.membership.id));
+      expect(audit).toHaveLength(1);
+      expect(audit[0].actorUserId).toBe(owner.id);
+    });
+
+    it('refuses a membership that belongs to another club, and lifts nothing', async () => {
+      const owner = await mkUser();
+      const ctx = await seedSeatedMember('never');
+      const [other] = await db.insert(schema.clubs).values({ slug: tag('c'), name: 'C', status: 'active' }).returning();
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: other.id, actorId: owner.id, now: NOW })).toEqual({ ok: false });
+      expect((await membershipRow(ctx.membership.id)).status).toBe('banned');
+      expect((await penaltyRows(ctx.membership.id)).every((p) => p.liftedAt === null)).toBe(true);
+      expect(await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, ctx.membership.id))).toHaveLength(0);
+    });
+
+    /** A lift is a reversal of what happened, not an amnesty for what happens next. */
+    it('does not immunise the member: the next absence suspends them again', async () => {
+      const owner = await mkUser();
+      const ctx = await seedSeatedMember('never');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toEqual({ ok: true, lifted: 1 });
+      expect((await membershipRow(ctx.membership.id)).status).toBe('approved');
+
+      const second = await seedStartedSeat(ctx, MISSED_DAY, '09:00');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+
+      const after = await membershipRow(ctx.membership.id);
+      expect(after.status).toBe('banned');
+      expect(restrictionState(after, NOW)).toBe('suspended');
+      const live = (await penaltyRows(ctx.membership.id)).filter((p) => p.liftedAt === null);
+      expect(live).toHaveLength(1);
+      expect(live[0].bookingId).toBe(second.booking.id);
+    });
+
+    /**
+     * ── The race, driven deterministically ──────────────────────────────────────────
+     *
+     * Both directions of `liftPenalties` × `markNoShow`, each blocked at a precise point
+     * with a lock held from a connection of this test's own, so the interleaving is not
+     * left to a `Promise.all` and a warm pool to produce by luck.
+     *
+     * The lever is `markNoShow`'s CASCADE lock. It takes a per-slot advisory lock for
+     * every FUTURE seat it cancels, and it takes those AFTER it has written its penalty
+     * row and recomputed the ban. Holding one of those locks parks the real `markNoShow`
+     * mid-transaction with its work done and uncommitted — which is exactly the window a
+     * concurrent lift must not be able to step through.
+     */
+    describe('against a concurrent markNoShow', () => {
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+      /**
+       * Take `lock` on a connection of this test's own, run `body` under it, then release
+       * it and hand back whatever `body` returned — which is how the two tests below get
+       * their in-flight promises out and await them AFTER the lock is gone.
+       *
+       * The `finally` is not decoration. A failed assertion inside `body` would otherwise
+       * leave the connection checked out with an open transaction, and `afterAll`'s
+       * `pool.end()` then hangs until vitest's hook timeout — reporting a timeout in
+       * `beforeAll`/`afterAll` instead of the assertion that actually failed. Seen, while
+       * these very tests were red.
+       */
+      async function whileHolding<T>(lock: { text: string; values: unknown[] }, body: () => Promise<T>): Promise<T> {
+        const holder = await pool.connect();
+        try {
+          await holder.query('BEGIN');
+          await holder.query(lock.text, lock.values);
+          return await body();
+        } finally {
+          await holder.query('ROLLBACK').catch(() => {});
+          holder.release();
+        }
+      }
+
+      it('a lift arriving mid-mark does not leave a lifted ban next to a live penalty', async () => {
+        const owner = await mkUser();
+        const ctx = await seedSeatedMember('never');
+        // A first suspension, so the lift has something in force to find even before the
+        // concurrent mark lands.
+        expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+        const future = await seedFutureSeat(ctx);
+        const second = await seedStartedSeat(ctx, MISSED_DAY, '09:00');
+
+        // Park the cascade: `markNoShow` reaches this slot's lock only AFTER it has
+        // inserted its penalty row and written the recomputed ban, so holding it leaves
+        // the real `markNoShow` mid-transaction with its work done and uncommitted.
+        const { marking, lifting } = await whileHolding(
+          { text: 'select pg_advisory_xact_lock(hashtext($1), hashtext($2))', values: [ctx.club.id, future.slot.startAt.toISOString()] },
+          async () => {
+            const marking = markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, actorId: owner.id, now: NOW });
+            await sleep(500);
+            const lifting = liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW });
+            await sleep(500);
+            return { marking, lifting };
+          },
+        );
+
+        expect((await marking).ok).toBe(true);
+        expect(await lifting).toMatchObject({ ok: true });
+
+        const { membership, live } = await expectBanMatchesLivePenalties(ctx.membership.id);
+        // The lift is serialized AFTER the mark, so it sees the fresh penalty and lifts
+        // it too. Without that, the membership reads 'approved' while a permanent penalty
+        // row sits under it un-lifted, waiting for the next recompute to re-ban.
+        expect(membership.status).toBe('approved');
+        expect(live).toHaveLength(0);
+        expect(await penaltyRows(ctx.membership.id)).toHaveLength(2);
+      }, 20_000);
+
+      it('a mark arriving mid-lift does not silently undo the lift', async () => {
+        const owner = await mkUser();
+        const ctx = await seedSeatedMember('never');
+        expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+        const second = await seedStartedSeat(ctx, MISSED_DAY, '09:00');
+        // The second absence falls under a TIMED policy, so if the lift is undone the
+        // membership ends up 'banned' with no permanent row under it at all — a state
+        // `resolveBan` disagrees with, which is what the invariant check catches.
+        await db.update(schema.clubs).set({ noshowPenalty: '2d' }).where(eq(schema.clubs.id, ctx.club.id));
+
+        // Park both operations on the membership row itself, the lift queued first.
+        const { marking, lifting } = await whileHolding(
+          { text: 'select id from memberships where id = $1 for update', values: [ctx.membership.id] },
+          async () => {
+            const lifting = liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW });
+            await sleep(500);
+            const marking = markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, actorId: owner.id, now: NOW });
+            await sleep(500);
+            return { marking, lifting };
+          },
+        );
+
+        expect(await lifting).toMatchObject({ ok: true });
+        expect((await marking).ok).toBe(true);
+
+        await expectBanMatchesLivePenalties(ctx.membership.id);
+      }, 20_000);
+
+      /**
+       * The test that actually earns `markNoShow`'s own `FOR UPDATE`, and it is not the
+       * one above.
+       *
+       * Measured: with the lock removed from `markNoShow` and left in place on
+       * `liftPenalties`, both tests above still pass — because inserting a `penalties`
+       * row takes a FOR KEY SHARE lock on the referenced `memberships` row for the
+       * foreign key, and that already conflicts with the lift's FOR UPDATE. The lift's
+       * lock alone serializes lift-against-mark in both directions. Claiming those two
+       * tests as evidence for the lock on `markNoShow` would have been claiming a
+       * property of the foreign key.
+       *
+       * What the foreign key does NOT cover is mark against mark. `UPDATE memberships
+       * SET status/banned_until` touches no key column, so it takes FOR NO KEY UPDATE,
+       * which is compatible with FOR KEY SHARE — two concurrent `markNoShow`s on one
+       * member walk straight past each other, each folding a penalty set the other has
+       * already added to. The one that writes last wins with an answer computed from a
+       * state that no longer exists.
+       *
+       * Reachable in ordinary use: an owner working down a roster marking absences, or
+       * two owners doing it at once. And it is `recomputeBan`'s stated invariant, so
+       * leaving one of its three callers outside the lock would make that comment a lie
+       * the moment anyone relied on it.
+       */
+      it('two absences on one member, marked at once, agree with the rows they wrote', async () => {
+        const owner = await mkUser();
+        const ctx = await seedSeatedMember('2d');
+        // Inside a two-day ban, so the FIRST mark's cascade walks it — which is the point
+        // where holding its lock parks that transaction with its ban already written.
+        const tomorrow = await seedFutureSeat(ctx, '2026-03-11');
+        const second = await seedStartedSeat(ctx, MISSED_DAY, '09:00');
+
+        const { timed, permanent } = await whileHolding(
+          { text: 'select pg_advisory_xact_lock(hashtext($1), hashtext($2))', values: [ctx.club.id, tomorrow.slot.startAt.toISOString()] },
+          async () => {
+            const timed = markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW });
+            await sleep(500);
+            // The club tightens its policy between the two marks, so the second absence
+            // is permanent and the two rows fold to different things. Same club, so this
+            // is also the only way to get two penalty shapes onto one membership.
+            await db.update(schema.clubs).set({ noshowPenalty: 'never' }).where(eq(schema.clubs.id, ctx.club.id));
+            const permanent = markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, actorId: owner.id, now: NOW });
+            await sleep(500);
+            return { timed, permanent };
+          },
+        );
+
+        expect((await timed).ok).toBe(true);
+        expect((await permanent).ok).toBe(true);
+
+        // Unlocked, the permanent mark commits `banned_until = NULL` over the timed
+        // mark's date, leaving the membership claiming no end date while a live timed
+        // penalty row still names one.
+        await expectBanMatchesLivePenalties(ctx.membership.id);
+      }, 20_000);
     });
   });
 });

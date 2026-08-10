@@ -4,7 +4,12 @@ import type { Club } from '@/lib/tenant';
 import { apexUrl, type AppOrigin, clubUrl } from '@/lib/urls';
 
 const TENANT_DISALLOW = ['/join', '/book', '/bookings', '/settings'];
-const APEX_DISALLOW = ['/admin'];
+// Every apex route that sits behind `requireUser` (directly, or transitively through
+// `requireAdmin`, which calls it) — not every route that merely isn't public marketing
+// copy. `/privacy` is deliberately crawlable despite being neither the home page nor a
+// club surface. Kept as a hand-written list, guarded by `seo.test.ts`, which derives the
+// same set from `app/`'s page and layout files and fails if the two disagree.
+const APEX_DISALLOW = ['/admin', '/account', '/request-club'];
 
 export function buildClubMetadata(args: {
   club: Pick<Club, 'slug' | 'name' | 'status' | 'logoUrl'>;

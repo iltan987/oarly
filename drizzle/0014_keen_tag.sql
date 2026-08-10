@@ -1,0 +1,21 @@
+-- SET LOCAL, and FIRST, for the reason 0009 sets out at length: drizzle runs every
+-- pending migration inside ONE transaction, so this bounds lock ACQUISITION for the
+-- whole batch and is discarded with the transaction either way.
+--
+-- The ADD COLUMN below is nullable with no default, so PG11+ writes only a catalog row
+-- and never rewrites the heap — the change itself is instant, exactly as 0013's was.
+-- That is not the hazard. The hazard is that ACCESS EXCLUSIVE still has to be ACQUIRED:
+-- `penalties` is read on every restricted member's page (`getRestrictions`) and written
+-- on the owner's mark/undo path, and an ACCESS EXCLUSIVE request that has to WAIT behind
+-- one long-running reader also queues every reader arriving after it. So an instant DDL
+-- statement can still stall those paths for as long as that one reader runs. 5s turns
+-- that into a failed deploy the operator retries with nothing applied (one transaction,
+-- one rollback), which is strictly the better outcome.
+--
+-- No index is added for the new column and none should be. Every read of `penalties` is
+-- already narrowed by `membership_id` through `penalties_membership_idx`, and one
+-- member's penalty rows are a handful — a partial index on `lifted_at IS NULL` would be
+-- maintained on every mark to save nothing, and would take SHARE on the table here for
+-- the build (see 0012, which explains why CONCURRENTLY is not available in this batch).
+SET LOCAL lock_timeout = '5s';--> statement-breakpoint
+ALTER TABLE "penalties" ADD COLUMN "lifted_at" timestamp with time zone;

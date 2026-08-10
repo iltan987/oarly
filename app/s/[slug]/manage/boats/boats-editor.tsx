@@ -9,10 +9,9 @@ import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import type { ManageActionResult } from '../action-result';
-import { createBoatAction, setBoatActiveAction, updateBoatAction } from './actions';
+import { type BoatFormValues, type BoatSaveResult, createBoatAction, setBoatActiveAction, updateBoatAction } from './actions';
 
-type BoatAction = (slug: string, prev: ManageActionResult | null, formData: FormData) => Promise<ManageActionResult>;
+type BoatAction = (slug: string, prev: BoatSaveResult | null, formData: FormData) => Promise<BoatSaveResult>;
 type Level = { id: string; name: string };
 type Boat = { id: string; name: string; seats: number; minSkillLevelId: string | null; allowedPayment: 'regular_only' | 'multisport_only' | 'both'; minAttendance: number | null; active: boolean };
 type Labels = {
@@ -24,7 +23,21 @@ type Labels = {
 
 const NONE_VALUE = 'none';
 
-function BoatFields({ boat, levels, labels, formId, multisportEnabled }: { boat?: Boat; levels: Level[]; labels: Labels; formId: string; multisportEnabled: boolean }) {
+/**
+ * `rejected` is what a refused save hands back (`BoatSaveResult.values`), and it takes
+ * precedence over the stored boat for the three TYPED fields.
+ *
+ * React 19 resets an uncontrolled form after any completed form action, refusal included
+ * (react-dom 19.2.8, `startHostTransition` -> `requestFormReset`), so without this an owner
+ * who set `minAttendance` above `seats` — an ordinary mistake, and a refusal `boatSchema`
+ * raises — watched the whole row snap back and had to retype it. Re-rendering with the
+ * submitted values as the new `defaultValue`s is enough: React writes them to the value
+ * attributes before the reset runs in the same commit. No remount, so focus stays put.
+ *
+ * The two Selects are unaffected either way — they are React state, which a form reset does
+ * not touch.
+ */
+function BoatFields({ boat, rejected, levels, labels, formId, multisportEnabled }: { boat?: Boat; rejected: BoatFormValues | null; levels: Level[]; labels: Labels; formId: string; multisportEnabled: boolean }) {
   const [minSkillLevelId, setMinSkillLevelId] = useState(boat?.minSkillLevelId ?? NONE_VALUE);
   const [allowedPayment, setAllowedPayment] = useState(boat?.allowedPayment ?? 'both');
 
@@ -60,11 +73,11 @@ function BoatFields({ boat, levels, labels, formId, multisportEnabled }: { boat?
       <input type="hidden" name="allowedPayment" value={multisportEnabled ? allowedPayment : (boat?.allowedPayment ?? 'regular_only')} />
       <Field>
         <FieldLabel htmlFor={`name-${formId}`}>{labels.name}</FieldLabel>
-        <Input id={`name-${formId}`} name="name" defaultValue={boat?.name} required />
+        <Input id={`name-${formId}`} name="name" defaultValue={rejected?.name ?? boat?.name} required />
       </Field>
       <Field>
         <FieldLabel htmlFor={`seats-${formId}`}>{labels.seats}</FieldLabel>
-        <Input id={`seats-${formId}`} name="seats" type="number" min={1} max={16} defaultValue={boat?.seats ?? 1} required />
+        <Input id={`seats-${formId}`} name="seats" type="number" min={1} max={16} defaultValue={rejected?.seats ?? boat?.seats ?? 1} required />
       </Field>
       <Field>
         <FieldLabel htmlFor={`minSkillLevelId-${formId}`}>{labels.minSkill}</FieldLabel>
@@ -95,7 +108,7 @@ function BoatFields({ boat, levels, labels, formId, multisportEnabled }: { boat?
       )}
       <Field className="col-span-2">
         <FieldLabel htmlFor={`minAttendance-${formId}`}>{labels.minAttendance}</FieldLabel>
-        <Input id={`minAttendance-${formId}`} name="minAttendance" type="number" min={1} defaultValue={boat?.minAttendance ?? ''} />
+        <Input id={`minAttendance-${formId}`} name="minAttendance" type="number" min={1} defaultValue={rejected?.minAttendance ?? boat?.minAttendance ?? ''} />
       </Field>
     </div>
   );
@@ -109,11 +122,11 @@ function BoatForm({ slug, boat, levels, labels, action, className, multisportEna
   className: string; multisportEnabled: boolean; onSuccess: () => void; onCancel: () => void;
 }) {
   const t = useTranslations('manage');
-  const [state, formAction] = useActionState<ManageActionResult | null, FormData>(action.bind(null, slug), null);
+  const [state, formAction] = useActionState<BoatSaveResult | null, FormData>(action.bind(null, slug), null);
   // Gate on the state object's identity (useActionState returns a fresh object
   // per submission) so the toast/close fires once per result and not again when
   // an unrelated re-render changes the `onSuccess`/`t` identities.
-  const handledRef = useRef<ManageActionResult | null>(null);
+  const handledRef = useRef<BoatSaveResult | null>(null);
 
   useEffect(() => {
     if (state === null || state === handledRef.current) return;
@@ -129,7 +142,7 @@ function BoatForm({ slug, boat, levels, labels, action, className, multisportEna
   return (
     <form action={formAction} className={className}>
       {boat && <input type="hidden" name="boatId" value={boat.id} />}
-      <BoatFields boat={boat} levels={levels} labels={labels} formId={boat?.id ?? 'new'} multisportEnabled={multisportEnabled} />
+      <BoatFields boat={boat} rejected={state !== null && !state.ok ? state.values : null} levels={levels} labels={labels} formId={boat?.id ?? 'new'} multisportEnabled={multisportEnabled} />
       <div className="flex gap-2">
         <PendingButton size="sm">{labels.save}</PendingButton>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>{labels.cancel}</Button>

@@ -129,9 +129,25 @@ export function SignInForm({
         {googlePending && <Spinner />}
         {t('google')}
       </Button>
-      <div className="mt-4 flex justify-between text-sm text-muted-foreground">
+      <div className="mt-4 text-sm text-muted-foreground">
         <Link href="/forgot-password" className="hover:underline">{t('forgotLink')}</Link>
-        <Link href="/sign-up" className="hover:underline">{t('toSignUp')}</Link>
+      </div>
+      {/*
+        The mirror of the block `sign-up-form.tsx` ends with, in the same position, the
+        same `text-sm text-muted-foreground` prose and the same underlined link — because
+        the two pages are each other's only way out and a member arrives at whichever one
+        the link they were sent happens to point at.
+
+        This route DID already link to /sign-up: a bare "Kayıt ol" sitting opposite
+        "Şifremi unuttum" in a `justify-between` row. Two same-weight secondary links side
+        by side, neither saying what it is FOR — and the one that matters to somebody who
+        has just been invited to a club and has no account is the one with no context at
+        all. `auth.noAccount` ("Hesabın yok mu?") is the question that was written for it
+        and never rendered; its twin `auth.haveAccount` has been rendering on the sign-up
+        page since that page existed.
+      */}
+      <div className="mt-2 text-sm text-muted-foreground">
+        {t('noAccount')} <Link href="/sign-up" className="underline">{t('toSignUp')}</Link>
       </div>
     </div>
   );

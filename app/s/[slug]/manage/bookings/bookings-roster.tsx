@@ -222,7 +222,16 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
                 </ul>
               )}
 
-              {!closed && s.freeSeats > 0 && s.windowId && (
+              {/*
+                `s.status === 'open'` is not redundant with `!closed`: `closed` is the
+                DAY's flag, and a single session can be closed or cancelled on an open
+                day. `ownerAddBooking` filters to `status === 'open'` sessions
+                (`src/lib/booking.ts:391`) and refuses with `no_session` when none is
+                left, so without this the owner is shown an add form on a cancelled
+                session that can only ever refuse. The `sessionUnavailable` copy stays —
+                a page held open while someone else cancels the session still reaches it.
+              */}
+              {!closed && s.status === 'open' && s.freeSeats > 0 && s.windowId && (
                 <AddMemberForm
                   session={s}
                   slug={slug}
@@ -331,6 +340,26 @@ function AddMemberForm({ session, slug, multisportEnabled, onSubmitted }: {
   );
 }
 
+/**
+ * Refusal -> `manage.bookings` message key. Typed as a total `Record` over the action's
+ * error union on purpose: add a refusal to `ownerAddBooking` and this stops compiling until
+ * it has copy, which is what stops the next one silently inheriting the generic toast the
+ * way `session_full` and `already_booked_this_slot` both did.
+ *
+ * None of these copy strings offers the owner an action the product cannot perform. In
+ * particular `already_booked_this_slot` — which a waitlisted member standing on the dock
+ * now reliably produces — reports the state and stops there: there is no way to promote
+ * them from this form, and pretending otherwise would be worse than saying nothing.
+ */
+const ADD_ERROR_KEYS: Record<NonNullable<Extract<OwnerAddActionResult, { ok: false }>['error']>, string> = {
+  already_booked_this_slot: 'alreadyInSlot',
+  multisport_day_taken: 'multisportDayTaken',
+  multisport_disabled: 'multisportDisabled',
+  no_session: 'sessionUnavailable',
+  not_a_member: 'notBookable',
+  session_full: 'sessionFull',
+};
+
 function AddMemberFields({ session, slug, multisportEnabled, onSubmitted, onAdded }: {
   session: RosterSession; slug: string; multisportEnabled: boolean;
   onSubmitted: (member: MemberHit) => void;
@@ -358,10 +387,12 @@ function AddMemberFields({ session, slug, multisportEnabled, onSubmitted, onAdde
     if (result.ok) {
       toast.success(t('added'));
       onAdded();
-    } else if (result.error === 'multisport_disabled') {
-      toast.error(t('multisportDisabled'));
     } else {
-      toast.error(tm('actionError'));
+      // Every named refusal has copy; the generic toast is left for the one case that is
+      // not a state of the club at all — a submission that failed schema validation, which
+      // carries no `error`.
+      const key = result.error && ADD_ERROR_KEYS[result.error];
+      toast.error(key ? t(key) : tm('actionError'));
     }
   }
 

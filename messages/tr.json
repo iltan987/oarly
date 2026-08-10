@@ -2,9 +2,7 @@
   "common": {
     "appName": "Oarly",
     "signIn": "Giriş yap",
-    "signUp": "Kayıt ol",
     "signOut": "Çıkış yap",
-    "loading": "Yükleniyor…",
     "language": "Dil",
     "preferences": "Tercihler",
     "userMenu": "Hesap ve tercihler",
@@ -35,9 +33,8 @@
     "ctaOpenClub": "Kulübü aç"
   },
   "club": {
-    "joinCta": "Kulübe katıl",
     "joinTitle": "{name} kulübüne katıl",
-    "joinBody": "Katılma isteğiniz kulüp sahibi tarafından onaylandığında seans rezervasyonu yapabilirsiniz.",
+    "joinBody": "Katılma isteğin kulüp sahibi tarafından onaylandığında seans rezervasyonu yapabilirsin.",
     "metaDescription": "{name} — kürek seansları için çevrimiçi rezervasyon.",
     "ctaManage": "Kulübü yönet",
     "ctaGoBooking": "Rezervasyona git",
@@ -67,7 +64,7 @@
     "approved": "Bu kulübün üyesisin.",
     "rejected": "Katılma isteğin reddedildi.",
     "banned": "Şu anda bu kulüpte rezervasyon yapamazsın.",
-    "rateLimited": "Çok fazla istek. Lütfen daha sonra tekrar deneyin."
+    "rateLimited": "Çok fazla istek. Lütfen daha sonra tekrar dene."
   },
   "emails": {
     "verify": {
@@ -124,6 +121,11 @@
         "intro": "Kulüp bu seansa katılmadığınızı kaydetti.",
         "introNoBan": "Kulüp bu seansa katılmadığınızı kaydetti. Rezervasyon erişiminiz etkilenmedi."
       },
+      "penaltyLift": {
+        "subject": "Oarly — Rezervasyon erişiminiz yeniden açıldı",
+        "heading": "Rezervasyon erişiminiz yeniden açıldı",
+        "intro": "Kulüp, rezervasyon erişiminize uyguladığı kısıtlamayı kaldırdı. Yeniden seans ayırtabilirsiniz."
+      },
       "labels": {
         "club": "Kulüp",
         "boat": "Tekne",
@@ -169,8 +171,8 @@
     "errorPassword": "Şifre en az 8 karakter olmalı.",
     "errorRequired": "Bu alan zorunlu.",
     "errorCredentials": "E-posta veya şifre hatalı.",
-    "errorTooManyRequests": "Çok fazla deneme yaptınız. Lütfen birkaç dakika bekleyip tekrar deneyin.",
-    "errorEmailNotVerified": "Önce e-posta adresinizi doğrulayın — size yeni bir bağlantı gönderdik.",
+    "errorTooManyRequests": "Çok fazla deneme yaptın. Lütfen birkaç dakika bekleyip tekrar dene.",
+    "errorEmailNotVerified": "Önce e-posta adresini doğrula — sana yeni bir bağlantı gönderdik.",
     "errorConsent": "Devam etmek için KVKK metnini kabul etmelisin.",
     "errorGeneric": "Bir şeyler ters gitti. Lütfen tekrar dene.",
     "signedOutToast": "Çıkış yapıldı",
@@ -203,6 +205,7 @@
     "save": "Kaydet",
     "saved": "Bilgilerin güncellendi.",
     "errorInvalid": "Bilgileri kontrol edip tekrar dene.",
+    "errorFieldInvalid": "Bu alanı kontrol et.",
     "errorTooManyRequests": "Çok fazla değişiklik yaptın. Lütfen biraz bekleyip tekrar dene."
   },
   "privacy": {
@@ -238,7 +241,6 @@
     "create": "Oluştur",
     "activate": "Etkinleştir",
     "suspend": "Askıya al",
-    "status": "Durum",
     "statusActive": "Aktif",
     "statusPending": "Beklemede",
     "statusSuspended": "Askıda",
@@ -398,6 +400,9 @@
     "confirmRejectKeep": "Beklemede bırak",
     "pausedBadge": "{date} tarihine kadar duraklatıldı",
     "suspendedBadge": "Askıda",
+    "liftSuspension": "Askıyı kaldır",
+    "liftSuspensionFor": "Askıyı kaldır: {name}",
+    "suspensionLifted": "Askı kaldırıldı",
     "memberApproved": "Üye onaylandı",
     "memberRejected": "Üye reddedildi",
     "skillSaved": "Seviye kaydedildi",
@@ -593,6 +598,11 @@
       "confirmRemoveCta": "Rezervasyonu kaldır",
       "added": "Üye eklendi.",
       "multisportDisabled": "Bu kulüpte MultiSport kapalı — bu üyeyi nakit ile ekleyin.",
+      "sessionFull": "Bu teknede boş yer kalmamış — sayfayı yenileyip tekrar bakın.",
+      "alreadyInSlot": "Bu üyenin bu saatte zaten bir yeri var — koltukta ya da bekleme listesinde.",
+      "multisportDayTaken": "Bu üye bugün MultiSport hakkını kullanmış — bu üyeyi nakit ile ekleyin.",
+      "notBookable": "Bu üye şu anda eklenemiyor — üyeliği onaylı değil veya kısıtlanmış.",
+      "sessionUnavailable": "Bu seans rezervasyona kapalı — sayfayı yenileyip programı kontrol edin.",
       "markAbsent": "Katılmadı",
       "undoAbsent": "Geri al",
       "absent": "Katılmadı",
@@ -611,7 +621,7 @@
   },
   "booking": {
     "title": "Antrenman ayırt",
-    "description": "Önümüzdeki {days} gün için yer ayırtın.",
+    "description": "Önümüzdeki {days} gün için yer ayırt.",
     "closedHoliday": "Kapalı — resmi tatil",
     "closedByClub": "Kapalı",
     "noSessions": "Bu gün seans yok",
@@ -626,7 +636,6 @@
     "booked": "Yerin ayrıldı",
     "waitlisted": "Bekleme listesi #{position}",
     "opensOn": "Açılış: {date}",
-    "paymentLabel": "Ödeme",
     "paymentRegular": "Nakit",
     "paymentMultisport": "MultiSport",
     "paymentQuestion": "Nasıl ödeyeceksin?",
@@ -643,7 +652,7 @@
     "locked": "Kilitli",
     "cancel": "Vazgeç",
     "myBookings": "Rezervasyonlarım",
-    "multisportDayTaken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
+    "multisportDayTaken": "MultiSport kartın o gün başka bir seans için kullanılmış.",
     "reasons": {
       "not_approved": "Üyelik onaylanmadı",
       "banned": "Rezervasyon kısıtlaman var",
@@ -651,13 +660,13 @@
       "payment_not_allowed": "Bu teknede bu ödeme türü kullanılamaz"
     },
     "errors": {
-      "ineligible": "Bu seansı ayırtamazsınız.",
-      "already_booked_this_slot": "Bu saatte zaten bir rezervasyonunuz var.",
+      "ineligible": "Bu seansı ayırtamazsın.",
+      "already_booked_this_slot": "Bu saatte zaten bir rezervasyonun var.",
       "no_session": "Bu seans artık mevcut değil.",
-      "multisport_day_taken": "MultiSport kartınız o gün başka bir seans için kullanılmış.",
+      "multisport_day_taken": "MultiSport kartın o gün başka bir seans için kullanılmış.",
       "waitlist_full": "Bu seans ve bekleme listesi dolu.",
-      "generic": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
-      "rate_limited": "Çok fazla istek. Lütfen biraz bekleyip tekrar deneyin."
+      "generic": "Bir şeyler ters gitti. Lütfen tekrar dene.",
+      "rate_limited": "Çok fazla istek. Lütfen biraz bekleyip tekrar dene."
     },
     "myTitle": "Rezervasyonlarım",
     "upcoming": "Yaklaşan",
@@ -668,14 +677,13 @@
     "emptyPastTitle": "Geçmiş rezervasyonun yok",
     "emptyPastBody": "Katıldığın seanslar burada birikecek.",
     "seated": "Ayrıldı",
-    "back": "Antrenman ayırt",
     "cancelErrors": {
       "not_found": "Rezervasyon bulunamadı.",
       "not_active": "Bu rezervasyon artık aktif değil.",
       "cancel_disabled": "Bu kulüpte kendi rezervasyonunu iptal kapalı.",
       "cutoff_passed": "Bu rezervasyonu iptal etmek için çok geç.",
-      "generic": "İptal edilemedi. Lütfen tekrar deneyin.",
-      "rate_limited": "Çok fazla istek. Lütfen biraz bekleyip tekrar deneyin."
+      "generic": "İptal edilemedi. Lütfen tekrar dene.",
+      "rate_limited": "Çok fazla istek. Lütfen biraz bekleyip tekrar dene."
     },
     "cancelled": "İptal edildi",
     "cancelledBy": {

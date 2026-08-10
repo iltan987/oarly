@@ -143,6 +143,38 @@ export async function renderNoShowPenalty(
   return renderNotice(validLocale, t('booking.noShow.subject'), t('booking.noShow.heading'), intro, rows);
 }
 
+/**
+ * The other half of `renderNoShowPenalty`: the club has reversed the restriction the
+ * member was told about, and they can book again.
+ *
+ * NO booking rows, because there is no booking — a suspension is a fact about the
+ * membership, and it may have been imposed weeks ago over a session nobody remembers. The
+ * club row alone is what the member needs to know which of their clubs this is about.
+ *
+ * WHAT THE COPY DELIBERATELY DOES NOT DO, because it is the whole point of the email:
+ * it does not apologise on the club's behalf, congratulate the member, or suggest the
+ * original penalty was a mistake. The owner may be reinstating somebody who genuinely
+ * missed sessions, and mail that treats that as an error corrected puts words in the
+ * club's mouth. It states the restriction is over and that they can book again. Pinned in
+ * `booking-emails.test.ts`.
+ *
+ * Register: `emails.*` is formal throughout its booking family, and this member has
+ * already had `renderNoShowPenalty`'s formal mail about the same restriction. See
+ * `src/i18n/tr-member-register.test.ts`, which scopes the app's informal rule to the UI
+ * namespaces and records the email channel's own settled register as a separate decision.
+ */
+export async function renderPenaltyLift(locale: string, data: { clubName: string }): Promise<RenderedEmail> {
+  const validLocale = toLocale(locale);
+  const t = await loadEmailsTranslator(validLocale);
+  return renderNotice(
+    validLocale,
+    t('booking.penaltyLift.subject'),
+    t('booking.penaltyLift.heading'),
+    t('booking.penaltyLift.intro'),
+    [{ label: t('booking.labels.club'), value: data.clubName }],
+  );
+}
+
 export async function renderClubDecision(
   locale: string,
   data: { clubName: string; decision: 'approved' | 'rejected'; note: string | null; url: string | null },

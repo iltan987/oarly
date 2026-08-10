@@ -2,9 +2,7 @@
   "common": {
     "appName": "Oarly",
     "signIn": "Sign in",
-    "signUp": "Sign up",
     "signOut": "Sign out",
-    "loading": "Loading…",
     "language": "Language",
     "preferences": "Preferences",
     "userMenu": "Account and preferences",
@@ -35,7 +33,6 @@
     "ctaOpenClub": "Open club"
   },
   "club": {
-    "joinCta": "Join this club",
     "joinTitle": "Join {name}",
     "joinBody": "Once the club owner approves your request you can start booking sessions.",
     "metaDescription": "{name} — online booking for rowing sessions.",
@@ -124,6 +121,11 @@
         "intro": "The club recorded that you did not attend this session.",
         "introNoBan": "The club recorded that you did not attend this session. Your booking access is unaffected."
       },
+      "penaltyLift": {
+        "subject": "Oarly — Your booking access has reopened",
+        "heading": "Your booking access has reopened",
+        "intro": "The club has lifted the restriction on your booking access. You can book sessions again."
+      },
       "labels": {
         "club": "Club",
         "boat": "Boat",
@@ -203,6 +205,7 @@
     "save": "Save",
     "saved": "Your details are updated.",
     "errorInvalid": "Check the fields and try again.",
+    "errorFieldInvalid": "Check this field.",
     "errorTooManyRequests": "You've made too many changes. Please wait a moment and try again."
   },
   "privacy": {
@@ -238,7 +241,6 @@
     "create": "Create",
     "activate": "Activate",
     "suspend": "Suspend",
-    "status": "Status",
     "statusActive": "Active",
     "statusPending": "Pending",
     "statusSuspended": "Suspended",
@@ -398,6 +400,9 @@
     "confirmRejectKeep": "Leave it waiting",
     "pausedBadge": "Paused until {date}",
     "suspendedBadge": "Suspended",
+    "liftSuspension": "Lift suspension",
+    "liftSuspensionFor": "Lift suspension: {name}",
+    "suspensionLifted": "Suspension lifted.",
     "memberApproved": "Member approved.",
     "memberRejected": "Member rejected.",
     "skillSaved": "Skill level saved.",
@@ -593,6 +598,11 @@
       "confirmRemoveCta": "Remove booking",
       "added": "Member added.",
       "multisportDisabled": "This club has MultiSport turned off — add this member with cash instead.",
+      "sessionFull": "This boat has no seats left — refresh the page and check again.",
+      "alreadyInSlot": "This member already has a place at this time — seated or on the waitlist.",
+      "multisportDayTaken": "This member has already used their MultiSport entry today — add them with cash instead.",
+      "notBookable": "This member cannot be added right now — their membership is not approved, or it is restricted.",
+      "sessionUnavailable": "This session is closed to bookings — refresh the page and check the schedule.",
       "markAbsent": "Mark absent",
       "undoAbsent": "Undo",
       "absent": "Absent",
@@ -626,7 +636,6 @@
     "booked": "You're booked",
     "waitlisted": "Waitlisted #{position}",
     "opensOn": "Opens {date}",
-    "paymentLabel": "Payment",
     "paymentRegular": "Cash",
     "paymentMultisport": "MultiSport",
     "paymentQuestion": "How are you paying?",
@@ -668,7 +677,6 @@
     "emptyPastTitle": "No past bookings",
     "emptyPastBody": "Sessions you've been to will collect here.",
     "seated": "Booked",
-    "back": "Book a session",
     "cancelErrors": {
       "not_found": "Booking not found.",
       "not_active": "This booking is no longer active.",

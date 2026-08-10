@@ -1,10 +1,11 @@
 import { and, eq } from 'drizzle-orm';
 import { notFound, redirect } from 'next/navigation';
+import { cache } from 'react';
 
 import { type DB, db as appDb } from '@/db';
 import { memberships } from '@/db/schema';
 import { env } from '@/env';
-import { restrictionState } from '@/lib/restriction';
+import { getRestriction, type Restriction, restrictionState } from '@/lib/restriction';
 import { type CurrentUser, getCurrentUser } from '@/lib/session';
 import { type Club, getClubBySlug } from '@/lib/tenant';
 import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
@@ -18,14 +19,44 @@ import * as self from './membership';
 export type { DB };
 export type Membership = typeof memberships.$inferSelect;
 
-export async function getMembership(db: DB, userId: string, clubId: string): Promise<Membership | null> {
+/**
+ * Memoized per request via React's `cache()` — the same mechanism `getClubBySlug`
+ * already uses, and for the same reason: a layout and the page it wraps both call this
+ * (through `requireOwner`/`requireMember`/`requireMemberView`, or directly, see
+ * `join.ts` and `app/s/[slug]/page.tsx`) and should agree on one row rather than each
+ * issuing its own query.
+ *
+ * Safe to cache without touching a single call site: every caller passes the `appDb`
+ * module singleton (never a transaction handle) and a plain `(userId, clubId)` pair,
+ * so `cache()`'s argument-identity key lands on the same entry for every caller in one
+ * request. It is also safe across a write: `requestToJoin` (`src/lib/join.ts`) reads
+ * this, then inserts, from inside a Server Action — a plain async call with no active
+ * React render and therefore no cache scope to leave a stale entry in. The page Next
+ * re-renders afterward to show the result is a fresh render with its own, empty cache —
+ * it queries for real and sees the row the action just wrote.
+ *
+ * THE MECHANISM, because the obvious explanation is the wrong one. It is NOT that the
+ * async dispatcher is missing outside a render: `createRequest` assigns
+ * `ReactSharedInternalsServer.A = DefaultAsyncDispatcher` on the first RSC render of the
+ * process and never clears it (`node_modules/next/dist/compiled/react-server-dom-turbopack/
+ * cjs/react-server-dom-turbopack-server.node.development.js:1099-1106`), so from then on
+ * `cache()` finds a dispatcher everywhere, action code included. What defeats memoization
+ * is the STORE the dispatcher hands back. `DefaultAsyncDispatcher.getCacheForType` is
+ * `var cache = (cache = resolveRequest()) ? cache.cache : new Map();` (:6230), and
+ * `resolveRequest()` returns null outside a render — neither the `currentRequest` module
+ * variable nor the `requestStorage` AsyncLocalStorage store is set (:1235-1239). So every
+ * call outside a render gets a FRESH Map, is a guaranteed miss, and nothing it computes
+ * survives the call. Same conclusion, different reason — and the difference matters,
+ * because "no dispatcher" would also be false inside a Server Action.
+ */
+export const getMembership = cache(async (db: DB, userId: string, clubId: string): Promise<Membership | null> => {
   const [row] = await db
     .select()
     .from(memberships)
     .where(and(eq(memberships.userId, userId), eq(memberships.clubId, clubId)))
     .limit(1);
   return row ?? null;
-}
+});
 
 /**
  * Both guards below treat a non-`active` club as a 404, mirroring the render gate in
@@ -108,3 +139,36 @@ export async function requireMemberView(
   if (!membership || (membership.status !== 'approved' && membership.status !== 'banned')) notFound();
   return { club, user, membership };
 }
+
+/**
+ * "Is this member restricted?", resolved from `userId`/`clubId`. Memoized per request
+ * via `cache()` in its own right, but the query it would otherwise duplicate is already
+ * gone: `getMembership` above is cache()-wrapped, so this and `requireMemberView`'s own
+ * `self.getMembership(appDb, user.id, club.id)` call (from `book/page.tsx` /
+ * `bookings/page.tsx`) resolve the SAME membership row within one request, not two.
+ *
+ * This exists for `MemberTabs`: the `(member)` layout renders it — including the
+ * permanent `/book` tab — as chrome that has to survive `loading.tsx` (see
+ * `page-skeleton.tsx`), so it cannot receive a page's already-computed `Restriction` as
+ * a prop the way `BookingsList` does.
+ *
+ * What this does NOT close: `getRestriction` takes `now` as its own argument, and
+ * three call sites each supply their own — this function's implicit `new Date()`,
+ * `book/page.tsx`'s identical implicit default, and `bookings/page.tsx`'s own `now`
+ * (deliberately shared there across the restriction, the upcoming/past split, and the
+ * cancel-cutoff maths — see that file). A membership whose `bannedUntil` lapses in the
+ * narrow window between the layout's read and the page's own `getRestriction` call
+ * could see the tab and the page disagree for that one request. Unifying the three
+ * would need a request-scoped clock, which is a bigger change than this task — left as
+ * an open follow-up, not something this closes.
+ *
+ * A visitor with no membership row (not signed in, or signed in but not a member of
+ * this club) is `'none'` here — not restricted, not admitted either; the page under
+ * `MemberTabs` still runs its own guard and turns that visitor away on its own terms.
+ */
+export const getMemberRestriction = cache(
+  async (userId: string, clubId: string): Promise<Restriction> => {
+    const membership = await self.getMembership(appDb, userId, clubId);
+    return membership ? getRestriction(appDb, membership) : { state: 'none' };
+  },
+);

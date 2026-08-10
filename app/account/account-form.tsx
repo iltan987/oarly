@@ -42,15 +42,18 @@ export type AccountProfile = {
 /**
  * Message keys per option value, so the option list is driven by the schema's own
  * constants and a value added there cannot silently render without a label.
+ *
+ * Exported so `account-form.test.tsx` can require them to resolve in the real catalogues:
+ * they are the only keys this file renders that a source scan for `t('...')` cannot see.
  */
-const GENDER_LABEL_KEYS: Record<(typeof GENDER_OPTIONS)[number], string> = {
+export const GENDER_LABEL_KEYS: Record<(typeof GENDER_OPTIONS)[number], string> = {
   female: 'genderFemale',
   male: 'genderMale',
   other: 'genderOther',
   prefer_not_to_say: 'genderPreferNotToSay',
 };
 
-const PAYMENT_LABEL_KEYS: Record<(typeof PAYMENT_TYPES)[number], string> = {
+export const PAYMENT_LABEL_KEYS: Record<(typeof PAYMENT_TYPES)[number], string> = {
   regular: 'paymentRegular',
   multisport: 'paymentMultisport',
 };
@@ -61,22 +64,34 @@ const PAYMENT_LABEL_KEYS: Record<(typeof PAYMENT_TYPES)[number], string> = {
  * works before (and without) hydration, and the toast effect lives in this stable
  * component rather than inside the keyed `<form>` below.
  *
- * `key={profile.updatedAt.getTime()}` reproduces that file's reasoning exactly.
- * `user.updatedAt` carries `$onUpdate` (`src/db/schema/auth.ts`), so a successful save
- * revalidates this route and re-feeds the just-saved values as new `defaultValue`s on live
- * uncontrolled inputs — which Base UI warns about. Re-keying remounts them with fresh
- * defaults after each save, and ONLY then: the timestamp moves when the row is persisted,
- * never while typing. A FAILED save does not revalidate, so `updatedAt` is unchanged, the
- * form does not remount.
+ * `key={profile.updatedAt.getTime()}` reproduces that file's reasoning, and it is about the
+ * SUCCESS path only. `user.updatedAt` carries `$onUpdate` (`src/db/schema/auth.ts`), so a
+ * successful save revalidates this route and re-feeds the just-saved values as new
+ * `defaultValue`s on live uncontrolled inputs; re-keying remounts them with fresh defaults
+ * instead, and only then — the timestamp moves when the row is persisted, never while typing.
  *
- * What a failed save does NOT do is preserve the member's in-flight edits, and that is
- * React's doing rather than this key's: React 19 resets an uncontrolled form after ANY
- * completed form action, success or failure. Measured directly against both a native
- * `<input defaultValue>` and this repo's Base UI `Input` — both revert to their
- * `defaultValue`. It is left as-is because `action={formAction}` on uncontrolled inputs is
- * what makes this form work before hydration, and because the only refusal reachable
- * through this UI is `rate_limited`: every field here is also natively constrained
- * (`required`, `type="date"`, two closed option sets), so `invalid` needs a crafted POST.
+ * A REFUSED save is a different problem with a different fix. React 19 resets an uncontrolled
+ * form after ANY completed form action, success or failure: `<form action>` schedules the
+ * reset before the action even runs (react-dom 19.2.8, `startHostTransition` ->
+ * `requestFormReset`) and it lands as a native `.reset()` on the form node. Measured in a
+ * browser on this page — a whitespace-only `firstName` passes `required`, `saveAccountAction`
+ * trims it to `''`, `accountProfileSchema` refuses it, and the field snapped back to the
+ * stored name on the same `<form>` DOM node with a `reset` event fired on it.
+ *
+ * `state.values` is the whole fix: the refused values become the inputs' new `defaultValue`,
+ * React writes that to the value attribute during the mutation phase, and the reset that
+ * follows in the same commit restores them. The form deliberately does NOT remount on a
+ * refusal — that would destroy the focused node and drop a keyboard or screen-reader user
+ * back to `<body>` on every retry. The cost of not remounting is a Base UI DEV-ONLY warning
+ * ("A component is changing the default value state of an uncontrolled FieldControl after
+ * being initialized"), which is accepted: `@base-ui/utils/useControlled.js:25` guards the
+ * check with `process.env.NODE_ENV !== 'production'` and `@base-ui/utils/error.js:9-19`
+ * no-ops there, so it does not exist in a production build.
+ *
+ * The values come back FROM THE SERVER rather than being snapshotted here because
+ * `action={formAction}` on uncontrolled inputs is what makes this form work before
+ * hydration: on that path the refusal is a full-page POST and this component is rendered
+ * on the server from the same result, so the edits survive there too.
  */
 export function AccountForm({ profile }: { profile: AccountProfile }) {
   const t = useTranslations('account');
@@ -109,25 +124,65 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
 
   const invalid = state !== null && !state.ok && state.reason === 'invalid';
 
+  const rejected = state !== null && !state.ok ? state.values : null;
+
+  /**
+   * Which inputs the server actually objected to, from the zod issue paths. `invalid` is
+   * reachable by ordinary typing (a whitespace-only name is trimmed to `''` server-side),
+   * and it is reachable indefinitely for any member whose stored name or phone predates
+   * `signUpSchema`'s length bounds — `maxLength` does not truncate an already-too-long
+   * value, so every save is refused until they shorten it. A form-level "check the fields"
+   * would never tell them which one.
+   */
+  const badFields = state !== null && !state.ok ? (state.fields ?? []) : [];
+  const bad = (name: string) => badFields.includes(name);
+
+  /*
+   * The two closed sets need care in BOTH directions, which is why they get their own
+   * bindings rather than a bare `rejected?.gender`.
+   *
+   * They are MARKED like every other field: `state.fields` carries every zod path, so
+   * leaving `gender` and `defaultPaymentType` unmarked above would put the form back in the
+   * state the field markers removed — a summary saying "check the fields" and nothing saying
+   * which.
+   *
+   * But they are ECHOED only when the refused value is one of the answers this form offers.
+   * A Select and a RadioGroup cannot be mistyped, so a value outside the set means a
+   * hand-crafted POST, and seeding a `defaultValue` from it would leave the Select blank and
+   * the RadioGroup with nothing checked — a worse starting point for the retry than the
+   * stored answer, and worse still on a control the marker has just pointed at.
+   */
+  const rejectedGender =
+    rejected !== null && (rejected.gender === '' || (GENDER_OPTIONS as readonly string[]).includes(rejected.gender))
+      ? rejected.gender
+      : null;
+  const rejectedPaymentType =
+    rejected !== null && (PAYMENT_TYPES as readonly string[]).includes(rejected.defaultPaymentType)
+      ? (rejected.defaultPaymentType as (typeof PAYMENT_TYPES)[number])
+      : null;
+
   return (
     <form key={profile.updatedAt.getTime()} action={formAction} className="flex flex-col gap-5">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field>
+        <Field data-invalid={bad('firstName')}>
           <FieldLabel htmlFor="firstName">{t('firstName')}</FieldLabel>
           <Input id="firstName" name="firstName" autoComplete="given-name" required maxLength={80}
-            defaultValue={profile.firstName} />
+            aria-invalid={bad('firstName')} defaultValue={rejected?.firstName ?? profile.firstName} />
+          {bad('firstName') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
         </Field>
-        <Field>
+        <Field data-invalid={bad('lastName')}>
           <FieldLabel htmlFor="lastName">{t('lastName')}</FieldLabel>
           <Input id="lastName" name="lastName" autoComplete="family-name" required maxLength={80}
-            defaultValue={profile.lastName} />
+            aria-invalid={bad('lastName')} defaultValue={rejected?.lastName ?? profile.lastName} />
+          {bad('lastName') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
         </Field>
       </div>
 
-      <Field>
+      <Field data-invalid={bad('phone')}>
         <FieldLabel htmlFor="phone">{t('phone')}</FieldLabel>
         <Input id="phone" name="phone" type="tel" autoComplete="tel" required maxLength={40}
-          defaultValue={profile.phone} />
+          aria-invalid={bad('phone')} defaultValue={rejected?.phone ?? profile.phone} />
+        {bad('phone') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
       </Field>
 
       {/*
@@ -152,10 +207,12 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
         empty field here is the truth, not a missing default. Submitting it empty sends ''
         and clears the column.
       */}
-      <Field>
+      <Field data-invalid={bad('birthday')}>
         <FieldLabel htmlFor="birthday">{t('birthday')}</FieldLabel>
-        <Input id="birthday" name="birthday" type="date" defaultValue={profile.birthday} />
+        <Input id="birthday" name="birthday" type="date" aria-invalid={bad('birthday')}
+          defaultValue={rejected?.birthday ?? profile.birthday} />
         <FieldDescription>{t('birthdayDescription')}</FieldDescription>
+        {bad('birthday') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
       </Field>
 
       {/*
@@ -170,11 +227,11 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
         (the same note profile-form.tsx carries), and `name` is what gives the Select its
         hidden form control, so this submits without any local state.
       */}
-      <Field>
+      <Field data-invalid={bad('gender')}>
         <FieldLabel htmlFor="gender">{t('gender')}</FieldLabel>
         <Select
           name="gender"
-          defaultValue={profile.gender}
+          defaultValue={rejectedGender ?? profile.gender}
           items={[
             { value: '', label: t('genderUnset') },
             ...GENDER_OPTIONS.map((g) => ({ value: g, label: t(GENDER_LABEL_KEYS[g]) })),
@@ -191,6 +248,7 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
           </SelectContent>
         </Select>
         <FieldDescription>{t('genderDescription')}</FieldDescription>
+        {bad('gender') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
       </Field>
 
       {/*
@@ -208,12 +266,12 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
         row stays clickable, the native input beneath keeps the focus ring and arrow-key
         navigation, and the label drives the native input even before hydration.
       */}
-      <FieldSet>
+      <FieldSet data-invalid={bad('defaultPaymentType')}>
         <FieldLegend variant="label">{t('paymentType')}</FieldLegend>
         <FieldDescription>{t('paymentTypeDescription')}</FieldDescription>
         <RadioGroup
           name="defaultPaymentType"
-          defaultValue={profile.defaultPaymentType}
+          defaultValue={rejectedPaymentType ?? profile.defaultPaymentType}
           className="grid gap-2 sm:grid-cols-2"
         >
           {PAYMENT_TYPES.map((p) => (
@@ -229,15 +287,17 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
             </label>
           ))}
         </RadioGroup>
+        {bad('defaultPaymentType') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
       </FieldSet>
 
       {/*
-        Form-level, not per-field, and deliberately so: `AccountActionResult` carries a
-        REASON and no field list, because every field here is also constrained natively
-        (`required`, `type="date"`, the two closed option sets), so a server refusal means
-        the payload was hand-crafted or the browser was bypassed — there is no honest way to
-        attribute it to one input. Inventing a field name would point the member at a field
-        that may be perfectly fine.
+        Kept alongside the per-field errors above rather than replaced by them. The
+        per-field markers come from `state.fields` (the zod issue paths), which is only
+        populated for `invalid`; this line is what remains visible if a future refusal
+        arrives without a usable path, and it is also the summary a member sees without
+        having to scan the form. The earlier claim here — that a refusal "means the payload
+        was hand-crafted", so no field could honestly be named — was wrong: `required` is
+        satisfied by whitespace, which this action trims to `''` and the schema refuses.
       */}
       {invalid ? <FieldError>{t('errorInvalid')}</FieldError> : null}
 

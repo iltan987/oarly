@@ -6,7 +6,7 @@ import * as z from 'zod';
 
 import { db } from '@/db';
 import { memberships, user } from '@/db/schema';
-import { ownerAddBooking, ownerRemoveBooking } from '@/lib/booking';
+import { ownerAddBooking, type OwnerAddResult, ownerRemoveBooking } from '@/lib/booking';
 import { requireOwner } from '@/lib/membership';
 import { notifyBookingConfirmation, notifyOwnerRemoval, notifyWaitlistPromotion } from '@/lib/notify';
 import { restrictionState } from '@/lib/restriction';
@@ -51,8 +51,24 @@ export async function searchClubMembersAction(slug: string, query: string): Prom
 
 /** Richer than ManageActionResult so the toast can distinguish a benign already-removed race from a generic error. */
 export type RemoveActionResult = { ok: true } | { ok: false; error?: 'not_active' };
-/** Richer than ManageActionResult so the toast can call out a MultiSport add rejected by a disabled club. */
-export type OwnerAddActionResult = { ok: true } | { ok: false; error?: 'multisport_disabled' };
+/**
+ * Every refusal `ownerAddBooking` can name, carried through verbatim rather than
+ * enumerated a second time here.
+ *
+ * All six describe a state of the club the owner can read and act on — the boat is full,
+ * this member is already in the slot, their MultiSport day is used, their membership is
+ * restricted, the session is closed. None of them is an internal failure, so none of them
+ * belongs behind "bir şeyler ters gitti". Deriving the union from `OwnerAddResult` rather
+ * than restating it means a refusal added to the domain layer cannot quietly acquire the
+ * generic toast: it lands here, and `bookings-roster.tsx`'s message map stops compiling
+ * until somebody writes copy for it.
+ *
+ * `error` stays optional for the one genuinely opaque case: a submission that failed schema
+ * validation was never a well-formed request, and there is nothing to tell the owner about
+ * it beyond that it failed.
+ */
+type OwnerAddRefusal = Extract<OwnerAddResult, { ok: false }>['error'];
+export type OwnerAddActionResult = { ok: true } | { ok: false; error?: OwnerAddRefusal };
 
 const removeSchema = z.object({ bookingId: z.uuid() });
 const addSchema = z.object({
@@ -91,7 +107,7 @@ export async function ownerAddBookingAction(slug: string, _prev: OwnerAddActionR
   });
   if (!parsed.success) return { ok: false };
   const result = await ownerAddBooking(db, { clubId: club.id, windowId: parsed.data.windowId, boatTypeId: parsed.data.boatTypeId, startAt: new Date(parsed.data.startAt), userId: parsed.data.userId, paymentType: parsed.data.paymentType, actorId: user.id });
-  if (!result.ok) return result.error === 'multisport_disabled' ? { ok: false, error: 'multisport_disabled' } : { ok: false };
+  if (!result.ok) return { ok: false, error: result.error };
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);
   revalidatePath(`/s/${slug}/bookings`);
