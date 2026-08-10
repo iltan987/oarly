@@ -1,10 +1,11 @@
 import { and, eq } from 'drizzle-orm';
 import { notFound, redirect } from 'next/navigation';
+import { cache } from 'react';
 
 import { type DB, db as appDb } from '@/db';
 import { memberships } from '@/db/schema';
 import { env } from '@/env';
-import { restrictionState } from '@/lib/restriction';
+import { getRestriction, type Restriction, restrictionState } from '@/lib/restriction';
 import { type CurrentUser, getCurrentUser } from '@/lib/session';
 import { type Club, getClubBySlug } from '@/lib/tenant';
 import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
@@ -108,3 +109,28 @@ export async function requireMemberView(
   if (!membership || (membership.status !== 'approved' && membership.status !== 'banned')) notFound();
   return { club, user, membership };
 }
+
+/**
+ * "Is this member restricted?", resolved from `userId`/`clubId` and memoized per
+ * request via React's `cache()` — the same mechanism `getClubBySlug` already uses so a
+ * layout and the page it wraps agree on one club row without a second query.
+ *
+ * This exists for `MemberTabs`: the `(member)` layout renders it — including the
+ * permanent `/book` tab — as chrome that has to survive `loading.tsx` (see
+ * `page-skeleton.tsx`), so it cannot receive a page's already-computed `Restriction` as
+ * a prop the way `BookingsList` does. `cache()` is the next best thing: within one
+ * request, calling this again with the same `userId`/`clubId` (there is currently no
+ * second caller — `book/page.tsx` and `bookings/page.tsx` read the guard's own
+ * membership row directly, which is *their* record of "not a second lookup that could
+ * disagree with it") returns the same `Promise` instead of re-querying.
+ *
+ * A visitor with no membership row (not signed in, or signed in but not a member of
+ * this club) is `'none'` here — not restricted, not admitted either; the page under
+ * `MemberTabs` still runs its own guard and turns that visitor away on its own terms.
+ */
+export const getMemberRestriction = cache(
+  async (userId: string, clubId: string): Promise<Restriction> => {
+    const membership = await self.getMembership(appDb, userId, clubId);
+    return membership ? getRestriction(appDb, membership) : { state: 'none' };
+  },
+);

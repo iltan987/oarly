@@ -144,3 +144,29 @@ describe('requireMemberView', () => {
     await expect(mod.requireMemberView('demo')).rejects.toThrow('NOT_FOUND');
   });
 });
+
+describe('getMemberRestriction', () => {
+  // `cache()` memoizes by argument value, so every case below uses its own (userId,
+  // clubId) pair — reusing one across cases would have the second assertion observe
+  // the first case's cached Promise instead of this case's mock.
+  it('is none for a visitor with no membership row, without reaching getRestriction\'s query', async () => {
+    vi.spyOn(mod, 'getMembership').mockResolvedValue(null);
+    await expect(mod.getMemberRestriction('no-member-user', 'club-a')).resolves.toEqual({ state: 'none' });
+  });
+
+  // An unrestricted membership: `getRestriction` short-circuits before touching the DB
+  // (see its own doc comment), so this exercises the composition without needing a
+  // real `db`.
+  it('delegates to getRestriction for an existing, unrestricted membership', async () => {
+    vi.spyOn(mod, 'getMembership').mockResolvedValue(
+      { id: 'm-unrestricted', status: 'approved', bannedUntil: null } as never,
+    );
+    await expect(mod.getMemberRestriction('healthy-user', 'club-b')).resolves.toEqual({ state: 'none' });
+  });
+
+  it('looks the membership up by the userId and clubId it was given', async () => {
+    const spy = vi.spyOn(mod, 'getMembership').mockResolvedValue(null);
+    await mod.getMemberRestriction('lookup-user', 'club-c');
+    expect(spy).toHaveBeenCalledWith(expect.anything(), 'lookup-user', 'club-c');
+  });
+});
