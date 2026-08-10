@@ -90,10 +90,28 @@ export default async function ManageSettingsPage({ params }: { params: Promise<{
         // `select` branches on strings, so the boolean is spelled out here rather than
         // relying on ICU to stringify it.
         selfCancel: club.selfCancelEnabled ? 'on' : 'off',
-        // `null` is "no cap", and the `=0` branch is what says so. A capacity of 0 is not
-        // a value the policies form can produce (the column is a positive limit or NULL),
-        // so 0 is free to stand in for "unset".
-        waitlist: club.waitlistCapacity ?? 0,
+        // `null` and `0` are OPPOSITE states, not two spellings of "unset", and this row
+        // read them as the same thing until review caught it.
+        //
+        // `src/lib/booking.ts:178` is the authority:
+        //   `club.waitlistCapacity == null ? Infinity : capacity + club.waitlistCapacity`
+        // — `null` means the waitlist is unbounded; `0` means there is no waitlist at all,
+        // because a session then accepts exactly its own seats and `joinWaitlist` returns
+        // `waitlist_full` on the next request.
+        //
+        // And `0` is a value an owner can set: `src/lib/schemas.ts:148` is
+        // `z.coerce.number().int().min(0).max(999).nullable()` and
+        // `policies/policies-form.tsx:149` renders `<Input type="number" min={0}>`. Typing
+        // 0 into that box IS how you switch waitlisting off. Collapsing it onto the same
+        // ICU branch as `null` told that owner their waitlist was uncapped — on the one
+        // page whose entire justification is answering "did I ever cap the waitlist?"
+        // without opening the policies form.
+        waitlist:
+          club.waitlistCapacity == null ? 'unlimited' : club.waitlistCapacity === 0 ? 'off' : 'capped',
+        // Always passed, including in the two branches that do not render it: next-intl
+        // throws on a referenced argument that is absent, and which branch runs is the
+        // message's business, not this call site's.
+        waitlistCap: club.waitlistCapacity ?? 0,
       }),
     },
   ];

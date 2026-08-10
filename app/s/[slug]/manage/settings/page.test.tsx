@@ -143,14 +143,45 @@ describe('the manage settings index', () => {
   it('summarises the booking policies from the club row it was handed', async () => {
     await renderPage();
     expect(rows()[4][1]).toContain(
-      'settings.policiesSummary {"mode":"lead","leadDays":3,"selfCancel":"on","waitlist":5}',
+      'settings.policiesSummary {"mode":"lead","leadDays":3,"selfCancel":"on","waitlist":"capped","waitlistCap":5}',
     );
   });
 
-  it('reads an unset waitlist cap as no cap rather than as a missing value', async () => {
+  /**
+   * `null` and `0` are OPPOSITE waitlist settings and this row read them as the same
+   * thing until review caught it. `src/lib/booking.ts:178` is the authority —
+   * `waitlistCapacity == null ? Infinity : capacity + waitlistCapacity` — so `null` is an
+   * unbounded waitlist and `0` is no waitlist at all.
+   *
+   * `0` is not hypothetical: `src/lib/schemas.ts:148` is `.min(0)` and the policies form
+   * renders `<Input type="number" min={0}>`, so typing 0 into that box is how an owner
+   * switches waitlisting off. The bug told them it was uncapped, on the one page whose
+   * whole justification is answering that question without opening the form.
+   *
+   * Three states, three cases, asserted on the ICU branch selector rather than on copy —
+   * two of them would collapse onto one branch again under any `?? 0`.
+   */
+  it.each([
+    [null, 'unlimited', 0],
+    [0, 'off', 0],
+    [5, 'capped', 5],
+  ])('renders waitlistCapacity=%s as the %s branch', async (capacity, branch, cap) => {
+    club.value = { ...club.value, waitlistCapacity: capacity as number };
+    await renderPage();
+    expect(rows()[4][1]).toContain(`"waitlist":"${branch}","waitlistCap":${cap}`);
+    club.value = { ...club.value, waitlistCapacity: 5 };
+  });
+
+  /**
+   * The two branches that do not render the number are still handed it. next-intl throws
+   * on a referenced argument that is absent, and which branch runs is the message's
+   * business — a call site that withheld `waitlistCap` when it "knew" the branch would not
+   * use it would break the moment a translator reworded the message.
+   */
+  it('always passes the cap, including in the branches that do not show it', async () => {
     club.value = { ...club.value, waitlistCapacity: null as unknown as number };
     await renderPage();
-    expect(rows()[4][1]).toContain('"waitlist":0');
+    expect(rows()[4][1]).toContain('"waitlistCap":');
     club.value = { ...club.value, waitlistCapacity: 5 };
   });
 
