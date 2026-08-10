@@ -682,7 +682,7 @@ describe.skipIf(!url)('members-admin', () => {
         startAt: NEXT_WEEK_START, paymentType: 'regular', idempotencyKey: randomUUID(), now: NOW,
       })).toEqual({ ok: false, error: 'ineligible', reason: 'banned' });
 
-      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toBe(true);
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toEqual({ ok: true, lifted: 1 });
 
       const after = await membershipRow(ctx.membership.id);
       expect(after.status).toBe('approved');
@@ -722,7 +722,7 @@ describe.skipIf(!url)('members-admin', () => {
       expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: july.booking.id, actorId: owner.id, now: JULY_EVENING })).ok).toBe(true);
       expect(restrictionState(await membershipRow(ctx.membership.id), JULY_EVENING)).toBe('suspended');
 
-      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: JULY_EVENING })).toBe(true);
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: JULY_EVENING })).toEqual({ ok: true, lifted: 1 });
 
       const rows = await penaltyRows(ctx.membership.id);
       expect(rows).toHaveLength(2);
@@ -740,6 +740,43 @@ describe.skipIf(!url)('members-admin', () => {
     });
 
     /**
+     * `lifted` is COUNTED, not assumed — and this is the only case that can tell.
+     *
+     * Every other test here lifts exactly one row, so a hardcoded `lifted: 1` would pass
+     * all of them. It matters because `liftSuspensionAction` reads this number to decide
+     * whether to mail the member, and the number has to come from the UPDATE rather than
+     * from the shape of the common case.
+     *
+     * Two live rows at once is also the case the doc comment's "everything in force goes,
+     * not just the permanent row" is about: a member under a permanent suspension AND a
+     * timed pause would otherwise come out of a lift still paused, with the owner's
+     * control gone from the roster because it only renders on suspended rows.
+     */
+    it('lifts every row in force at once and reports how many', async () => {
+      const owner = await mkUser();
+      const ctx = await seedSeatedMember('2d');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+
+      // A second absence the same evening, under the permanent policy. The first row's
+      // two-day ban has not lapsed, so both are in force when the lift lands.
+      await db.update(schema.clubs).set({ noshowPenalty: 'never' }).where(eq(schema.clubs.id, ctx.club.id));
+      const second = await seedStartedSeat(ctx, MISSED_DAY, '09:00');
+      expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: second.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
+      expect(restrictionState(await membershipRow(ctx.membership.id), NOW)).toBe('suspended');
+
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW }))
+        .toEqual({ ok: true, lifted: 2 });
+
+      const rows = await penaltyRows(ctx.membership.id);
+      expect(rows).toHaveLength(2);
+      expect(rows.every((p) => p.liftedAt !== null)).toBe(true);
+      const after = await membershipRow(ctx.membership.id);
+      expect(after.status).toBe('approved');
+      expect(after.bannedUntil).toBeNull();
+      expect(restrictionState(after, NOW)).toBe('none');
+    });
+
+    /**
      * The reason rows are stamped rather than deleted. An owner reversing a suspension is
      * exactly the decision they will later be asked to account for, and a DELETE erases
      * both halves of that: what the member did, and that anyone undid it.
@@ -750,7 +787,7 @@ describe.skipIf(!url)('members-admin', () => {
       expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
       const [before] = await penaltyRows(ctx.membership.id);
 
-      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toBe(true);
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toEqual({ ok: true, lifted: 1 });
 
       const [after] = await penaltyRows(ctx.membership.id);
       expect(after).toMatchObject({
@@ -777,14 +814,14 @@ describe.skipIf(!url)('members-admin', () => {
       const owner = await mkUser();
       const ctx = await seedSeatedMember('never');
       expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
-      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toBe(true);
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toEqual({ ok: true, lifted: 1 });
       const first = await penaltyRows(ctx.membership.id);
 
       // The stale-page second click. `true`, because the state asked for is the state
       // that holds — but no second audit row naming a second actor for one act, and no
       // re-stamping of `lifted_at`, which would relabel who reversed the decision and when.
       const second = await mkUser();
-      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: second.id, now: new Date(NOW.getTime() + 60_000) })).toBe(true);
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: second.id, now: new Date(NOW.getTime() + 60_000) })).toEqual({ ok: true, lifted: 0 });
 
       const rows = await penaltyRows(ctx.membership.id);
       expect(rows.map((p) => p.liftedAt?.toISOString())).toEqual(first.map((p) => p.liftedAt?.toISOString()));
@@ -799,7 +836,7 @@ describe.skipIf(!url)('members-admin', () => {
       const [other] = await db.insert(schema.clubs).values({ slug: tag('c'), name: 'C', status: 'active' }).returning();
       expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
 
-      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: other.id, actorId: owner.id, now: NOW })).toBe(false);
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: other.id, actorId: owner.id, now: NOW })).toEqual({ ok: false });
       expect((await membershipRow(ctx.membership.id)).status).toBe('banned');
       expect((await penaltyRows(ctx.membership.id)).every((p) => p.liftedAt === null)).toBe(true);
       expect(await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, ctx.membership.id))).toHaveLength(0);
@@ -810,7 +847,7 @@ describe.skipIf(!url)('members-admin', () => {
       const owner = await mkUser();
       const ctx = await seedSeatedMember('never');
       expect((await markNoShow(db, { clubId: ctx.club.id, bookingId: ctx.booking.id, actorId: owner.id, now: NOW })).ok).toBe(true);
-      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toBe(true);
+      expect(await liftPenalties(db, { membershipId: ctx.membership.id, clubId: ctx.club.id, actorId: owner.id, now: NOW })).toEqual({ ok: true, lifted: 1 });
       expect((await membershipRow(ctx.membership.id)).status).toBe('approved');
 
       const second = await seedStartedSeat(ctx, MISSED_DAY, '09:00');
@@ -887,7 +924,7 @@ describe.skipIf(!url)('members-admin', () => {
         );
 
         expect((await marking).ok).toBe(true);
-        expect(await lifting).toBe(true);
+        expect(await lifting).toMatchObject({ ok: true });
 
         const { membership, live } = await expectBanMatchesLivePenalties(ctx.membership.id);
         // The lift is serialized AFTER the mark, so it sees the fresh penalty and lifts
@@ -920,7 +957,7 @@ describe.skipIf(!url)('members-admin', () => {
           },
         );
 
-        expect(await lifting).toBe(true);
+        expect(await lifting).toMatchObject({ ok: true });
         expect((await marking).ok).toBe(true);
 
         await expectBanMatchesLivePenalties(ctx.membership.id);

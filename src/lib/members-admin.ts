@@ -321,6 +321,21 @@ export async function assignSkillLevel(
  * paused until December, and — since the owner's control only appears on suspended rows —
  * with nothing left on screen to finish the job.
  *
+ * ## What it does NOT undo: the seats the ban already took
+ *
+ * When a ban bites, `markNoShow` cancels every future booking the member holds at this
+ * club inside the ban's reach, with `cancelled_reason = 'penalty'`
+ * (`src/lib/attendance.ts:170-200`). Neither this function nor `undoNoShow` restores them,
+ * and neither should pretend to: each freed seat is immediately offered to the waitlist in
+ * the same transaction, so by the time an owner lifts the suspension those seats may
+ * belong to other members who have already been told they are in. Un-cancelling would
+ * either overrun the boat or take a seat back off somebody.
+ *
+ * So a lift restores STANDING — the member may book again — not their old bookings. If the
+ * sessions have not yet run, they have to re-book, and the seat may be gone. That is
+ * pre-existing behaviour shared with `undoNoShow`, and it is recorded here because this
+ * enumeration is what the next reader will trust.
+ *
  * ## Concurrency
  *
  * `FOR UPDATE` on the membership row first, exactly as `markNoShow` and `undoNoShow` now
@@ -337,15 +352,25 @@ export async function assignSkillLevel(
  * would stamp `lifted_at` on a row another transaction had just lifted, or on one that
  * lapsed between the read and the write.
  *
- * `true` for a no-op, `false` only for "no such membership in this club" — the same
- * meanings `setMembershipStatus` documents, and for the same reason: a stale page whose
- * member is no longer suspended is not an error the owner can act on. A no-op writes no
- * audit row, because an audit row means the thing happened.
+ * `ok: true` for a no-op, `ok: false` only for "no such membership in this club" — the
+ * same meanings `setMembershipStatus` documents, and for the same reason: a stale page
+ * whose member is no longer suspended is not an error the owner can act on. A no-op
+ * writes no audit row, because an audit row means the thing happened.
+ *
+ * `lifted` is that no-op, made READABLE. It is not decoration and not a count for a
+ * toast: `liftSuspensionAction` emails the member that their restriction is over, and the
+ * only honest source for "was there a restriction" is the transaction that decided it.
+ * Anything else — a second read after the commit, or the roster row the owner clicked
+ * from — can answer for a different moment, and the failure it buys is mail telling a
+ * member their suspension has been lifted when the click was a stale-page double-submit
+ * and nothing happened. `lifted: 0` with `ok: true` is exactly that case.
  */
+export type LiftResult = { ok: false } | { ok: true; lifted: number };
+
 export async function liftPenalties(
   db: DB,
   input: { membershipId: string; clubId: string; actorId: string; now?: Date },
-): Promise<boolean> {
+): Promise<LiftResult> {
   const now = input.now ?? new Date();
   return db.transaction(async (tx) => {
     const [membership] = await tx
@@ -356,7 +381,7 @@ export async function liftPenalties(
       .for('update');
     // No such membership, or it belongs to another club. No audit row: noise here makes
     // the log less trustworthy, not more.
-    if (!membership) return false;
+    if (!membership) return { ok: false };
 
     const lifted = await tx.update(penalties)
       .set({ liftedAt: now })
@@ -367,8 +392,9 @@ export async function liftPenalties(
       ))
       .returning({ id: penalties.id });
     // Nothing was in force. The state the caller asked for is the state that holds, so
-    // there is nothing to recompute and nothing happened to record.
-    if (lifted.length === 0) return true;
+    // there is nothing to recompute, nothing happened to record — and nothing to tell the
+    // member about.
+    if (lifted.length === 0) return { ok: true, lifted: 0 };
 
     // Restores `status` and clears `bannedUntil` on its own, from the rows that are left.
     await recomputeBan(tx, membership.id, membership.status);
@@ -380,6 +406,6 @@ export async function liftPenalties(
       target: input.membershipId,
       actingAsRole: 'owner',
     });
-    return true;
+    return { ok: true, lifted: lifted.length };
   });
 }

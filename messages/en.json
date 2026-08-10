@@ -121,6 +121,11 @@
         "intro": "The club recorded that you did not attend this session.",
         "introNoBan": "The club recorded that you did not attend this session. Your booking access is unaffected."
       },
+      "penaltyLift": {
+        "subject": "Oarly — Your booking access has reopened",
+        "heading": "Your booking access has reopened",
+        "intro": "The club has lifted the restriction on your booking access. You can book sessions again."
+      },
       "labels": {
         "club": "Club",
         "boat": "Boat",

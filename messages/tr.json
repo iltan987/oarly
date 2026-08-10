@@ -121,6 +121,11 @@
         "intro": "Kulüp bu seansa katılmadığınızı kaydetti.",
         "introNoBan": "Kulüp bu seansa katılmadığınızı kaydetti. Rezervasyon erişiminiz etkilenmedi."
       },
+      "penaltyLift": {
+        "subject": "Oarly — Rezervasyon erişiminiz yeniden açıldı",
+        "heading": "Rezervasyon erişiminiz yeniden açıldı",
+        "intro": "Kulüp, rezervasyon erişiminize uyguladığı kısıtlamayı kaldırdı. Yeniden seans ayırtabilirsiniz."
+      },
       "labels": {
         "club": "Kulüp",
         "boat": "Tekne",
