@@ -43,32 +43,34 @@ beforeEach(() => { vi.clearAllMocks(); });
 
 /**
  * The toast branch in `bookings-roster.tsx` is only ever reached if this action names the
- * refusal. Its own test mocks this module, so it would stay green with every branch here
+ * refusal. Its own test mocks this module, so it would stay green with every refusal here
  * collapsed back into a bare `{ ok: false }` — the shape that renders the generic
  * "something went wrong" for a refusal the owner could have acted on.
+ *
+ * Listed one by one rather than asserted as "passes `result.error` through", because the
+ * point is the SET: every refusal `ownerAddBooking` can return is named. A test written
+ * against the implementation would pass on a shorter list.
  */
 describe('ownerAddBookingAction error pass-through', () => {
-  it.each(['session_full', 'multisport_disabled'] as const)('names a %s refusal', async (error) => {
+  const refusals = [
+    'no_session', 'not_a_member', 'already_booked_this_slot',
+    'session_full', 'multisport_day_taken', 'multisport_disabled',
+  ] as const;
+
+  it.each(refusals)('names a %s refusal', async (error) => {
     ownerAddBooking.mockResolvedValue({ ok: false, error });
     expect(await ownerAddBookingAction('club', null, fd())).toEqual({ ok: false, error });
   });
-
-  // The complement: refusals the owner cannot act on stay generic, so the branches above
-  // are a real discrimination and not a blanket `return result`.
-  it.each(['no_session', 'not_a_member', 'already_booked_this_slot', 'multisport_day_taken'] as const)(
-    'reports a %s refusal generically',
-    async (error) => {
-      ownerAddBooking.mockResolvedValue({ ok: false, error });
-      expect(await ownerAddBookingAction('club', null, fd())).toEqual({ ok: false });
-    },
-  );
 
   it('passes a successful add straight through', async () => {
     ownerAddBooking.mockResolvedValue({ ok: true, bookingId: 'b-1' });
     expect(await ownerAddBookingAction('club', null, fd())).toEqual({ ok: true });
   });
 
-  it('refuses a malformed submission without reaching the booking layer', async () => {
+  // The one case that stays generic, and the reason `error` is optional: a submission that
+  // failed schema validation was never a well-formed request, so there is no state of the
+  // club to report. It must also not reach the booking layer at all.
+  it('refuses a malformed submission generically, without reaching the booking layer', async () => {
     expect(await ownerAddBookingAction('club', null, fd({ windowId: 'not-a-uuid' }))).toEqual({ ok: false });
     expect(ownerAddBooking).not.toHaveBeenCalled();
   });

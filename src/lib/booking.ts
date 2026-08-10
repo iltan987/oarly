@@ -404,9 +404,16 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
       //
       // The distinction is not stylistic. The seat count above is the only reason this
       // insert can leave a seat still free, and `markNoShow` on its own session is the
-      // only thing in this codebase that can produce that state (every other writer of
-      // `bookings.status` ends in `applySeating`; `sessions.capacity` is written once, at
-      // materialization). `markNoShow` requires `startAt <= now`. So every promotion
+      // only thing in this codebase that can produce that state. Every other writer of
+      // `bookings.status` ends in `applySeating` — with one exception, `undoNoShow`
+      // (`attendance.ts:290`), which writes 'booked' directly and never calls it. That
+      // exception does not reach the conclusion: it only ever RAISES `booked`, and it
+      // refuses outright at `bookedCount >= row.capacity` (`attendance.ts:286`), so like
+      // the insert below it can close a gap but never open one. `sessions.capacity` has a
+      // single writer (`materialize.ts:50`, at session creation) and no UPDATE anywhere,
+      // so capacity cannot shrink under a seated session either.
+      //
+      // `markNoShow` requires `startAt <= now`. So every promotion
       // `applySeating` could fire here would be into a session that has ALREADY STARTED —
       // handing a seat to somebody who cannot possibly take it. Worse, this function
       // discards the promoted id and `ownerAddBookingAction` sends no mail, so they would

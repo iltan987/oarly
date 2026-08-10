@@ -330,12 +330,23 @@ describe('BookingsRoster MultiSport toggle', () => {
     expect(toast.error).not.toHaveBeenCalledWith('actionError');
   });
 
-  // The seat count in `ownerAddBooking` no longer disagrees with the `freeSeats` this
-  // form is rendered from, but `session_full` stays reachable — two owners adding into
-  // the last seat at once. "Refresh" is something the owner can act on; the generic
-  // toast is indistinguishable from a bug.
-  it('reports a full session with its own message, not the generic error', async () => {
-    vi.mocked(ownerAddBookingAction).mockResolvedValue({ ok: false, error: 'session_full' });
+  /**
+   * Every refusal the add form can receive gets its own message; the generic toast is for
+   * a submission that was never well-formed (no `error` at all).
+   *
+   * `already_booked_this_slot` is the one that made this a set rather than a special case:
+   * a waitlisted member is fully pickable in the combobox (`searchClubMembersAction`
+   * filters on approved + non-banned, with no slot awareness), so an owner seating a
+   * waitlisted member who turned up hits it every time — and got "bir şeyler ters gitti".
+   */
+  it.each([
+    ['session_full', 'sessionFull'],
+    ['already_booked_this_slot', 'alreadyInSlot'],
+    ['multisport_day_taken', 'multisportDayTaken'],
+    ['not_a_member', 'notBookable'],
+    ['no_session', 'sessionUnavailable'],
+  ] as const)('reports a %s refusal as %s, not the generic error', async (error, key) => {
+    vi.mocked(ownerAddBookingAction).mockResolvedValue({ ok: false, error });
     render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" multisportEnabled />);
 
     fireEvent.click(screen.getByRole('button', { name: 'pick-member' }));
@@ -343,8 +354,22 @@ describe('BookingsRoster MultiSport toggle', () => {
     if (!form) throw new Error('add form not found');
     fireEvent.submit(form);
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('sessionFull'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(key));
     expect(toast.error).not.toHaveBeenCalledWith('actionError');
+  });
+
+  // The complement, and the reason the map is consulted rather than the result trusted: a
+  // refusal with no `error` is the schema-validation case, which has nothing to report.
+  it('falls back to the generic error when the refusal carries no name', async () => {
+    vi.mocked(ownerAddBookingAction).mockResolvedValue({ ok: false });
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" multisportEnabled />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick-member' }));
+    const form = screen.getByRole('button', { name: 'add' }).closest('form');
+    if (!form) throw new Error('add form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('actionError'));
   });
 
   // The `next-intl` mock at the top of this file echoes key names, so every assertion
@@ -352,7 +377,10 @@ describe('BookingsRoster MultiSport toggle', () => {
   // missing-message warning where the toast text belongs. The parity test compares the
   // two locales to each other and cannot see a key that is absent from both.
   it.each([['tr', tr], ['en', en]] as const)('%s carries the add-form refusal keys', (_locale, messages) => {
-    const keys = ['sessionFull', 'multisportDisabled'] as const;
+    const keys = [
+      'sessionFull', 'multisportDisabled', 'alreadyInSlot',
+      'multisportDayTaken', 'notBookable', 'sessionUnavailable',
+    ] as const;
     expect(keys.filter((key) => !messages.manage.bookings[key])).toEqual([]);
   });
 });

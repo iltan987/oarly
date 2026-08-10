@@ -331,6 +331,26 @@ function AddMemberForm({ session, slug, multisportEnabled, onSubmitted }: {
   );
 }
 
+/**
+ * Refusal -> `manage.bookings` message key. Typed as a total `Record` over the action's
+ * error union on purpose: add a refusal to `ownerAddBooking` and this stops compiling until
+ * it has copy, which is what stops the next one silently inheriting the generic toast the
+ * way `session_full` and `already_booked_this_slot` both did.
+ *
+ * None of these copy strings offers the owner an action the product cannot perform. In
+ * particular `already_booked_this_slot` — which a waitlisted member standing on the dock
+ * now reliably produces — reports the state and stops there: there is no way to promote
+ * them from this form, and pretending otherwise would be worse than saying nothing.
+ */
+const ADD_ERROR_KEYS: Record<NonNullable<Extract<OwnerAddActionResult, { ok: false }>['error']>, string> = {
+  already_booked_this_slot: 'alreadyInSlot',
+  multisport_day_taken: 'multisportDayTaken',
+  multisport_disabled: 'multisportDisabled',
+  no_session: 'sessionUnavailable',
+  not_a_member: 'notBookable',
+  session_full: 'sessionFull',
+};
+
 function AddMemberFields({ session, slug, multisportEnabled, onSubmitted, onAdded }: {
   session: RosterSession; slug: string; multisportEnabled: boolean;
   onSubmitted: (member: MemberHit) => void;
@@ -358,15 +378,12 @@ function AddMemberFields({ session, slug, multisportEnabled, onSubmitted, onAdde
     if (result.ok) {
       toast.success(t('added'));
       onAdded();
-    } else if (result.error === 'multisport_disabled') {
-      toast.error(t('multisportDisabled'));
-    } else if (result.error === 'session_full') {
-      // Still reachable with the seat count fixed: two owners adding into the last seat
-      // at once, or a member booking it while this page sat open. The owner's next move
-      // is a refresh, so say that instead of the generic "something went wrong".
-      toast.error(t('sessionFull'));
     } else {
-      toast.error(tm('actionError'));
+      // Every named refusal has copy; the generic toast is left for the one case that is
+      // not a state of the club at all — a submission that failed schema validation, which
+      // carries no `error`.
+      const key = result.error && ADD_ERROR_KEYS[result.error];
+      toast.error(key ? t(key) : tm('actionError'));
     }
   }
 
