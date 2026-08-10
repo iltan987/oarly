@@ -1,9 +1,22 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ConfirmDialog } from './confirm-dialog';
+
+/**
+ * React entangles in-flight async actions on a module-global lane, so a promise left
+ * unresolved when a test ends blocks state updates in every LATER test in this file — and
+ * it survives React Testing Library's per-test unmount, turning one real failure into a
+ * cascade of unrelated ones. Tests that defer an action push their resolver here as well
+ * as calling it themselves; resolving twice is a no-op, so the net is free.
+ */
+const pendingResolvers: Array<() => void> = [];
+
+afterEach(() => {
+  pendingResolvers.splice(0).forEach((r) => r());
+});
 
 /**
  * Every label is a REQUIRED prop with no default, so "a missing label is a type error" is
@@ -22,7 +35,7 @@ function Harness({
   confirmLabel = 'Give up my seat',
   startOpen = true,
 }: {
-  action?: (formData: FormData) => void;
+  action?: (formData: FormData) => void | Promise<void>;
   onSubmit?: () => void;
   hidden?: Record<string, string>;
   children?: React.ReactNode;
@@ -136,6 +149,86 @@ describe('ConfirmDialog', () => {
     const data = action.mock.calls[0][0];
     expect(data.get('bookingId')).toBe('b1');
     expect(data.get('note')).toBe('because');
+  });
+
+  /**
+   * `DialogContent`'s X button's ONLY accessible name is a hardcoded English "Close"
+   * (`ui/dialog.tsx:75`), in a directory that is CLI-owned and cannot be hand-translated.
+   * On a Turkish-default app that is the one English word in the flow, and it is on the
+   * dialog that can cost a member their seat. `showCloseButton={false}` is the fix that
+   * needs no `ui/` edit — asserted by NAME, so it fails the moment the control returns.
+   */
+  it('ships no English "Close" control into a translated dialog', () => {
+    render(<Harness />);
+
+    expect(screen.queryByRole('button', { name: /close/i })).not.toBeInTheDocument();
+    // Nothing else on the dialog carries the word either — the sr-only span is inside the
+    // button, so a name query alone would miss a stray copy of it elsewhere.
+    expect(screen.queryByText('Close')).not.toBeInTheDocument();
+    // …and the two translated controls are still both there, so "no Close button" is not
+    // being satisfied by a dialog that rendered no footer at all.
+    expect(screen.getByRole('button', { name: 'Keep my seat' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Give up my seat' })).toBeInTheDocument();
+  });
+
+  /**
+   * `DialogFooter` is `flex-col-reverse` below `sm:`, so the FIRST DOM child renders at the
+   * bottom of the stacked mobile layout and the last renders on top. The destructive button
+   * must therefore come first in the DOM, or a phone puts it directly under the body text —
+   * the first control the eye and thumb reach after reading what is about to happen.
+   *
+   * jsdom computes no layout, so this asserts the two halves that decide it: document order,
+   * and the `sm:order-*` classes that put the row back into dismiss-left / confirm-right at
+   * desktop widths. The rendered stack itself was checked in Chrome at 320px.
+   */
+  it('puts the destructive control first in the DOM, so the stacked mobile footer offers the safe one first', () => {
+    render(<Harness />);
+
+    const confirm = screen.getByRole('button', { name: 'Give up my seat' });
+    const dismiss = screen.getByRole('button', { name: 'Keep my seat' });
+    expect(confirm.compareDocumentPosition(dismiss) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The desktop half. Without these the swap above would also reverse the horizontal row.
+    expect(confirm).toHaveClass('sm:order-2');
+    expect(dismiss).toHaveClass('sm:order-1');
+  });
+
+  /**
+   * The body sentence is the whole justification for the extra tap, and a bare `<p>`
+   * registers no id — the popup's `aria-describedby` comes back `undefined` and a screen
+   * reader announces the title alone. Asserted by FOLLOWING the reference to the element it
+   * names, not by checking the attribute exists: an id pointing at nothing would satisfy the
+   * weaker assertion and read the same as no description at all.
+   */
+  it('wires the description into the popup\'s accessible description', () => {
+    render(<Harness />);
+
+    const popup = document.querySelector('[data-slot="dialog-content"]');
+    expect(popup).not.toBeNull();
+    const describedBy = popup!.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveTextContent('Your seat goes to the first person waiting.');
+  });
+
+  /**
+   * "Keep my seat" is a promise, and once the confirm is dispatched it is already false —
+   * the seat is going. A control that offers to undo what it cannot must not be clickable.
+   *
+   * The deferred action is drained by the module-level `afterEach`: an unresolved promise
+   * left behind blocks React's shared transition lane and turns one real failure into
+   * several bogus ones in later tests.
+   */
+  it('disables the dismiss control once the confirm is in flight', async () => {
+    let resolve: (() => void) | undefined;
+    const action = vi.fn(() => new Promise<void>((r) => { resolve = r; pendingResolvers.push(r); }));
+    render(<Harness action={action} />);
+
+    const form = screen.getByRole('button', { name: 'Give up my seat' }).closest('form');
+    if (!form) throw new Error('confirm form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Keep my seat' })).toBeDisabled());
+
+    resolve?.();
   });
 
   it('does not dispatch the action when the dismiss control is used', () => {

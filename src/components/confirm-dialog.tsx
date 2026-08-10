@@ -1,10 +1,11 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useFormStatus } from 'react-dom';
 
 import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 /**
  * The one "are you sure?" in this codebase.
@@ -86,7 +87,17 @@ export function ConfirmDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      {/*
+        `showCloseButton={false}`, and this is a copy decision rather than a layout one.
+        `DialogContent`'s X button carries a hardcoded English `<span className="sr-only">
+        Close</span>` (`ui/dialog.tsx:75`) — it lives in the CLI-owned `ui/` directory and
+        cannot be hand-translated, so on a Turkish-default app it is one English word in
+        the middle of a Turkish flow, and it is the ONLY accessible name that control has.
+        A confirmation already carries an explicit, translated dismiss control, so the X
+        was redundant before it was wrong: nothing is lost by removing it, and Escape and
+        the backdrop still close the dialog.
+      */}
+      <DialogContent showCloseButton={false}>
         {open && (
           <form action={action} onSubmit={onSubmit} className="flex flex-col gap-4">
             {Object.entries(hidden ?? {}).map(([name, value]) => (
@@ -95,15 +106,68 @@ export function ConfirmDialog({
             <DialogHeader>
               <DialogTitle>{title}</DialogTitle>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground">{description}</p>
+            {/*
+              `DialogDescription`, not a bare `<p>`. Base UI registers this element's id on
+              the popup's `aria-describedby`; a plain paragraph leaves it `undefined`, so a
+              screen reader announces the title and never the sentence — and on the cancel
+              gate that sentence is the entire justification for the extra tap. The visual
+              result is identical: the primitive's class list is the one this used to spell
+              out by hand.
+            */}
+            <DialogDescription>{description}</DialogDescription>
             {children}
+            {/*
+              Confirm FIRST in the DOM, dismiss second, with the desktop order restored by
+              `sm:order-*`.
+
+              `DialogFooter` is `flex-col-reverse` below `sm:` (`ui/dialog.tsx:105`), so the
+              first child renders at the BOTTOM of the stack and the last at the top. With
+              the intuitive [dismiss, confirm] order that put the destructive button
+              directly under the body text — the first control a member's eye and thumb
+              reach after reading what is about to happen, on the one dialog that can cost
+              them a seat. Reversed, the safe choice is what they meet first.
+
+              At `sm:` and up the row is horizontal and the convention is dismiss-left /
+              confirm-right, which `sm:order-1` / `sm:order-2` restores — so desktop is
+              unchanged. jsdom has no layout, so `confirm-dialog.test.tsx` can only assert
+              the DOM order and the two order classes; the rendered stack itself was
+              checked in Chrome at 320px.
+            */}
             <DialogFooter>
-              <DialogClose render={<Button type="button" variant="ghost" />}>{dismissLabel}</DialogClose>
-              <PendingButton variant={destructive ? 'destructive' : 'default'}>{confirmLabel}</PendingButton>
+              <PendingButton className="sm:order-2" variant={destructive ? 'destructive' : 'default'}>{confirmLabel}</PendingButton>
+              <DismissButton>{dismissLabel}</DismissButton>
             </DialogFooter>
           </form>
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The dismiss control, split out only so it can read `useFormStatus()` — which is scoped
+ * to the nearest ancestor `<form>` and therefore has to be called from a component INSIDE
+ * the one above.
+ *
+ * It is disabled once the confirm is in flight, and that is about meaning rather than
+ * double submission. This button's label is a promise — "Yerimi koru" / "Keep my seat" —
+ * and the moment the action is dispatched that promise is already false: the seat is
+ * going. A control that claims to undo something it cannot is worse than no control.
+ *
+ * Escape and the backdrop are deliberately NOT blocked. They promise nothing except "get
+ * this out of my way", and blocking every exit would trap a member behind a request that
+ * never settles. The caller is expected to keep its own trigger disabled for the round
+ * trip so a dialog dismissed mid-flight still leaves the work visible — `CancelButton` in
+ * `bookings-list.tsx` does exactly that, and its test is what enforces it.
+ *
+ * No `pending` prop: a caller that forgot to pass it would silently get the lying button
+ * back, and `useFormStatus` cannot be forgotten.
+ */
+function DismissButton({ children }: { children: ReactNode }) {
+  const { pending } = useFormStatus();
+  return (
+    <DialogClose render={<Button type="button" variant="ghost" className="sm:order-1" disabled={pending} />}>
+      {children}
+    </DialogClose>
   );
 }
