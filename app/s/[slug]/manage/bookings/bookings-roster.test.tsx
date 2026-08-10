@@ -257,6 +257,32 @@ describe('BookingsRoster add flow', () => {
     resolve?.({ ok: true });
     await waitFor(() => expect(screen.queryByText('Charlie')).not.toBeInTheDocument());
   });
+
+  /**
+   * A form that can only refuse.
+   *
+   * `ownerAddBooking` targets `foc.sessions.filter(… s.status === 'open')` and returns
+   * `no_session` when that filter is empty (`src/lib/booking.ts:391-392`), so on a closed
+   * or cancelled session the add form is not a race — it is DETERMINISTICALLY a refusal,
+   * every time, for every member the owner picks.
+   *
+   * Not covered by the `closed` prop: that is the DAY's flag, and a day can be open while
+   * one session on it is cancelled. The `freeSeats: 1` in each case is what makes this
+   * reachable at all — a cancelled session's seats read as free.
+   *
+   * The `open` case is asserted alongside on purpose: without it a gate that hid the form
+   * unconditionally would pass this test, and hiding the form on every session is the
+   * worse failure of the two.
+   */
+  it.each(['closed', 'cancelled'] as const)('offers no add form on a %s session with free seats', (status) => {
+    render(<BookingsRoster slug="club" sessions={[makeSession({ status, freeSeats: 1 })]} timezone="UTC" multisportEnabled />);
+    expect(screen.queryByRole('button', { name: 'add' })).not.toBeInTheDocument();
+  });
+
+  it('still offers it on an open session with free seats', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession({ status: 'open', freeSeats: 1 })]} timezone="UTC" multisportEnabled />);
+    expect(screen.getByRole('button', { name: 'add' })).toBeInTheDocument();
+  });
 });
 
 describe('BookingsRoster MultiSport toggle', () => {

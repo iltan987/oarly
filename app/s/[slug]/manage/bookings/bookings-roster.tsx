@@ -222,7 +222,16 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
                 </ul>
               )}
 
-              {!closed && s.freeSeats > 0 && s.windowId && (
+              {/*
+                `s.status === 'open'` is not redundant with `!closed`: `closed` is the
+                DAY's flag, and a single session can be closed or cancelled on an open
+                day. `ownerAddBooking` filters to `status === 'open'` sessions
+                (`src/lib/booking.ts:391`) and refuses with `no_session` when none is
+                left, so without this the owner is shown an add form on a cancelled
+                session that can only ever refuse. The `sessionUnavailable` copy stays —
+                a page held open while someone else cancels the session still reaches it.
+              */}
+              {!closed && s.status === 'open' && s.freeSeats > 0 && s.windowId && (
                 <AddMemberForm
                   session={s}
                   slug={slug}
