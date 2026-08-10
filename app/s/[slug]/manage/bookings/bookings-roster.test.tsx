@@ -2,6 +2,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import en from '../../../../../messages/en.json';
+import tr from '../../../../../messages/tr.json';
+
 // The translation keys are asserted on directly (with interpolated values appended)
 // rather than resolved through real message files — this test is about wiring, not copy.
 // `useFormatter` is stubbed to report WHICH shape it was asked for rather than a date, so
@@ -325,6 +328,32 @@ describe('BookingsRoster MultiSport toggle', () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('multisportDisabled'));
     expect(toast.error).not.toHaveBeenCalledWith('actionError');
+  });
+
+  // The seat count in `ownerAddBooking` no longer disagrees with the `freeSeats` this
+  // form is rendered from, but `session_full` stays reachable — two owners adding into
+  // the last seat at once. "Refresh" is something the owner can act on; the generic
+  // toast is indistinguishable from a bug.
+  it('reports a full session with its own message, not the generic error', async () => {
+    vi.mocked(ownerAddBookingAction).mockResolvedValue({ ok: false, error: 'session_full' });
+    render(<BookingsRoster slug="club" sessions={[makeSession({ freeSeats: 1 })]} timezone="UTC" multisportEnabled />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick-member' }));
+    const form = screen.getByRole('button', { name: 'add' }).closest('form');
+    if (!form) throw new Error('add form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('sessionFull'));
+    expect(toast.error).not.toHaveBeenCalledWith('actionError');
+  });
+
+  // The `next-intl` mock at the top of this file echoes key names, so every assertion
+  // above is satisfied by a key that exists in NEITHER catalog — it would ship as a
+  // missing-message warning where the toast text belongs. The parity test compares the
+  // two locales to each other and cannot see a key that is absent from both.
+  it.each([['tr', tr], ['en', en]] as const)('%s carries the add-form refusal keys', (_locale, messages) => {
+    const keys = ['sessionFull', 'multisportDisabled'] as const;
+    expect(keys.filter((key) => !messages.manage.bookings[key])).toEqual([]);
   });
 });
 

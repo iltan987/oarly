@@ -360,6 +360,11 @@ function AddMemberFields({ session, slug, multisportEnabled, onSubmitted, onAdde
       onAdded();
     } else if (result.error === 'multisport_disabled') {
       toast.error(t('multisportDisabled'));
+    } else if (result.error === 'session_full') {
+      // Still reachable with the seat count fixed: two owners adding into the last seat
+      // at once, or a member booking it while this page sat open. The owner's next move
+      // is a refresh, so say that instead of the generic "something went wrong".
+      toast.error(t('sessionFull'));
     } else {
       toast.error(tm('actionError'));
     }

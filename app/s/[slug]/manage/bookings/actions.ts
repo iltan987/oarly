@@ -51,8 +51,12 @@ export async function searchClubMembersAction(slug: string, query: string): Prom
 
 /** Richer than ManageActionResult so the toast can distinguish a benign already-removed race from a generic error. */
 export type RemoveActionResult = { ok: true } | { ok: false; error?: 'not_active' };
-/** Richer than ManageActionResult so the toast can call out a MultiSport add rejected by a disabled club. */
-export type OwnerAddActionResult = { ok: true } | { ok: false; error?: 'multisport_disabled' };
+/**
+ * Richer than ManageActionResult so the toast can call out a MultiSport add rejected by a
+ * disabled club, and a boat that filled up between the page render and the submit — the
+ * one refusal the owner can actually act on ("refresh"), rather than a generic failure.
+ */
+export type OwnerAddActionResult = { ok: true } | { ok: false; error?: 'multisport_disabled' | 'session_full' };
 
 const removeSchema = z.object({ bookingId: z.uuid() });
 const addSchema = z.object({
@@ -91,7 +95,11 @@ export async function ownerAddBookingAction(slug: string, _prev: OwnerAddActionR
   });
   if (!parsed.success) return { ok: false };
   const result = await ownerAddBooking(db, { clubId: club.id, windowId: parsed.data.windowId, boatTypeId: parsed.data.boatTypeId, startAt: new Date(parsed.data.startAt), userId: parsed.data.userId, paymentType: parsed.data.paymentType, actorId: user.id });
-  if (!result.ok) return result.error === 'multisport_disabled' ? { ok: false, error: 'multisport_disabled' } : { ok: false };
+  if (!result.ok) {
+    if (result.error === 'multisport_disabled') return { ok: false, error: 'multisport_disabled' };
+    if (result.error === 'session_full') return { ok: false, error: 'session_full' };
+    return { ok: false };
+  }
   revalidatePath(`/s/${slug}/manage/bookings`);
   revalidatePath(`/s/${slug}/book`);
   revalidatePath(`/s/${slug}/bookings`);

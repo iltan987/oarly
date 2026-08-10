@@ -593,6 +593,7 @@
       "confirmRemoveCta": "Rezervasyonu kaldır",
       "added": "Üye eklendi.",
       "multisportDisabled": "Bu kulüpte MultiSport kapalı — bu üyeyi nakit ile ekleyin.",
+      "sessionFull": "Bu teknede boş yer kalmamış — sayfayı yenileyip tekrar bakın.",
       "markAbsent": "Katılmadı",
       "undoAbsent": "Geri al",
       "absent": "Katılmadı",
