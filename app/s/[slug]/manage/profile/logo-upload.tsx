@@ -6,21 +6,12 @@ import { buttonVariants } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
-/**
- * `url` is owned by `ProfileForm`, not by this component, because this component lives
- * INSIDE the keyed `<form>` and that form remounts on both a successful save and a refused
- * one. Local state here would be re-seeded from `club.logoUrl` on every remount — and
- * since an upload persists WITHOUT revalidating the route (see `persist` below), that prop
- * is stale by exactly the change the owner just made. The next save would then write the
- * old logo back. Holding it one level up, in the component that never remounts, is what
- * keeps the persisted logo and the hidden field agreeing.
- */
-export function LogoUpload({ slug, url, onUrlChange, labels }: {
+export function LogoUpload({ slug, initialUrl, labels }: {
   slug: string;
-  url: string;
-  onUrlChange: (url: string) => void;
+  initialUrl: string | null;
   labels: { logo: string; logoUpload: string; logoUploading: string; logoError: string; logoRemove: string };
 }) {
+  const [url, setUrl] = useState(initialUrl ?? '');
   // Separate flags rather than one shared flag: with a single one an in-flight
   // upload also spins the Remove button, which reads as "removal in progress" when
   // nothing of the sort is happening. Both controls still DISABLE for either
@@ -31,7 +22,7 @@ export function LogoUpload({ slug, url, onUrlChange, labels }: {
 
   // Persist immediately so the logo sticks without a separate profile Save.
   // Plain fetch (not a server action) avoids refreshing the route and remounting
-  // the profile form, which would reset every uncontrolled field to its defaultValue.
+  // the profile form, which would drop any unsaved text edits.
   async function persist(nextUrl: string) {
     const res = await fetch('/api/club-logo/save', {
       method: 'POST',
@@ -53,7 +44,7 @@ export function LogoUpload({ slug, url, onUrlChange, labels }: {
         clientPayload: slug,
       });
       await persist(blob.url);
-      onUrlChange(blob.url);
+      setUrl(blob.url);
     } catch {
       setError(true);
     } finally {
@@ -66,7 +57,7 @@ export function LogoUpload({ slug, url, onUrlChange, labels }: {
     setError(false);
     try {
       await persist('');
-      onUrlChange('');
+      setUrl('');
     } catch {
       setError(true);
     } finally {

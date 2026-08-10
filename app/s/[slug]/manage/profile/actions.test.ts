@@ -52,20 +52,16 @@ describe('saveProfileAction', () => {
   });
 
   /**
-   * The refusal contract `profile-form.tsx` depends on. React 19 resets an uncontrolled
-   * form after ANY completed form action, so unless the refused values come BACK the owner
-   * watches a rewritten description revert to the stored one. Untrimmed, so what they get
-   * back is what they have in front of them; `attempt` increments so the form's remount key
-   * moves on every consecutive refusal (`club.updatedAt` cannot — nothing was persisted).
+   * The refusal contract `profile-form.tsx` depends on. React 19 resets an uncontrolled form
+   * after ANY completed form action, so unless the refused values come BACK the owner watches
+   * a rewritten description revert to the stored one. Untrimmed, so what they get back is
+   * what they have in front of them.
    */
   it('hands the submitted values back when the payload is refused', async () => {
     const submitted = { ...VALID, name: '  ', description: '  a rewritten description  ' };
 
-    const first = await saveProfileAction('demo', null, form(submitted));
-
-    expect(first).toEqual({
+    expect(await saveProfileAction('demo', null, form(submitted))).toEqual({
       ok: false,
-      attempt: 1,
       values: {
         name: '  ',
         tagline: 'sa',
@@ -76,9 +72,6 @@ describe('saveProfileAction', () => {
     });
     expect(updateClubProfile).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
-
-    expect(await saveProfileAction('demo', first, form(submitted)))
-      .toMatchObject({ ok: false, attempt: 2 });
   });
 
   // The write itself failing (a deleted club) is a refusal too, and owes the same echo.
@@ -87,17 +80,11 @@ describe('saveProfileAction', () => {
 
     expect(await saveProfileAction('demo', null, form(VALID))).toEqual({
       ok: false,
-      attempt: 1,
       values: {
         name: 'Demo Kürek', tagline: 'sa', description: 'stored description',
         phone: '+905550001122', brandAccent: '#2563eb',
       },
     });
     expect(revalidatePath).not.toHaveBeenCalled();
-  });
-
-  it('starts the attempt count from a previous success', async () => {
-    expect(await saveProfileAction('demo', { ok: true }, form({ ...VALID, name: 'x' })))
-      .toMatchObject({ ok: false, attempt: 1 });
   });
 });

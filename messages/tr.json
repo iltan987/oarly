@@ -203,6 +203,7 @@
     "save": "Kaydet",
     "saved": "Bilgilerin güncellendi.",
     "errorInvalid": "Bilgileri kontrol edip tekrar dene.",
+    "errorFieldInvalid": "Bu alanı kontrol et.",
     "errorTooManyRequests": "Çok fazla değişiklik yaptın. Lütfen biraz bekleyip tekrar dene."
   },
   "privacy": {

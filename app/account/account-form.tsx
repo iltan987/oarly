@@ -42,15 +42,18 @@ export type AccountProfile = {
 /**
  * Message keys per option value, so the option list is driven by the schema's own
  * constants and a value added there cannot silently render without a label.
+ *
+ * Exported so `account-form.test.tsx` can require them to resolve in the real catalogues:
+ * they are the only keys this file renders that a source scan for `t('...')` cannot see.
  */
-const GENDER_LABEL_KEYS: Record<(typeof GENDER_OPTIONS)[number], string> = {
+export const GENDER_LABEL_KEYS: Record<(typeof GENDER_OPTIONS)[number], string> = {
   female: 'genderFemale',
   male: 'genderMale',
   other: 'genderOther',
   prefer_not_to_say: 'genderPreferNotToSay',
 };
 
-const PAYMENT_LABEL_KEYS: Record<(typeof PAYMENT_TYPES)[number], string> = {
+export const PAYMENT_LABEL_KEYS: Record<(typeof PAYMENT_TYPES)[number], string> = {
   regular: 'paymentRegular',
   multisport: 'paymentMultisport',
 };
@@ -61,30 +64,29 @@ const PAYMENT_LABEL_KEYS: Record<(typeof PAYMENT_TYPES)[number], string> = {
  * works before (and without) hydration, and the toast effect lives in this stable
  * component rather than inside the keyed `<form>` below.
  *
- * The remount key reproduces that file's reasoning exactly, in both of its halves.
+ * `key={profile.updatedAt.getTime()}` reproduces that file's reasoning, and it is about the
+ * SUCCESS path only. `user.updatedAt` carries `$onUpdate` (`src/db/schema/auth.ts`), so a
+ * successful save revalidates this route and re-feeds the just-saved values as new
+ * `defaultValue`s on live uncontrolled inputs; re-keying remounts them with fresh defaults
+ * instead, and only then — the timestamp moves when the row is persisted, never while typing.
  *
- * `profile.updatedAt` is the SUCCESS half. `user.updatedAt` carries `$onUpdate`
- * (`src/db/schema/auth.ts`), so a successful save revalidates this route and re-feeds the
- * just-saved values as new `defaultValue`s on live uncontrolled inputs — which Base UI
- * warns about ("A component is changing the default value state of an uncontrolled input
- * after being initialized"). Re-keying remounts them with fresh defaults after each save,
- * and ONLY then: the timestamp moves when the row is persisted, never while typing.
+ * A REFUSED save is a different problem with a different fix. React 19 resets an uncontrolled
+ * form after ANY completed form action, success or failure: `<form action>` schedules the
+ * reset before the action even runs (react-dom 19.2.8, `startHostTransition` ->
+ * `requestFormReset`) and it lands as a native `.reset()` on the form node. Measured in a
+ * browser on this page — a whitespace-only `firstName` passes `required`, `saveAccountAction`
+ * trims it to `''`, `accountProfileSchema` refuses it, and the field snapped back to the
+ * stored name on the same `<form>` DOM node with a `reset` event fired on it.
  *
- * `state.attempt` is the REFUSAL half, and it exists because React 19 resets an
- * uncontrolled form after ANY completed form action, success or failure — `<form action>`
- * schedules the reset before the action even runs (react-dom 19.2.8,
- * `startHostTransition` → `requestFormReset`), and it lands as a native `.reset()` on the
- * form node. Without it a refused save silently reverted every field to the stored row.
- * Measured in a browser on this page: a whitespace-only `firstName` passes `required`,
- * `saveAccountAction` trims it to `''` and `accountProfileSchema` refuses it — and the
- * field snapped back to the stored name on the SAME `<form>` DOM node, with a `reset`
- * event fired on it. (The same run on a successful save replaced the node instead, and the
- * field showed the typed text only because the revalidation had re-fed it — the identical
- * screen, a different cause, and not this bug.)
- *
- * A refusal never revalidates, so `updatedAt` cannot move and cannot carry that remount;
- * `attempt` increments on each refusal instead, and the defaults it remounts with are
- * `state.values` — what the member just submitted — rather than the stored row.
+ * `state.values` is the whole fix: the refused values become the inputs' new `defaultValue`,
+ * React writes that to the value attribute during the mutation phase, and the reset that
+ * follows in the same commit restores them. The form deliberately does NOT remount on a
+ * refusal — that would destroy the focused node and drop a keyboard or screen-reader user
+ * back to `<body>` on every retry. The cost of not remounting is a Base UI DEV-ONLY warning
+ * ("A component is changing the default value state of an uncontrolled FieldControl after
+ * being initialized"), which is accepted: `@base-ui/utils/useControlled.js:25` guards the
+ * check with `process.env.NODE_ENV !== 'production'` and `@base-ui/utils/error.js:9-19`
+ * no-ops there, so it does not exist in a production build.
  *
  * The values come back FROM THE SERVER rather than being snapshotted here because
  * `action={formAction}` on uncontrolled inputs is what makes this form work before
@@ -123,7 +125,17 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
   const invalid = state !== null && !state.ok && state.reason === 'invalid';
 
   const rejected = state !== null && !state.ok ? state.values : null;
-  const formKey = `${profile.updatedAt.getTime()}:${state !== null && !state.ok ? state.attempt : 0}`;
+
+  /**
+   * Which inputs the server actually objected to, from the zod issue paths. `invalid` is
+   * reachable by ordinary typing (a whitespace-only name is trimmed to `''` server-side),
+   * and it is reachable indefinitely for any member whose stored name or phone predates
+   * `signUpSchema`'s length bounds — `maxLength` does not truncate an already-too-long
+   * value, so every save is refused until they shorten it. A form-level "check the fields"
+   * would never tell them which one.
+   */
+  const badFields = state !== null && !state.ok ? (state.fields ?? []) : [];
+  const bad = (name: string) => badFields.includes(name);
 
   /*
    * The two closed sets are echoed back only if the refused value is actually one of the
@@ -142,24 +154,27 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
       : null;
 
   return (
-    <form key={formKey} action={formAction} className="flex flex-col gap-5">
+    <form key={profile.updatedAt.getTime()} action={formAction} className="flex flex-col gap-5">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field>
+        <Field data-invalid={bad('firstName')}>
           <FieldLabel htmlFor="firstName">{t('firstName')}</FieldLabel>
           <Input id="firstName" name="firstName" autoComplete="given-name" required maxLength={80}
-            defaultValue={rejected?.firstName ?? profile.firstName} />
+            aria-invalid={bad('firstName')} defaultValue={rejected?.firstName ?? profile.firstName} />
+          {bad('firstName') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
         </Field>
-        <Field>
+        <Field data-invalid={bad('lastName')}>
           <FieldLabel htmlFor="lastName">{t('lastName')}</FieldLabel>
           <Input id="lastName" name="lastName" autoComplete="family-name" required maxLength={80}
-            defaultValue={rejected?.lastName ?? profile.lastName} />
+            aria-invalid={bad('lastName')} defaultValue={rejected?.lastName ?? profile.lastName} />
+          {bad('lastName') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
         </Field>
       </div>
 
-      <Field>
+      <Field data-invalid={bad('phone')}>
         <FieldLabel htmlFor="phone">{t('phone')}</FieldLabel>
         <Input id="phone" name="phone" type="tel" autoComplete="tel" required maxLength={40}
-          defaultValue={rejected?.phone ?? profile.phone} />
+          aria-invalid={bad('phone')} defaultValue={rejected?.phone ?? profile.phone} />
+        {bad('phone') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
       </Field>
 
       {/*
@@ -184,10 +199,12 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
         empty field here is the truth, not a missing default. Submitting it empty sends ''
         and clears the column.
       */}
-      <Field>
+      <Field data-invalid={bad('birthday')}>
         <FieldLabel htmlFor="birthday">{t('birthday')}</FieldLabel>
-        <Input id="birthday" name="birthday" type="date" defaultValue={rejected?.birthday ?? profile.birthday} />
+        <Input id="birthday" name="birthday" type="date" aria-invalid={bad('birthday')}
+          defaultValue={rejected?.birthday ?? profile.birthday} />
         <FieldDescription>{t('birthdayDescription')}</FieldDescription>
+        {bad('birthday') && <FieldError>{t('errorFieldInvalid')}</FieldError>}
       </Field>
 
       {/*
@@ -264,12 +281,13 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
       </FieldSet>
 
       {/*
-        Form-level, not per-field, and deliberately so: `AccountActionResult` carries a
-        REASON and no field list, because every field here is also constrained natively
-        (`required`, `type="date"`, the two closed option sets), so a server refusal means
-        the payload was hand-crafted or the browser was bypassed — there is no honest way to
-        attribute it to one input. Inventing a field name would point the member at a field
-        that may be perfectly fine.
+        Kept alongside the per-field errors above rather than replaced by them. The
+        per-field markers come from `state.fields` (the zod issue paths), which is only
+        populated for `invalid`; this line is what remains visible if a future refusal
+        arrives without a usable path, and it is also the summary a member sees without
+        having to scan the form. The earlier claim here — that a refusal "means the payload
+        was hand-crafted", so no field could honestly be named — was wrong: `required` is
+        satisfied by whitespace, which this action trims to `''` and the schema refuses.
       */}
       {invalid ? <FieldError>{t('errorInvalid')}</FieldError> : null}
 

@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { nextCookies } from 'better-auth/next-js';
+import * as z from 'zod';
 
 import { db } from '@/db';
 import * as schema from '@/db/schema';
@@ -14,6 +15,7 @@ import {
 } from '@/lib/auth-rate-limit';
 import { recordSignupConsent } from '@/lib/consent';
 import { sendEmail } from '@/lib/email';
+import { GENDER_OPTIONS, PAYMENT_TYPES } from '@/lib/schemas';
 
 /**
  * Derived here rather than in `src/env.ts` because that module is imported by a client
@@ -90,13 +92,42 @@ export const auth = betterAuth({
   },
 
   user: {
+    /*
+     * `validator.input` is where these columns are actually bounded, and it is the only
+     * place that binds every writer.
+     *
+     * `src/lib/schemas.ts` is the CLIENT's mirror: `signUpSchema` reaches the browser as a
+     * zodResolver and never runs on the server, and `accountProfileSchema` only guards the
+     * `/account` server action. Neither is in the path of `POST /api/auth/sign-up/email`,
+     * `POST /api/auth/update-user`, or the Google profile mapping below — all three write
+     * these columns directly, and `first_name`/`last_name`/`phone` are `text`, so before
+     * this they took a value of any length and `gender` took any string at all.
+     *
+     * Better Auth 1.6.26 applies these: `parseInputData` (better-auth/dist/db/schema.mjs:78)
+     * runs `validator.input` through the Standard Schema interface and raises a 400
+     * VALIDATION_ERROR on a failure, and it is reached from `parseUserInput` on both sign-up
+     * (create) and update-user (update) and from
+     * `parseAdditionalUserInputFromProviderProfile` for the OAuth path. `undefined` skips
+     * validation, which is what keeps a partial `/update-user` working.
+     *
+     * The widths are `signUpSchema`'s, deliberately the same numbers — see that file for
+     * where they come from. Consequence worth knowing: a Google account whose `given_name`
+     * exceeds 80 characters is refused rather than truncated, because silently mangling
+     * someone's own name is the worse of the two failures.
+     *
+     * `gender` and `defaultPaymentType` are pinned to the same constant the UI renders from,
+     * so a crafted `/update-user` cannot put an unknown answer in a KVKK-sensitive column or
+     * a non-enum string in front of the `payment_type` pg enum. `.nullable()` on `gender`
+     * keeps "never answered" writable; `birthday` is a `date` field Better Auth already
+     * coerces.
+     */
     additionalFields: {
-      firstName: { type: 'string', required: false },
-      lastName: { type: 'string', required: false },
-      phone: { type: 'string', required: false },
+      firstName: { type: 'string', required: false, validator: { input: z.string().max(80) } },
+      lastName: { type: 'string', required: false, validator: { input: z.string().max(80) } },
+      phone: { type: 'string', required: false, validator: { input: z.string().max(40) } },
       birthday: { type: 'date', required: false },
-      gender: { type: 'string', required: false },
-      defaultPaymentType: { type: 'string', required: false, defaultValue: 'regular' },
+      gender: { type: 'string', required: false, validator: { input: z.enum(GENDER_OPTIONS).nullable() } },
+      defaultPaymentType: { type: 'string', required: false, defaultValue: 'regular', validator: { input: z.enum(PAYMENT_TYPES) } },
       locale: { type: 'string', required: false, defaultValue: 'tr' },
       theme: { type: 'string', required: false, defaultValue: 'system' },
       isAdmin: { type: 'boolean', required: false, defaultValue: false, input: false },

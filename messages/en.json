@@ -203,6 +203,7 @@
     "save": "Save",
     "saved": "Your details are updated.",
     "errorInvalid": "Check the fields and try again.",
+    "errorFieldInvalid": "Check this field.",
     "errorTooManyRequests": "You've made too many changes. Please wait a moment and try again."
   },
   "privacy": {

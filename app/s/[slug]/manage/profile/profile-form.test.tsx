@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Key-echo translations, this repo's component-test convention: the words are covered by
@@ -14,19 +15,22 @@ vi.mock('./actions', () => ({
 
 /**
  * A stub for the real `LogoUpload`, which pulls in `@vercel/blob/client` and talks to
- * `/api/club-logo/upload`. What this file needs from it is only its CONTRACT — a hidden
- * `logoUrl` field plus an `onUrlChange` the parent owns — which is exactly the part the
- * "logo survives a refusal" test is about.
+ * `/api/club-logo/upload`. It reproduces the two properties this file depends on: a hidden
+ * `logoUrl` field, and LOCAL state seeded once from `initialUrl` — which is what makes the
+ * "no remount" assertion meaningful, since a remount is exactly what would re-seed it.
  */
 vi.mock('./logo-upload', () => ({
-  LogoUpload: ({ url, onUrlChange }: { url: string; onUrlChange: (u: string) => void }) => (
-    <>
-      <input type="hidden" name="logoUrl" value={url} />
-      <button type="button" onClick={() => onUrlChange('https://blob.example/new.png')}>
-        fake-upload
-      </button>
-    </>
-  ),
+  LogoUpload: ({ initialUrl }: { initialUrl: string | null }) => {
+    const [url, setUrl] = React.useState(initialUrl ?? '');
+    return (
+      <>
+        <input type="hidden" name="logoUrl" value={url} />
+        <button type="button" onClick={() => setUrl('https://blob.example/new.png')}>
+          fake-upload
+        </button>
+      </>
+    );
+  },
 }));
 
 import { toast } from 'sonner';
@@ -51,9 +55,8 @@ const CLUB = {
  * `{ ok: false }` would be testing a contract the action does not have.
  */
 function refuseEchoingSubmission() {
-  vi.mocked(saveProfileAction).mockImplementation(async (_slug, prev: ProfileSaveResult | null, formData: FormData) => ({
+  vi.mocked(saveProfileAction).mockImplementation(async (_slug, _prev: ProfileSaveResult | null, formData: FormData) => ({
     ok: false as const,
-    attempt: (prev !== null && !prev.ok ? prev.attempt : 0) + 1,
     values: {
       name: String(formData.get('name') ?? ''),
       tagline: String(formData.get('tagline') ?? ''),
@@ -121,8 +124,9 @@ describe('ProfileForm', () => {
   });
 
   /**
-   * The case a boolean "was refused" flag in the key would not survive: the key has to
-   * change on EVERY refusal, or the second one does not remount and React's reset wins.
+   * A SECOND consecutive refusal has to keep the SECOND edit: `useActionState` hands back a
+   * fresh result object each time, so the new values become the new `defaultValue`s and the
+   * first refusal's echo must not stick.
    */
   it('keeps the edits across a second consecutive refusal', async () => {
     refuseEchoingSubmission();
@@ -139,41 +143,32 @@ describe('ProfileForm', () => {
   });
 
   /**
-   * `attempt` in the form key, pinned by the mechanism rather than by the value: measured in
-   * Chrome, the typed text survives a refusal even WITHOUT the remount, because React
-   * updates an uncontrolled input's `defaultValue` attribute before it calls `.reset()`.
-   * What does not survive is the console — that run logged "Base UI: A component is changing
-   * the default value state of an uncontrolled FieldControl after being initialized", which
-   * is the exact warning this form's remount key exists to avoid. Node identity rather than
-   * a console spy, because Base UI dedupes each warning globally for the process.
+   * The form must NOT remount on a refusal. Remounting also preserves the text — it was the
+   * first shape of this fix — but it destroys the focused node: measured in Chrome,
+   * `document.activeElement` went from the edited field to `<body>`, so a keyboard or
+   * screen-reader user was thrown to the top of the document on every retry. Re-rendering
+   * with new `defaultValue`s costs a Base UI DEV-ONLY warning instead
+   * (`@base-ui/utils/useControlled.js:25` guards it with
+   * `process.env.NODE_ENV !== 'production'`), which is the cheaper of the two.
+   *
+   * It also keeps `LogoUpload` mounted, which matters on its own: the logo persists through
+   * its own endpoint without revalidating, so `club.logoUrl` is stale from the moment of an
+   * upload, and a remount would seed the hidden field from it — silently rolling a
+   * just-uploaded logo back, for the next successful save to write.
    */
-  it('remounts the form on a refusal rather than re-defaulting a live input', async () => {
+  it('keeps the same form node on a refusal, so focus and the uploaded logo survive', async () => {
     refuseEchoingSubmission();
     const { container } = render(<ProfileForm slug="demo" club={CLUB} socials={[]} />);
     const before = container.querySelector('form');
+    const field = screen.getByLabelText('description');
 
-    fireEvent.change(screen.getByLabelText('description'), { target: { value: 'rewritten' } });
+    fireEvent.click(screen.getByText('fake-upload'));
+    fireEvent.change(field, { target: { value: 'rewritten' } });
     await submitProfile();
 
     expect(screen.getByLabelText('description')).toHaveValue('rewritten');
-    expect(container.querySelector('form')).not.toBe(before);
-  });
-
-  /**
-   * A logo persists through its own endpoint WITHOUT revalidating the route, so `club.logoUrl`
-   * is stale from that moment on. The refusal remount added above would therefore have rolled
-   * the hidden field back to the old URL — and the next successful save would have written it.
-   * The URL is held by `ProfileForm`, which never remounts, so it survives.
-   */
-  it('does not roll a just-uploaded logo back when a save is refused', async () => {
-    refuseEchoingSubmission();
-    const { container } = render(<ProfileForm slug="demo" club={CLUB} socials={[]} />);
-
-    fireEvent.click(screen.getByText('fake-upload'));
-    expect(container.querySelector('input[name="logoUrl"]')).toHaveValue('https://blob.example/new.png');
-
-    await submitProfile();
-    expect(toast.error).toHaveBeenCalled();
+    expect(container.querySelector('form')).toBe(before);
+    expect(screen.getByLabelText('description')).toBe(field);
     expect(container.querySelector('input[name="logoUrl"]')).toHaveValue('https://blob.example/new.png');
   });
 

@@ -19,25 +19,31 @@ import { updateUserProfile } from '@/lib/user-profile';
  */
 export type AccountActionResult =
   | { ok: true }
-  | { ok: false; reason: 'invalid' | 'rate_limited'; attempt: number; values: AccountFormValues };
+  | { ok: false; reason: 'invalid' | 'rate_limited'; values: AccountFormValues; fields?: readonly string[] };
 
 /**
  * The six fields the form submits, exactly as they were submitted — untrimmed, so a refused
  * save hands the member back the characters they have in front of them.
  *
- * `attempt` and `values` are what stop a refusal from discarding those characters. React 19
- * resets an uncontrolled form after ANY completed form action: `<form action>` schedules
- * the reset before the action even runs (react-dom 19.2.8, `startHostTransition` →
+ * `values` is what stops a refusal from discarding those characters. React 19 resets an
+ * uncontrolled form after ANY completed form action: `<form action>` schedules the reset
+ * before the action even runs (react-dom 19.2.8, `startHostTransition` ->
  * `requestFormReset`) and it lands as a native `.reset()` on the form node. Measured in a
  * browser on this exact form — a whitespace-only `firstName` passes `required`, this action
  * trims it to `''`, `accountProfileSchema` refuses it, and the field snapped back to the
- * stored name on the same DOM node with a `reset` event fired.
+ * stored name on the same DOM node with a `reset` event fired. Handing the values back makes
+ * them the inputs' new `defaultValue`, which React writes to the value attribute before that
+ * reset runs, so the reset restores them instead.
  *
  * Returned from the SERVER, not snapshotted in the client, so the pre-hydration path — where
  * the refusal is a full-page POST and the form is re-rendered server-side from this result —
- * preserves the edits too. `attempt` drives the form's remount key: a refusal never
- * revalidates, so `user.updatedAt` cannot move, and feeding a new `defaultValue` to a LIVE
- * uncontrolled input is exactly what Base UI warns about.
+ * preserves the edits too.
+ *
+ * `fields` carries the zod issue paths for an `invalid` refusal, so the form can say WHICH
+ * field is at fault. It matters most for a member whose stored `firstName`/`lastName`/`phone`
+ * predates the length bounds added to `signUpSchema`: `maxLength` does not truncate an
+ * already-too-long value, so every save from that account is refused until they shorten it,
+ * and a form-level "check the fields" would never tell them which one.
  */
 export type AccountFormValues = {
   firstName: string;
@@ -49,7 +55,7 @@ export type AccountFormValues = {
 };
 
 export async function saveAccountAction(
-  prev: AccountActionResult | null,
+  _prev: AccountActionResult | null,
   formData: FormData,
 ): Promise<AccountActionResult> {
   /*
@@ -72,12 +78,10 @@ export async function saveAccountAction(
     gender: String(formData.get('gender') ?? ''),
     defaultPaymentType: String(formData.get('defaultPaymentType') ?? ''),
   };
-  const refuse = (reason: 'invalid' | 'rate_limited'): AccountActionResult => ({
-    ok: false,
-    reason,
-    attempt: (prev !== null && !prev.ok ? prev.attempt : 0) + 1,
-    values: submitted,
-  });
+  const refuse = (reason: 'invalid' | 'rate_limited', fields?: readonly string[]): AccountActionResult =>
+    fields === undefined
+      ? { ok: false, reason, values: submitted }
+      : { ok: false, reason, values: submitted, fields };
 
   // Per-ACCOUNT, and above the parse for the reason `bookSeatAction` documents: an
   // exhausted caller must not cost us a validation pass or a DB round trip.
@@ -94,7 +98,12 @@ export async function saveAccountAction(
     gender: submitted.gender.trim(),
     defaultPaymentType: submitted.defaultPaymentType.trim(),
   });
-  if (!parsed.success) return refuse('invalid');
+  if (!parsed.success) {
+    // `issue.path[0]` is the field name for every rule in this schema — they are all
+    // top-level scalars, none nested — so this is the exact set of inputs to mark.
+    const fields = [...new Set(parsed.error.issues.map((issue) => String(issue.path[0])))];
+    return refuse('invalid', fields);
+  }
 
   const d = parsed.data;
   await updateUserProfile(db, user.id, {

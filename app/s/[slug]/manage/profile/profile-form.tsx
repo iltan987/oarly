@@ -19,17 +19,10 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
   const t = useTranslations('manage.profile');
   const tm = useTranslations('manage');
   const [headingFont, setHeadingFont] = useState(club.headingFont);
-  // The logo persists on its own (see LogoUpload) and its URL therefore has to outlive
-  // every remount of the <form> below — including the refusal remount added for
-  // `state.values`. Held here, in the component that never remounts, so a refused save
-  // cannot silently roll the hidden `logoUrl` field back to a `club.logoUrl` that the
-  // upload already superseded and no revalidation has refreshed.
-  const [logoUrl, setLogoUrl] = useState(club.logoUrl ?? '');
   const [state, formAction] = useActionState<ProfileSaveResult | null, FormData>(saveProfileAction.bind(null, slug), null);
 
-  // The toast lives here in the stable ProfileForm (the <form> below remounts on
-  // save via its `key`, but this hook does not), so the success/failure toast
-  // always fires.
+  // The toast lives here in the stable ProfileForm (the <form> below remounts on a
+  // successful save via its `key`, but this hook does not), so the toast always fires.
   useEffect(() => {
     if (state === null) return;
     if (state.ok) toast.success(t('saved'));
@@ -51,36 +44,42 @@ export function ProfileForm({ slug, club, socials }: { slug: string; club: Club;
 
   /*
    * The Base UI inputs below are uncontrolled — they seed their state from `defaultValue`
-   * at mount. After a successful save, the server action refreshes this route and re-feeds
-   * the just-saved values as new `defaultValue`s on the live inputs, which Base UI warns
-   * about ("A component is changing the default value state of an uncontrolled input after
-   * being initialized"). Keying the form remounts it with fresh defaults instead, and only
-   * when something actually changed: `club.updatedAt` moves when the row is persisted,
-   * never while typing.
+   * at mount, and `defaultValue` is where a refused save's edits come back from.
    *
-   * `state.attempt` is the second half of that key, and it is what keeps a REFUSED save
-   * from throwing the owner's work away. React 19 resets an uncontrolled form after any
-   * completed form action, success or failure — `<form action>` schedules the reset before
-   * the action runs (react-dom 19.2.8, `startHostTransition` → `requestFormReset`), and it
-   * lands as a native `.reset()` on the form node, so every field snaps back to its
-   * `defaultValue`. Measured here in a browser: the same `<form>` node survived, a `reset`
-   * event fired on it, and a 2001-character description became the stored two-character
-   * one. A refusal does not revalidate, so `updatedAt` cannot move and cannot carry that
-   * remount; `attempt` increments on every refusal instead, and the defaults it remounts
-   * with are the values the owner just submitted (`state.values`), not the stored row.
+   * React 19 resets an uncontrolled form after ANY completed form action, success or
+   * failure: `<form action>` schedules the reset before the action even runs (react-dom
+   * 19.2.8, `startHostTransition` -> `requestFormReset`) and it lands as a native `.reset()`
+   * on the form node. Measured in Chrome — the same `<form>` node survived, a `reset` event
+   * fired on it, and a 2001-character description became the stored two-character one.
    *
-   * The same measurement on a SUCCESSFUL save is what separates the two mechanisms: there
-   * the form node was REPLACED (the key moved) and the field showed the typed text because
-   * the revalidation had re-fed it as the new stored value — the identical screen, a
-   * different cause. Only the refusal case is this bug.
+   * What fixes it is `state.values` alone: on a refusal this component re-renders with the
+   * submitted values as the new `defaultValue`s, React writes those to the inputs' value
+   * ATTRIBUTES during the mutation phase, and the reset that follows in the same commit
+   * restores the NEW default. Measured: the 2001 characters survive. No remount is involved
+   * and none is wanted — remounting would destroy the focused node, and an owner who tabbed
+   * into the description and was refused would be thrown to `<body>` on every retry.
+   *
+   * The COST of not remounting is a Base UI dev warning, and it is accepted deliberately:
+   * feeding a live uncontrolled input a new `defaultValue` logs "A component is changing the
+   * default value state of an uncontrolled FieldControl after being initialized". That
+   * warning does not exist in a production build — `@base-ui/utils/useControlled.js:25` wraps
+   * the whole check in `process.env.NODE_ENV !== 'production'` and
+   * `@base-ui/utils/error.js:9-19` no-ops there — so it costs a dev console line, while
+   * remounting would cost every keyboard and screen-reader user their place in the form.
+   *
+   * `key={club.updatedAt.getTime()}` stays, and only for the SUCCESS path it was written
+   * for: a persisted save revalidates this route and re-feeds the just-saved values, and the
+   * timestamp moves only when the row is persisted, never while typing. Measured on a
+   * successful save: the form node was REPLACED and the field showed the typed text because
+   * the revalidation had re-fed it — the same screen as a preserved form, a different cause,
+   * and not the bug this file is about.
    */
   const rejected = state !== null && !state.ok ? state.values : null;
-  const formKey = `${club.updatedAt.getTime()}:${state !== null && !state.ok ? state.attempt : 0}`;
   return (
     <div className="flex flex-col gap-6">
-      <form key={formKey} action={formAction} className="flex flex-col gap-4">
+      <form key={club.updatedAt.getTime()} action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="headingFont" value={headingFont} />
-        <LogoUpload slug={slug} url={logoUrl} onUrlChange={setLogoUrl} labels={{ logo: t('logo'), logoUpload: t('logoUpload'), logoUploading: t('logoUploading'), logoError: t('logoError'), logoRemove: t('logoRemove') }} />
+        <LogoUpload slug={slug} initialUrl={club.logoUrl} labels={{ logo: t('logo'), logoUpload: t('logoUpload'), logoUploading: t('logoUploading'), logoError: t('logoError'), logoRemove: t('logoRemove') }} />
         <Field>
           <FieldLabel htmlFor="name">{t('name')}</FieldLabel>
           <Input id="name" name="name" defaultValue={rejected?.name ?? club.name} required minLength={2} maxLength={80} />

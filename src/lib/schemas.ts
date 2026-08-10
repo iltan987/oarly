@@ -9,10 +9,19 @@ export const signInSchema = z.object({
 });
 export const signUpSchema = z.object({
   /*
-   * The `.max()`es are the ONLY width these three values have anywhere. `first_name`,
-   * `last_name` and `phone` are all `text` in `src/db/schema/auth.ts` — Postgres imposes
-   * no limit on `text`, and Better Auth passes an additionalField straight through — so
-   * without these a sign-up or an `/account` save would persist a value of any size.
+   * `first_name`, `last_name` and `phone` are all `text` in `src/db/schema/auth.ts`, and
+   * Postgres imposes no limit on `text`, so a width has to come from somewhere else.
+   *
+   * These `.max()`es are the CLIENT's half of it, and only that. This module is a
+   * client-side UX mirror (see the section header above): `signUpSchema` runs in the browser
+   * as the sign-up form's zodResolver and never on the server — `POST /api/auth/sign-up/email`
+   * goes to Better Auth's own handler, which does not import this file. What actually binds
+   * every writer, including `/api/auth/update-user` and the Google profile mapping, is
+   * `validator.input` on the matching `user.additionalFields` entries in `src/auth.ts`; that
+   * block states the same numbers and cites where Better Auth applies them.
+   *
+   * `accountProfileSchema` below is the other half: it DOES run on the server, in
+   * `saveAccountAction`, which is the only path `/account` has.
    *
    * The numbers are taken, not invented, and no column width contradicts them (`text`
    * has none):
@@ -24,7 +33,9 @@ export const signUpSchema = z.object({
    *    (`clubProfileSchema.phone`, whose `clubs.phone` column is `text` too).
    *
    * `accountProfileSchema` PICKS these three rather than restating them, so the bound
-   * added here is the bound `/account` enforces — see its doc comment below.
+   * added here is the bound `/account` enforces — see its doc comment below. `src/auth.ts`
+   * cannot pick from a zod object the same way, so `schemas.test.ts` pins the two copies
+   * together instead.
    */
   firstName: z.string().min(1).max(80),
   lastName: z.string().min(1).max(80),

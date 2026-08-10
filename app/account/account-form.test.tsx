@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useActionState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,7 +20,7 @@ import { toast } from 'sonner';
 
 import { accountProfileSchema } from '@/lib/schemas';
 
-import { AccountForm, type AccountProfile } from './account-form';
+import { AccountForm, type AccountProfile, GENDER_LABEL_KEYS, PAYMENT_LABEL_KEYS } from './account-form';
 import { type AccountActionResult, saveAccountAction } from './actions';
 
 const PROFILE: AccountProfile = {
@@ -45,11 +48,11 @@ const undrained: ((result: AccountActionResult) => void)[] = [];
  * bare `{ ok: false, reason }` would be testing a contract the action does not have.
  * The action's own half of it is pinned in `actions.test.ts`.
  */
-function refuseEchoingSubmission(reason: 'invalid' | 'rate_limited') {
-  vi.mocked(saveAccountAction).mockImplementation(async (prev, formData) => ({
+function refuseEchoingSubmission(reason: 'invalid' | 'rate_limited', fields?: readonly string[]) {
+  vi.mocked(saveAccountAction).mockImplementation(async (_prev, formData) => ({
     ok: false,
     reason,
-    attempt: (prev !== null && !prev.ok ? prev.attempt : 0) + 1,
+    ...(fields ? { fields } : {}),
     values: {
       firstName: String(formData.get('firstName') ?? ''),
       lastName: String(formData.get('lastName') ?? ''),
@@ -102,6 +105,39 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const resolve of undrained.splice(0)) resolve({ ok: true });
+});
+
+/**
+ * The gap this closes: every component test in this repo mocks `next-intl` with a key-echo,
+ * so a key that does not exist in the catalogues renders its own name here and passes. It
+ * fails in the browser as `MISSING_MESSAGE`, which nothing else in the suite can see —
+ * `messages-parity.test.ts` compares the catalogues to EACH OTHER, not to the code.
+ *
+ * So: read the component's own source, take every literal `t('...')` it renders, and require
+ * each one under `account.*` in every catalogue. Self-maintaining for this file — add a key
+ * to the form without adding it to the messages and this fails.
+ */
+describe('AccountForm message keys', () => {
+  const source = readFileSync(resolve(process.cwd(), 'app/account/account-form.tsx'), 'utf8');
+  const literalKeys = [...new Set([...source.matchAll(/\bt\('([A-Za-z0-9_]+)'\)/g)].map((m) => m[1]))];
+  // `t(GENDER_LABEL_KEYS[g])` / `t(PAYMENT_LABEL_KEYS[p])` are computed, so the maps
+  // themselves are the source of those keys.
+  const computedKeys = [...Object.values(GENDER_LABEL_KEYS), ...Object.values(PAYMENT_LABEL_KEYS)];
+
+  it('renders at least the keys this file is about', () => {
+    // Guards the regex itself: an expression that matched nothing would make the loop below
+    // vacuous and the whole check would pass with the catalogue empty.
+    expect(literalKeys).toEqual(expect.arrayContaining(['errorInvalid', 'errorFieldInvalid', 'saved']));
+  });
+
+  it.each(['tr', 'en'])('resolves every key it renders in %s.json', (locale) => {
+    const messages = JSON.parse(
+      readFileSync(resolve(process.cwd(), `messages/${locale}.json`), 'utf8'),
+    ) as { account: Record<string, string> };
+    const missing = [...literalKeys, ...computedKeys].filter((key) => !(key in messages.account));
+    expect(missing, `account.* keys used by account-form.tsx but missing from ${locale}.json`)
+      .toEqual([]);
+  });
 });
 
 describe('AccountForm', () => {
@@ -430,9 +466,9 @@ describe('AccountForm', () => {
   });
 
   /**
-   * A SECOND refusal has to keep the second edit, and this is the case that catches a key
-   * that only changes once: `attempt` goes 1 -> 2, so the form remounts again. With a
-   * boolean "was refused" flag instead, the key would be identical across both refusals.
+   * A SECOND consecutive refusal has to keep the SECOND edit. `useActionState` hands back a
+   * fresh result object each time, so the new values become the new `defaultValue`s and the
+   * reset that follows restores those — the first refusal's echo must not stick.
    */
   it('keeps the edits across a second consecutive refusal', async () => {
     refuseEchoingSubmission('invalid');
@@ -449,32 +485,59 @@ describe('AccountForm', () => {
   });
 
   /**
-   * `attempt` in the form key, pinned by the mechanism it drives rather than by the value —
-   * because the VALUE survives either way, and that is measured, not assumed. In Chrome,
-   * with `attempt` removed from the key, the same `<form>` node stayed mounted, a `reset`
-   * event fired on it, and the typed text still survived: React updates an uncontrolled
-   * input's `defaultValue` attribute before it calls `.reset()`, so the reset restores the
-   * NEW default.
+   * The form must NOT remount on a refusal, and this is the assertion that says so.
    *
-   * What it does not survive is Base UI. That same run logged "Base UI: A component is
-   * changing the default value state of an uncontrolled FieldControl after being
-   * initialized. To suppress this warning opt to use a controlled FieldControl" — the exact
-   * warning this form's remount key exists to avoid. With `attempt` present the node is
-   * replaced and the console is clean.
-   *
-   * Asserted as node identity and not as a console spy: Base UI dedupes each warning
-   * globally for the process, so only the first test to trip it would ever see it.
+   * Remounting would also preserve the text — it was the first shape of this fix — but it
+   * destroys the focused node: measured in Chrome, `document.activeElement` went from the
+   * edited field to `<body>`, so a keyboard or screen-reader user was thrown to the top of
+   * the document on every retry. Re-rendering with new `defaultValue`s costs a Base UI
+   * DEV-ONLY warning instead (`@base-ui/utils/useControlled.js:25` guards it with
+   * `process.env.NODE_ENV !== 'production'`), which is the cheaper of the two.
    */
-  it('remounts the form on a refusal rather than re-defaulting a live input', async () => {
+  it('keeps the same form node on a refusal, so focus is not thrown away', async () => {
     refuseEchoingSubmission('invalid');
     const { container } = render(<AccountForm profile={PROFILE} />);
     const before = container.querySelector('form');
+    const field = screen.getByLabelText('firstName');
 
-    fireEvent.change(screen.getByLabelText('firstName'), { target: { value: 'Ada' } });
+    fireEvent.change(field, { target: { value: 'Ada' } });
     await submitAndSettle();
 
     expect(screen.getByLabelText('firstName')).toHaveValue('Ada');
-    expect(container.querySelector('form')).not.toBe(before);
+    expect(container.querySelector('form')).toBe(before);
+    expect(screen.getByLabelText('firstName')).toBe(field);
+  });
+
+  /**
+   * The refusal has to say WHICH field, not only that something is wrong. The case that
+   * makes this more than polish: a member whose stored name predates `signUpSchema`'s
+   * length bounds cannot save at all — `maxLength` does not truncate an already-too-long
+   * value — and a form-level "check the fields" never tells them where to look.
+   */
+  it('marks the fields the server objected to, and only those', async () => {
+    refuseEchoingSubmission('invalid', ['firstName']);
+    render(<AccountForm profile={PROFILE} />);
+
+    await submitAndSettle();
+
+    expect(screen.getByLabelText('firstName')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('lastName')).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('phone')).not.toHaveAttribute('aria-invalid', 'true');
+    // The named field carries its own message, alongside the form-level summary.
+    const alerts = screen.getAllByRole('alert').map((a) => a.textContent);
+    expect(alerts).toContain('errorFieldInvalid');
+    expect(alerts).toContain('errorInvalid');
+  });
+
+  // A rate-limited refusal names no field: the member's fields are fine.
+  it('marks no field when the refusal is a rate limit', async () => {
+    refuseEchoingSubmission('rate_limited');
+    render(<AccountForm profile={PROFILE} />);
+
+    await submitAndSettle();
+
+    expect(screen.getByLabelText('firstName')).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   /**
