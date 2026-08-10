@@ -53,7 +53,13 @@ export default async function MyBookingsPage({ params }: { params: Promise<{ slu
     <div className="flex flex-col gap-4">
       <h1 className="font-heading text-xl font-semibold">{t('myTitle')}</h1>
       <RestrictionNotice restriction={restriction} timeZone={club.timezone} clubPhone={club.phone} variant="card" />
-      <BookingsList slug={slug} upcoming={upcoming} past={past} timeZone={club.timezone} />
+      {/*
+        The SAME `restriction` the card above renders from — read once, used twice. Not a
+        second `getRestriction` call: two reads of a time-sensitive state in one render can
+        disagree across the instant a pause lapses, and the page would then show a card
+        saying "paused" above an empty state offering to book (or the reverse).
+      */}
+      <BookingsList slug={slug} upcoming={upcoming} past={past} timeZone={club.timezone} restricted={restriction.state !== 'none'} />
     </div>
   );
 }

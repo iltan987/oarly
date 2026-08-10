@@ -26,7 +26,15 @@ vi.mock('@/db', () => ({
 vi.mock('@/lib/membership', () => ({ requireMemberView }));
 vi.mock('@/lib/restriction', () => ({ getRestriction }));
 vi.mock('next-intl/server', () => ({ getTranslations: () => Promise.resolve((key: string) => key) }));
-vi.mock('./bookings-list', () => ({ BookingsList: () => <div data-testid="list" /> }));
+/*
+  The stub EXPOSES `restricted`. A stub that ignores its props cannot see the page failing
+  to thread it — and a `restricted` that never arrives is exactly the seam this page owns:
+  `BookingsList` decides whether to offer a "book a session" button, and only the page knows
+  whether this member may book at all.
+*/
+vi.mock('./bookings-list', () => ({
+  BookingsList: ({ restricted }: { restricted: boolean }) => <div data-testid="list" data-restricted={String(restricted)} />,
+}));
 vi.mock('@/components/restriction-notice', () => ({
   RestrictionNotice: ({ restriction, timeZone, clubPhone, variant }: { restriction: { state: string }; timeZone: string; clubPhone?: string | null; variant?: string }) =>
     restriction.state === 'none'
@@ -86,6 +94,49 @@ describe('MyBookingsPage', () => {
    * membership the GUARD returned — not a second lookup that could disagree with it.
    * The same `now` is passed so the two halves of the page cannot disagree about the time.
    */
+  /**
+   * The seam this page owns, and the bug it had: `/bookings` showed a paused member the
+   * restriction card AND, three lines below it, a primary button to `/book` where every
+   * session renders `Kilitli` — Task 6's dead end, restored by Task 8's empty state.
+   *
+   * `BookingsList` can only avoid that if the page tells it. Asserted on the RESTRICTED
+   * case first: `restricted={false}` is the failing-open default a forgotten prop produces,
+   * so a test that only checks the healthy member passes with the bug in place.
+   *
+   * Both states are checked because they are one predicate — `state !== 'none'` — and a
+   * suspension is a restriction as much as a pause is.
+   */
+  it.each(['paused', 'suspended'] as const)('tells the list a %s member must not be offered a way to book', async (state) => {
+    getRestriction.mockResolvedValue({ state, endsAt: new Date('2026-08-17T04:00:00.000Z'), cause: null });
+
+    await render_();
+
+    expect(screen.getByTestId('list')).toHaveAttribute('data-restricted', 'true');
+  });
+
+  it('tells the list an unrestricted member may be offered one', async () => {
+    getRestriction.mockResolvedValue({ state: 'none' });
+
+    await render_();
+
+    expect(screen.getByTestId('list')).toHaveAttribute('data-restricted', 'false');
+  });
+
+  /**
+   * The card and the empty state read from ONE `getRestriction` result. Two reads of a
+   * time-sensitive state inside one render can disagree across the instant a pause lapses,
+   * and the page would then show "Duraklatıldı" above an offer to book, or the reverse.
+   */
+  it('reads the restriction once and uses it for both the notice and the list', async () => {
+    getRestriction.mockResolvedValue({ state: 'paused', endsAt: new Date('2026-08-17T04:00:00.000Z'), cause: null });
+
+    await render_();
+
+    expect(getRestriction).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('notice')).toHaveAttribute('data-state', 'paused');
+    expect(screen.getByTestId('list')).toHaveAttribute('data-restricted', 'true');
+  });
+
   it('asks about the restriction for the membership the guard returned', async () => {
     const m = membership({ id: 'm-42' });
     requireMemberView.mockResolvedValue({ club: CLUB, user: USER, membership: m });

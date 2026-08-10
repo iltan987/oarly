@@ -215,7 +215,24 @@ function Section({ slug, title, rows, timeZone, cancellable, empty }: { slug: st
   );
 }
 
-export function BookingsList({ slug, upcoming, past, timeZone }: { slug: string; upcoming: BookingRow[]; past: BookingRow[]; timeZone: string }) {
+export function BookingsList({ slug, upcoming, past, timeZone, restricted }: {
+  slug: string;
+  upcoming: BookingRow[];
+  past: BookingRow[];
+  timeZone: string;
+  /**
+   * Whether this member is paused or suspended — `restriction.state !== 'none'`, computed
+   * by the page, which already loads it for `RestrictionNotice`. A boolean rather than the
+   * `Restriction`: nothing here formats a date or names a cause, and the two states differ
+   * in nothing this component decides.
+   *
+   * REQUIRED, with no default, and that is the whole point. `restricted = false` would fail
+   * OPEN — a caller that forgets to thread it through gets the exact bug this prop exists
+   * to fix, silently, and the empty state goes back to inviting a paused member to book.
+   * `BoatsEditor` and `BookingsRoster.multisportEnabled` are required for the same reason.
+   */
+  restricted: boolean;
+}) {
   const t = useTranslations('booking');
   return (
     <div className="flex flex-col gap-6">
@@ -235,20 +252,34 @@ export function BookingsList({ slug, upcoming, past, timeZone }: { slug: string;
           is not a `<button>` — and the documented fix, `nativeButton={false}`, is worse
           here: it stamps `role="button"` onto the anchor, so a control that NAVIGATES
           stops announcing itself as a link and drops out of a screen reader's links list.
-          The class-only form keeps the anchor an anchor and looks identical. (Three older
-          sites — `app/admin/audit/page.tsx` and `app/s/[slug]/manage/page.tsx` — still use
-          the `render={<Link/>}` form and log the same error; out of scope here.)
+          The class-only form keeps the anchor an anchor and looks identical. (Five older
+          sites still use the `render={<Link/>}` form and log the same error —
+          `app/s/[slug]/manage/page.tsx:34,109,124` and `app/admin/audit/page.tsx:95,98`.
+          Dev-console only: `@base-ui/utils/error` gates on `NODE_ENV !== 'production'`.
+          Out of scope here.)
 
-          Deliberately NOT varied for a restricted member ("you can't book yet"): Task 6's
-          `RestrictionNotice` already sits at the top of this page and says exactly that,
-          with the date the pause lifts. A second, weaker copy of the same message dilutes
-          the first and doubles the copy that has to stay in sync.
+          A RESTRICTED member gets the title and nothing else — no invitation, no button.
+
+          Task 6 ended this exact dead end ("a restricted member now has somewhere to
+          click"), and this section was walking them back into it: three lines under a card
+          reading "Duraklatıldı — rezervasyon erişimin 17 Ağustos… geri açılacak" sat a
+          primary button to `/book`, where every session renders `Kilitli`. The body is an
+          imperative too — "göz at ve yerini ayırt" is "browse and reserve your place" —
+          so dropping the button alone would leave the sentence issuing the instruction the
+          button used to carry out.
+
+          What is NOT done here, and deliberately: saying why. No "you can't book yet"
+          variant, no second copy of the pause date. `RestrictionNotice` is directly above,
+          it already says it with the date AND the hour, and a weaker restatement three
+          lines down dilutes the one that is authoritative. The title alone —
+          "Yaklaşan rezervasyonun yok" — is a true, complete statement of what this section
+          holds; the card above is its explanation.
         */
         empty={(
           <EmptyState
             title={t('emptyUpcomingTitle')}
-            body={t('emptyUpcomingBody')}
-            action={<Link href="/book" className={buttonVariants({ size: 'sm' })}>{t('emptyUpcomingCta')}</Link>}
+            body={restricted ? undefined : t('emptyUpcomingBody')}
+            action={restricted ? undefined : <Link href="/book" className={buttonVariants({ size: 'sm' })}>{t('emptyUpcomingCta')}</Link>}
           />
         )}
       />

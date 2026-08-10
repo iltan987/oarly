@@ -39,7 +39,7 @@ function row(over: Partial<BookingRow> = {}): BookingRow {
 
 /** Cancelled rows are never "upcoming" on the real page, so they arrive in `past`. */
 function renderPast(...rows: BookingRow[]) {
-  return render(<BookingsList slug="demo" upcoming={[]} past={rows} timeZone="Europe/Istanbul" />);
+  return render(<BookingsList slug="demo" upcoming={[]} past={rows} timeZone="Europe/Istanbul" restricted={false} />);
 }
 
 /** A live seat the member is allowed to cancel — the only row that renders the gate. */
@@ -50,6 +50,7 @@ function renderCancellable(over: Partial<BookingRow> = {}) {
       upcoming={[row({ status: 'booked', cancelledReason: null, canCancel: true, ...over })]}
       past={[]}
       timeZone="Europe/Istanbul"
+      restricted={false}
     />,
   );
 }
@@ -272,7 +273,7 @@ describe('the cancel gate', () => {
  */
 describe('the empty states', () => {
   it('offers a route to /book when there is nothing upcoming', () => {
-    render(<BookingsList slug="demo" upcoming={[]} past={[row()]} timeZone="Europe/Istanbul" />);
+    render(<BookingsList slug="demo" upcoming={[]} past={[row()]} timeZone="Europe/Istanbul" restricted={false} />);
 
     expect(screen.getByText('emptyUpcomingTitle')).toBeInTheDocument();
     expect(screen.getByText('emptyUpcomingBody')).toBeInTheDocument();
@@ -287,11 +288,52 @@ describe('the empty states', () => {
    * with one CTA in the document, a second would make this two.
    */
   it('offers no action for an empty Past section', () => {
-    render(<BookingsList slug="demo" upcoming={[]} past={[]} timeZone="Europe/Istanbul" />);
+    render(<BookingsList slug="demo" upcoming={[]} past={[]} timeZone="Europe/Istanbul" restricted={false} />);
 
     expect(screen.getByText('emptyPastTitle')).toBeInTheDocument();
     expect(screen.getByText('emptyPastBody')).toBeInTheDocument();
     expect(screen.getAllByRole('link')).toHaveLength(1);
+  });
+
+  /**
+   * The seam between this task and Task 6, and the reason the NEGATIVE comes first.
+   *
+   * Task 6's commit is "end the dead end — a restricted member now has somewhere to click".
+   * This section was walking them straight back into it: three lines under a card reading
+   * "Duraklatıldı — rezervasyon erişimin 17 Ağustos… geri açılacak" sat a primary button to
+   * `/book`, where every session renders `Kilitli`.
+   *
+   * A test asserting only that an unrestricted member GETS the link passes with the bug
+   * fully in place — the bug is a link that is present when it should not be, so only the
+   * absence can kill it. The positive case is asserted second, to prove the absence is not
+   * being satisfied by an empty state that renders no action for anybody.
+   */
+  it('offers a restricted member no route to /book, because there is nothing for them there', () => {
+    render(<BookingsList slug="demo" upcoming={[]} past={[]} timeZone="Europe/Istanbul" restricted />);
+
+    expect(screen.queryByRole('link', { name: 'emptyUpcomingCta' })).not.toBeInTheDocument();
+    // No link at all, not merely a different label — the whole page renders none.
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
+    // The body is an imperative too ("göz at ve yerini ayırt" — browse and reserve), so
+    // dropping the button alone would leave the sentence issuing the same instruction.
+    expect(screen.queryByText('emptyUpcomingBody')).not.toBeInTheDocument();
+  });
+
+  /**
+   * …and the title stays. The fix is "do not invite them to do the impossible", not "hide
+   * the section": a restricted member with nothing upcoming still needs to be told that is
+   * what they are looking at.
+   *
+   * What must NOT appear is a second copy of the restriction message — `RestrictionNotice`
+   * is directly above with the date and the hour, and a weaker restatement here dilutes the
+   * authoritative one. There is no key to name, so this asserts the empty state renders its
+   * ordinary title rather than some restricted-specific variant.
+   */
+  it('still tells a restricted member the section is empty, without restating the restriction', () => {
+    render(<BookingsList slug="demo" upcoming={[]} past={[]} timeZone="Europe/Istanbul" restricted />);
+
+    expect(screen.getByText('emptyUpcomingTitle')).toBeInTheDocument();
+    expect(screen.getByText('emptyPastTitle')).toBeInTheDocument();
   });
 
   /**
@@ -300,7 +342,7 @@ describe('the empty states', () => {
    * lookup would match two nodes and throw.
    */
   it('says something different under each heading', () => {
-    render(<BookingsList slug="demo" upcoming={[]} past={[]} timeZone="Europe/Istanbul" />);
+    render(<BookingsList slug="demo" upcoming={[]} past={[]} timeZone="Europe/Istanbul" restricted={false} />);
 
     expect(screen.getByText('emptyUpcomingTitle')).toBeInTheDocument();
     expect(screen.getByText('emptyPastTitle')).toBeInTheDocument();
