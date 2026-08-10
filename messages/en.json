@@ -2,9 +2,7 @@
   "common": {
     "appName": "Oarly",
     "signIn": "Sign in",
-    "signUp": "Sign up",
     "signOut": "Sign out",
-    "loading": "Loading…",
     "language": "Language",
     "preferences": "Preferences",
     "userMenu": "Account and preferences",
@@ -35,7 +33,6 @@
     "ctaOpenClub": "Open club"
   },
   "club": {
-    "joinCta": "Join this club",
     "joinTitle": "Join {name}",
     "joinBody": "Once the club owner approves your request you can start booking sessions.",
     "metaDescription": "{name} — online booking for rowing sessions.",
@@ -239,7 +236,6 @@
     "create": "Create",
     "activate": "Activate",
     "suspend": "Suspend",
-    "status": "Status",
     "statusActive": "Active",
     "statusPending": "Pending",
     "statusSuspended": "Suspended",
@@ -635,7 +631,6 @@
     "booked": "You're booked",
     "waitlisted": "Waitlisted #{position}",
     "opensOn": "Opens {date}",
-    "paymentLabel": "Payment",
     "paymentRegular": "Cash",
     "paymentMultisport": "MultiSport",
     "paymentQuestion": "How are you paying?",
@@ -677,7 +672,6 @@
     "emptyPastTitle": "No past bookings",
     "emptyPastBody": "Sessions you've been to will collect here.",
     "seated": "Booked",
-    "back": "Book a session",
     "cancelErrors": {
       "not_found": "Booking not found.",
       "not_active": "This booking is no longer active.",

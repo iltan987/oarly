@@ -2,9 +2,7 @@
   "common": {
     "appName": "Oarly",
     "signIn": "Giriş yap",
-    "signUp": "Kayıt ol",
     "signOut": "Çıkış yap",
-    "loading": "Yükleniyor…",
     "language": "Dil",
     "preferences": "Tercihler",
     "userMenu": "Hesap ve tercihler",
@@ -35,7 +33,6 @@
     "ctaOpenClub": "Kulübü aç"
   },
   "club": {
-    "joinCta": "Kulübe katıl",
     "joinTitle": "{name} kulübüne katıl",
     "joinBody": "Katılma isteğiniz kulüp sahibi tarafından onaylandığında seans rezervasyonu yapabilirsiniz.",
     "metaDescription": "{name} — kürek seansları için çevrimiçi rezervasyon.",
@@ -239,7 +236,6 @@
     "create": "Oluştur",
     "activate": "Etkinleştir",
     "suspend": "Askıya al",
-    "status": "Durum",
     "statusActive": "Aktif",
     "statusPending": "Beklemede",
     "statusSuspended": "Askıda",
@@ -635,7 +631,6 @@
     "booked": "Yerin ayrıldı",
     "waitlisted": "Bekleme listesi #{position}",
     "opensOn": "Açılış: {date}",
-    "paymentLabel": "Ödeme",
     "paymentRegular": "Nakit",
     "paymentMultisport": "MultiSport",
     "paymentQuestion": "Nasıl ödeyeceksin?",
@@ -677,7 +672,6 @@
     "emptyPastTitle": "Geçmiş rezervasyonun yok",
     "emptyPastBody": "Katıldığın seanslar burada birikecek.",
     "seated": "Ayrıldı",
-    "back": "Antrenman ayırt",
     "cancelErrors": {
       "not_found": "Rezervasyon bulunamadı.",
       "not_active": "Bu rezervasyon artık aktif değil.",
