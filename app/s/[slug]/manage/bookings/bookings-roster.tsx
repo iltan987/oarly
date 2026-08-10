@@ -4,10 +4,10 @@ import { startTransition, useActionState, useEffect, useOptimistic, useRef, useS
 import { toast } from 'sonner';
 
 import { StatusPill } from '@/components/booking-status-badge';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { RosterSession } from '@/lib/roster';
 import { cn } from '@/lib/utils';
@@ -210,65 +210,70 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
         );
       })}
 
-      <Dialog open={confirming !== null} onOpenChange={(open) => { if (!open) setConfirming(null); }}>
-        <DialogContent>
-          {confirming && (
-            <form
-              action={markAction}
-              onSubmit={() => {
-                setPendingAbsenceId(confirming.bookingId);
-                setConfirming(null);
-              }}
-              className="flex flex-col gap-4"
-            >
-              <input type="hidden" name="bookingId" value={confirming.bookingId} />
-              <DialogHeader>
-                <DialogTitle>{t('confirmAbsentTitle', { name: confirming.name })}</DialogTitle>
-              </DialogHeader>
-              <p className="text-sm text-muted-foreground">
-                {confirming.session.banPermanent
-                  ? t('confirmAbsentPermanent')
-                  : confirming.session.banEndsAt === null
-                    ? t('confirmAbsentNoPenalty')
-                    : confirming.session.banLapsed
-                      ? t('confirmAbsentLapsed')
-                      : t('confirmAbsentBan', { date: fmtDate(confirming.session.banEndsAt, timezone) })}
-              </p>
-              <DialogFooter>
-                <DialogClose render={<Button type="button" variant="ghost" />}>{tm('cancel')}</DialogClose>
-                <PendingButton variant="destructive">{t('confirmAbsentCta')}</PendingButton>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/*
+        `title`/`description` are computed with `confirming?.…` because `ConfirmDialog`
+        renders its form only while `open`, and `open` here IS `confirming !== null` — the
+        empty-string branch can never reach the DOM. Keeping the `<Dialog>` mounted while
+        closed (rather than wrapping the whole thing in `{confirming && …}`) is what
+        preserves Base UI's exit animation.
 
-      <Dialog open={removing !== null} onOpenChange={(open) => { if (!open) setRemoving(null); }}>
-        <DialogContent>
-          {removing && (
-            <form
-              action={rmAction}
-              onSubmit={() => {
-                setPendingRemovalId(removing.bookingId);
-                setRemoving(null);
-              }}
-              className="flex flex-col gap-4"
-            >
-              <input type="hidden" name="bookingId" value={removing.bookingId} />
-              <DialogHeader>
-                <DialogTitle>{t('confirmRemoveTitle', { name: removing.name })}</DialogTitle>
-              </DialogHeader>
-              <p className="text-sm text-muted-foreground">{t('confirmRemoveBody')}</p>
-              <DialogFooter>
-                <DialogClose render={<Button type="button" variant="ghost" />}>{tm('cancel')}</DialogClose>
-                <PendingButton variant="destructive">{t('confirmRemoveCta')}</PendingButton>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+        `onSubmit` is the portal bridge, unchanged in substance from the hand-rolled form
+        it replaces: Base UI renders this form outside the row's subtree, so the row's
+        `has-data-pending:` `:has()` selector cannot see the submit button and the row
+        stops dimming. Setting the pending id here is what keeps the fade.
+      */}
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => { if (!open) setConfirming(null); }}
+        title={t('confirmAbsentTitle', { name: confirming?.name ?? '' })}
+        description={absenceConsequence(t, confirming?.session, timezone)}
+        confirmLabel={t('confirmAbsentCta')}
+        dismissLabel={tm('cancel')}
+        destructive
+        action={markAction}
+        hidden={{ bookingId: confirming?.bookingId ?? '' }}
+        onSubmit={() => {
+          if (!confirming) return;
+          setPendingAbsenceId(confirming.bookingId);
+          setConfirming(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => { if (!open) setRemoving(null); }}
+        title={t('confirmRemoveTitle', { name: removing?.name ?? '' })}
+        description={t('confirmRemoveBody')}
+        confirmLabel={t('confirmRemoveCta')}
+        dismissLabel={tm('cancel')}
+        destructive
+        action={rmAction}
+        hidden={{ bookingId: removing?.bookingId ?? '' }}
+        onSubmit={() => {
+          if (!removing) return;
+          setPendingRemovalId(removing.bookingId);
+          setRemoving(null);
+        }}
+      />
     </div>
   );
+}
+
+/**
+ * Which of the four penalty sentences a mark-absent confirmation shows. Lifted out of the
+ * JSX unchanged so the nested ternary stays readable as a `description` prop; `undefined`
+ * only occurs while the dialog is closed, where nothing renders it.
+ */
+function absenceConsequence(
+  t: ReturnType<typeof useTranslations>,
+  session: RosterSessionWithPenalty | undefined,
+  timezone: string,
+): string {
+  if (!session) return '';
+  if (session.banPermanent) return t('confirmAbsentPermanent');
+  if (session.banEndsAt === null) return t('confirmAbsentNoPenalty');
+  if (session.banLapsed) return t('confirmAbsentLapsed');
+  return t('confirmAbsentBan', { date: fmtDate(session.banEndsAt, timezone) });
 }
 
 /**
