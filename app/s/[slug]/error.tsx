@@ -13,6 +13,6 @@ import { RouteError } from '@/components/route-error';
  * `manage/` and `(member)/` keep their own boundaries below this one; this catches only
  * what they do not.
  */
-export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  return <RouteError reset={reset} />;
+export default function Error({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
+  return <RouteError retry={retry} />;
 }

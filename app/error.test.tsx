@@ -17,9 +17,9 @@ import ManageError from './s/[slug]/manage/error';
 /**
  * Every route-level error boundary in the app, in one table.
  *
- * `error.tsx` files are Client Components taking `{ error, reset }`, so they are directly
- * renderable — no server-component dance, and no async component nested in a prop (the
- * trap that makes `render(await Layout())` return an empty div with no error).
+ * `error.tsx` files are Client Components taking `{ error, reset, retry }`, so they are
+ * directly renderable — no server-component dance, and no async component nested in a prop
+ * (the trap that makes `render(await Layout())` return an empty div with no error).
  *
  * WHAT THIS CAN AND CANNOT PROVE, stated plainly because it matters more than the green
  * tick. It proves each boundary renders the shared fallback with a working retry, and it
@@ -32,7 +32,10 @@ import ManageError from './s/[slug]/manage/error';
  * through rather than landing here, were verified by URL against a running server; see
  * this task's report.
  */
-const BOUNDARIES: ReadonlyArray<[string, React.ComponentType<{ error: Error & { digest?: string }; reset: () => void }>]> = [
+/** Exactly what Next hands an `error.tsx`: the error, plus BOTH recovery functions. */
+type BoundaryProps = { error: Error & { digest?: string }; reset: () => void; retry: () => void };
+
+const BOUNDARIES: ReadonlyArray<[string, React.ComponentType<BoundaryProps>]> = [
   ['app/error.tsx', RootError],
   ['app/(auth)/error.tsx', AuthError],
   ['app/request-club/error.tsx', RequestClubError],
@@ -48,16 +51,30 @@ describe.each(BOUNDARIES)('%s', (_path, Boundary) => {
   const error = Object.assign(new Error('boom'), { digest: 'abc123' });
 
   it('renders the shared failure message and a retry control', () => {
-    render(<Boundary error={error} reset={() => {}} />);
+    render(<Boundary error={error} reset={() => {}} retry={() => {}} />);
     expect(screen.getByText('common.loadError')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'common.retry' })).toBeInTheDocument();
   });
 
-  it('invokes reset when retry is pressed', () => {
+  /**
+   * BOTH functions are passed and the click must reach `retry`, never `reset`. This is the
+   * one assertion here that guards a defect the suite previously shipped green.
+   *
+   * They are not interchangeable (`next/dist/client/components/error-boundary.js:39-48`):
+   * `reset` sets `{error: null}` and stops; `retry` runs `context.refresh()` inside a
+   * transition first. Every boundary in the table guards a SERVER component's data read,
+   * so clearing client state alone re-renders the same already-failed RSC payload and the
+   * fallback just comes back — the only control on the app's error page did nothing for
+   * the exact case it exists for. Confirmed in a browser against a page that threw only
+   * while a flag file existed: `reset` stayed on the fallback, `retry` recovered.
+   */
+  it('wires its button to retry and not to reset', () => {
     const reset = vi.fn();
-    render(<Boundary error={error} reset={reset} />);
+    const retry = vi.fn();
+    render(<Boundary error={error} reset={reset} retry={retry} />);
     fireEvent.click(screen.getByRole('button', { name: 'common.retry' }));
-    expect(reset).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(reset).not.toHaveBeenCalled();
   });
 
   /**
@@ -67,7 +84,7 @@ describe.each(BOUNDARIES)('%s', (_path, Boundary) => {
    * public club page.
    */
   it('shows the user neither the error message nor its digest', () => {
-    const { container } = render(<Boundary error={error} reset={() => {}} />);
+    const { container } = render(<Boundary error={error} reset={() => {}} retry={() => {}} />);
     expect(container.textContent).not.toContain('boom');
     expect(container.textContent).not.toContain('abc123');
   });

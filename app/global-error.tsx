@@ -33,8 +33,13 @@
  *
  * `lang="tr"` because Turkish is this app's default locale and leads the copy below; the
  * English paragraph carries its own `lang`.
+ *
+ * `retry`, not `reset`, for the reason spelled out in `route-error.tsx`: `reset` only
+ * clears the boundary's client state and re-renders the same failed server payload, so the
+ * button does nothing. `retry` refreshes first. It matters most here — the root layout is
+ * what failed, and there is no other control on the page.
  */
-export default function GlobalError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function GlobalError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <html lang="tr" style={{ colorScheme: 'light dark' }}>
       <body
@@ -57,7 +62,7 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
         <p lang="en" style={{ margin: 0, opacity: 0.7 }}>Something went wrong.</p>
         <button
           type="button"
-          onClick={() => reset()}
+          onClick={() => retry()}
           style={{
             marginTop: '0.5rem',
             padding: '0.5rem 1rem',

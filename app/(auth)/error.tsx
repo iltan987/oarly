@@ -10,6 +10,6 @@ import { RouteError } from '@/components/route-error';
  * layout, it just cannot catch it — so the `AppShell` header, brand and footer stay put
  * and only the form column is replaced.
  */
-export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  return <RouteError reset={reset} />;
+export default function Error({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
+  return <RouteError retry={retry} />;
 }

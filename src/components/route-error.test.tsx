@@ -26,16 +26,16 @@ const CATALOGS: ReadonlyArray<[string, Catalog]> = [
 
 describe('RouteError', () => {
   it('renders the failure message and a retry control', () => {
-    render(<RouteError reset={() => {}} />);
+    render(<RouteError retry={() => {}} />);
     expect(screen.getByText('common.loadError')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'common.retry' })).toBeInTheDocument();
   });
 
-  it('invokes reset when the retry control is pressed', () => {
-    const reset = vi.fn();
-    render(<RouteError reset={reset} />);
+  it('invokes retry when the retry control is pressed', () => {
+    const retry = vi.fn();
+    render(<RouteError retry={retry} />);
     fireEvent.click(screen.getByRole('button', { name: 'common.retry' }));
-    expect(reset).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 
   /**

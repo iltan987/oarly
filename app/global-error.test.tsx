@@ -5,6 +5,19 @@ import { describe, expect, it, vi } from 'vitest';
 import GlobalError from './global-error';
 
 /**
+ * Next hands an error boundary BOTH recovery functions
+ * (`next/dist/client/components/error-boundary.js:113-114`); the component only declares
+ * the one it uses. Rendering through this alias is what lets the test below pass both and
+ * prove the click reaches `retry` and never `reset` — the component's own prop type would
+ * reject the unused one as an excess property.
+ */
+const Boundary = GlobalError as React.ComponentType<{
+  error: Error & { digest?: string };
+  reset: () => void;
+  retry: () => void;
+}>;
+
+/**
  * There is deliberately NO `vi.mock('next-intl')` in this file, and no provider around
  * the render below. That absence is the test.
  *
@@ -23,7 +36,7 @@ describe('the global error boundary', () => {
   const error = Object.assign(new Error('root layout exploded'), { digest: 'deadbeef' });
 
   it('renders with no intl provider mounted', () => {
-    render(<GlobalError error={error} reset={() => {}} />);
+    render(<Boundary error={error} reset={() => {}} retry={() => {}} />);
     // Both languages, because the locale resolver is among the things that may have
     // failed. Turkish leads: it is this app's default locale.
     expect(screen.getByText('Bir şeyler ters gitti.')).toBeInTheDocument();
@@ -31,11 +44,19 @@ describe('the global error boundary', () => {
     expect(screen.getByRole('button', { name: /Tekrar dene/ })).toBeInTheDocument();
   });
 
-  it('invokes reset when the retry control is pressed', () => {
+  /**
+   * `retry`, never `reset` — see `route-error.tsx`. `reset` only clears the boundary's own
+   * state and re-renders the same failed server payload; `retry` refreshes first. It
+   * matters most on this page: the root layout is what failed, and this is the only
+   * control the user has.
+   */
+  it('wires its button to retry and not to reset', () => {
     const reset = vi.fn();
-    render(<GlobalError error={error} reset={reset} />);
+    const retry = vi.fn();
+    render(<Boundary error={error} reset={reset} retry={retry} />);
     fireEvent.click(screen.getByRole('button', { name: /Tekrar dene/ }));
-    expect(reset).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(reset).not.toHaveBeenCalled();
   });
 
   /**
@@ -57,7 +78,7 @@ describe('the global error boundary', () => {
     document.documentElement.removeAttribute('lang');
     expect(document.documentElement.getAttribute('lang')).toBeNull();
 
-    render(<GlobalError error={error} reset={() => {}} />);
+    render(<Boundary error={error} reset={() => {}} retry={() => {}} />);
 
     expect(document.documentElement.getAttribute('lang')).toBe('tr');
     // The body it renders, distinguishable from jsdom's own empty one by the styles it
@@ -66,7 +87,7 @@ describe('the global error boundary', () => {
   });
 
   it('shows the user neither the error message nor its digest', () => {
-    const { container } = render(<GlobalError error={error} reset={() => {}} />);
+    const { container } = render(<Boundary error={error} reset={() => {}} retry={() => {}} />);
     expect(container.textContent).not.toContain('root layout exploded');
     expect(container.textContent).not.toContain('deadbeef');
   });

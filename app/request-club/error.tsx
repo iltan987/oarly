@@ -9,6 +9,6 @@ import { RouteError } from '@/components/route-error';
  * `requireUser()`'s redirect for a signed-out visitor is framework control flow, not an
  * error, and passes through this boundary untouched.
  */
-export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  return <RouteError reset={reset} />;
+export default function Error({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
+  return <RouteError retry={retry} />;
 }
