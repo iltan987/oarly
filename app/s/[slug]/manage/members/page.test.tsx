@@ -47,9 +47,13 @@ vi.mock('next-intl/server', () => ({
     (values ? `${key}:${JSON.stringify(values)}` : key)),
 }));
 
-vi.mock('./member-actions', () => ({
-  ApproveButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
-  RejectButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
+// The queue's own behaviour — the reject gate, the row dimming — is
+// `pending-members.test.tsx`'s. What this file asserts about it is what the PAGE
+// decides: whether the section exists at all, and which rows it is handed.
+vi.mock('./pending-members', () => ({
+  PendingMembers: ({ rows }: { rows: { membershipId: string; name: string }[] }) => (
+    <ul aria-label="pending-queue">{rows.map((r) => <li key={r.membershipId}>{r.name}</li>)}</ul>
+  ),
 }));
 
 vi.mock('./skill-level-select', () => ({
@@ -197,7 +201,9 @@ describe('ManageMembersPage pending queue', () => {
   it('renders no heading and no sentence at all when nothing is waiting', async () => {
     await renderPage({ rows: [mkRow()], pending: [] });
     expect(screen.queryByText('pendingHeading')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'approve' })).toBeNull();
+    // Not just the heading: the queue itself is not mounted, so there is no empty list,
+    // no stray gap and nothing for a screen reader to walk into.
+    expect(screen.queryByRole('list', { name: 'pending-queue' })).toBeNull();
   });
 
   it('renders a count, not a pager, for requests past the cap', async () => {

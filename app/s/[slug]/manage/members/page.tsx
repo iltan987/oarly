@@ -17,7 +17,7 @@ import { normalizePage } from '@/lib/pagination';
 import { restrictionState } from '@/lib/restriction';
 import { one } from '@/lib/search-params';
 
-import { ApproveButton, RejectButton } from './member-actions';
+import { PendingMembers } from './pending-members';
 import { SkillLevelSelect } from './skill-level-select';
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -62,20 +62,11 @@ export default async function ManageMembersPage({ params, searchParams }: {
       {pending.total > 0 && (
         <section>
           <h2 className="mb-3 font-heading text-lg font-semibold">{t('pendingHeading')}</h2>
-          <Card className="gap-0 divide-y divide-border py-0">
-            {pending.rows.map((r) => (
-              <div key={r.membershipId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 p-4 transition-opacity has-data-pending:opacity-40">
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="font-heading text-sm font-semibold break-words">{r.name}</span>
-                  <span className="text-xs break-words text-muted-foreground">{r.email}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ApproveButton slug={slug} membershipId={r.membershipId} label={t('approve')} />
-                  <RejectButton slug={slug} membershipId={r.membershipId} label={t('reject')} />
-                </div>
-              </div>
-            ))}
-          </Card>
+          {/* A client component for the whole queue, not per row: it owns the
+              pending-reject id that bridges Base UI's portal, and it hoists both
+              `useActionState`s so a decision's toast survives the row unmounting on
+              revalidation. See its doc comment. */}
+          <PendingMembers slug={slug} rows={pending.rows} />
           {/*
             A NUMBER, not a pager. Pending is never paginated and never filtered: it
             drains, so it is small by construction, and a page 2 is a place for a join
