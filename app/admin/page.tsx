@@ -71,7 +71,13 @@ export default async function AdminClubsPage({ searchParams }: {
           <Input name="q" defaultValue={q ?? ''} placeholder={t('clubsSearch')} aria-label={t('clubsSearch')} />
           <Button type="submit" size="sm">{t('clubsSearchCta')}</Button>
         </form>
-        <Button size="sm" variant="outline" render={<Link href="/admin/clubs/new" />}>
+        {/* `nativeButton={false}` because the rendered element is an <a>, not a <button>.
+            Base UI logs an error at runtime otherwise ("expected a native <button>"), and
+            it is right to: it is what tells the primitive to stop assuming native button
+            semantics it is not getting. Several older `render={<Link/>}` call sites in
+            this console still trip it and are ticketed separately; this one does not add
+            to the pile. */}
+        <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/admin/clubs/new" />}>
           {t('newClub')}
         </Button>
       </div>

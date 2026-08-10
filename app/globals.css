@@ -3,6 +3,43 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Two variants the shadcn base-nova style's components require and this file never
+ * defined. They are copied VERBATIM from the vendored
+ * `node_modules/shadcn/dist/tailwind.css`, which the manual-install docs tell you to
+ * `@import` wholesale; only these two are taken, because the other 627 lines are base
+ * styles this project already has its own versions of.
+ *
+ * Why only these two matter. Tailwind v4 ships built-in `data-*` variants that compile to
+ * a bare attribute selector, so `data-open:` -> `[data-open]` happens to match what Base
+ * UI emits, and the same is true of `data-checked`, `data-selected`, `data-disabled` and
+ * `data-active`. `data-horizontal` and `data-vertical` are the two that do NOT: Base UI
+ * writes `data-orientation="horizontal"` (see
+ * `@base-ui/react/separator/SeparatorDataAttributes.js`), so the built-in variant looked
+ * for a `data-horizontal` attribute that is never present and silently matched nothing.
+ *
+ * The visible consequence, measured in Chrome before this landed: `ui/separator.tsx` is
+ * `data-horizontal:h-px data-horizontal:w-full`, so EVERY `<Separator />` in the product
+ * computed `height: 0px` and rendered as nothing at all — a `role="separator"` in the
+ * accessibility tree with no rule under it. `ui/toggle-group.tsx`'s `data-vertical:*` and
+ * `ui/field.tsx`'s `group-has-data-horizontal/field:*` were dead for the same reason.
+ *
+ * Fixed here and not in `src/components/ui/*`: those files are CLI-generated and match the
+ * registry byte for byte (`shadcn add separator --overwrite` reproduces the current file),
+ * so the defect was never in them — it was the stylesheet they were generated against.
+ */
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
+  }
+}
+
 :root {
   --radius: 0.625rem;
 
