@@ -441,6 +441,33 @@ describe.skipIf(!url)('members-admin', () => {
       expect(capped.total).toBe(3);
     });
 
+    /**
+     * The queue's own tie-break. `joined_at` defaults to `defaultNow()`, which is
+     * TRANSACTION time — so a batch of requests written in one transaction share an
+     * instant exactly, and `ORDER BY joined_at` alone leaves the cap free to take a
+     * different five each time it runs. The one it drops is the one nobody sees.
+     *
+     * Same fixture shape as the roster tie-break above, for the same reason: every row
+     * carries the identical timestamp, so a version without `asc(memberships.id)` has
+     * nothing left to order by.
+     */
+    it('orders requests that arrived in the same instant deterministically', async () => {
+      const club = await mkClub();
+      const joinedAt = new Date('2024-03-03T08:00:00Z');
+      const made = [];
+      for (let i = 0; i < 6; i++) made.push(await mkMember(club.id, { name: `Tie ${i}`, status: 'pending', joinedAt }));
+
+      const ordered = await db.select({ id: schema.memberships.id }).from(schema.memberships)
+        .where(inArray(schema.memberships.id, made.map((m) => m.membershipId)))
+        .orderBy(asc(schema.memberships.id));
+      const expected = ordered.map((r) => r.id);
+
+      const first = await listPendingMembers(db, { clubId: club.id, cap: 3 });
+      const all = await listPendingMembers(db, { clubId: club.id, cap: 6 });
+      expect(first.rows.map((r) => r.membershipId)).toEqual(expected.slice(0, 3));
+      expect(all.rows.map((r) => r.membershipId)).toEqual(expected);
+    });
+
     it('does not put another club\'s pending request in this club\'s queue', async () => {
       const mine = await mkClub();
       const theirs = await mkClub();

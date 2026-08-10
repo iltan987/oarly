@@ -146,6 +146,12 @@ describe('PendingMembers in-flight feedback', () => {
     expect(row).toHaveClass('opacity-40');
     // …and only that row. A shared pending flag would grey the whole queue out.
     expect(screen.getByText('Burak Bekleyen').parentElement?.parentElement).not.toHaveClass('opacity-40');
+    // The trigger is disabled for the same window: a dialog dismissed mid-round-trip
+    // would otherwise let the owner open a second question about a decision already
+    // taken. The OTHER row's trigger stays live — one reject must not freeze the queue.
+    const triggers = screen.getAllByRole('button', { name: 'reject' });
+    expect(triggers[0]).toBeDisabled();
+    expect(triggers[1]).not.toBeDisabled();
 
     resolve?.({ ok: true });
     await waitFor(() => expect(row).not.toHaveClass('opacity-40'));
