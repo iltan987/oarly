@@ -189,7 +189,7 @@ describe('AdminUsersPage list density', () => {
   it('puts the club list beside the identity at lg instead of under it', async () => {
     await renderUser({ memberships: [club('c1', 'Kayıkhane'), club('c2', 'Bebek')] });
     const [row] = rowOf('Ayşe');
-    expect(row).toHaveClass('lg:grid', 'lg:grid-cols-[18rem_1fr_auto]', 'lg:items-start');
+    expect(row).toHaveClass('lg:grid', 'lg:grid-cols-[18rem_1fr_9rem]', 'lg:items-start');
     // Below `lg:` the row is unchanged: the wrapping stack this page already had.
     expect(row).toHaveClass('flex', 'flex-wrap', 'items-start');
   });

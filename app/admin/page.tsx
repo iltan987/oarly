@@ -119,13 +119,22 @@ export default async function AdminClubsPage({ searchParams }: {
                 `/manage/members` established. `1fr` absorbs every difference in club-name
                 length, so the three fixed columns to its right cannot drift.
 
+                All three of them ARE fixed, and the last one is fixed for a measured
+                reason. Each row is its own grid — the Card is not one — so an `auto` last
+                track is sized by that ROW's content, and the status pill plus the toggle
+                is 85.5px on a pending club, 135.8px on an active one and 155.3px on a
+                suspended one (171.1px in English). `1fr` then absorbs the difference and
+                every column except the first lands somewhere else on every row: measured
+                at 1440px, a 69.766px spread down columns 2, 3 and 4. `12rem` is the widest
+                of those rounded up, and takes the spread to 0.000px.
+
                 `lg:contents` on the identity wrapper is what makes that possible: a grid
                 only lays out its OWN children, so without it the three spans stay a stack
                 in column 1 and the status/action pair sits in column 2, leaving `7rem` and
                 `auto` empty and the page looking exactly as it did before. Pinned in
                 page.test.tsx for that reason — the grid template alone cannot show it.
               */
-              <div key={c.id} className="flex items-center justify-between gap-3 p-4 lg:grid lg:grid-cols-[1fr_9rem_7rem_auto] lg:items-center lg:gap-4">
+              <div key={c.id} className="flex items-center justify-between gap-3 p-4 lg:grid lg:grid-cols-[1fr_9rem_7rem_12rem] lg:items-center lg:gap-4">
                 <div className="flex min-w-0 flex-col gap-0.5 lg:contents">
                   <Link href={`/admin/clubs/${c.id}`} className="min-w-0 font-medium break-words hover:underline">{c.name}</Link>
                   <span className="min-w-0 text-sm break-words text-muted-foreground">{c.slug}</span>

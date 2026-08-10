@@ -270,7 +270,7 @@ describe('AdminClubsPage list density', () => {
   it('un-stacks the club row into four aligned columns at lg', async () => {
     await renderPage([mkRow('active')]);
     const [row] = rowOf('Boğaziçi Kürek');
-    expect(row).toHaveClass('lg:grid', 'lg:grid-cols-[1fr_9rem_7rem_auto]', 'lg:items-center');
+    expect(row).toHaveClass('lg:grid', 'lg:grid-cols-[1fr_9rem_7rem_12rem]', 'lg:items-center');
     // Below `lg:` the row is unchanged: identity stacked left, controls right.
     expect(row).toHaveClass('flex', 'items-center', 'justify-between');
   });

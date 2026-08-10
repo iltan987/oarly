@@ -78,8 +78,15 @@ export default async function AdminUsersPage({ searchParams }: {
               rather than left to the grid template. The `18rem` first column is the fixed
               one, so the club lists share a left edge down the whole page however long a
               name or an email is.
+
+              The LAST track is fixed too, and for a measured reason: each row is its own
+              grid, so an `auto` there is sized by that row's own toggle — 93.9px for "make
+              admin" and 122.2px for "remove admin" — and `1fr` absorbs the difference, so
+              the toggle column lands somewhere else on the rows that already have an admin
+              (a 28.297px spread at 1440px). `9rem` is the widest of those rounded up and
+              takes it to 0.000px.
             */
-            <div key={u.id} className="flex flex-wrap items-start justify-between gap-3 p-4 lg:grid lg:grid-cols-[18rem_1fr_auto] lg:items-start lg:gap-4">
+            <div key={u.id} className="flex flex-wrap items-start justify-between gap-3 p-4 lg:grid lg:grid-cols-[18rem_1fr_9rem] lg:items-start lg:gap-4">
               <div className="flex min-w-0 flex-col gap-1 lg:contents">
                 <div className="flex min-w-0 flex-col gap-1">
                   <span className="flex items-center gap-2 font-medium">
