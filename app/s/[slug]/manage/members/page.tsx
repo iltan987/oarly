@@ -50,14 +50,21 @@ export default async function ManageMembersPage({ params, searchParams }: {
   // leaving the route. Belt and braces, as `app/admin/users/page.tsx:23-31` documents.
   const requestedPage = normalizePage(one(sp.page));
 
-  const pending = await listPendingMembers(db, { clubId: club.id, cap: PENDING_CAP });
-  // `page` is what came BACK, not what was asked for: the library pulls an out-of-range
-  // page down to the last one that exists, and the range below plus the pagination links
-  // have to describe the page the rows actually came from.
-  const { rows, total, page } = await searchClubMembers(db, {
-    clubId: club.id, q, page: requestedPage, pageSize: MEMBERS_PAGE_SIZE,
-  });
-  const levels = await db.select().from(skillLevels).where(eq(skillLevels.clubId, club.id)).orderBy(skillLevels.rank);
+  /*
+    Three independent reads, so three round trips in parallel rather than in series. On
+    a page whose whole subject is "at scale" the serial version made the render wait for
+    the sum of them, and none of the three needs a result from another: the queue does
+    not narrow the roster, and the skill levels are the club's, not the page's.
+
+    `page` below is what came BACK, not what was asked for: the library pulls an
+    out-of-range page down to the last one that exists, and the range plus the pagination
+    links have to describe the page the rows actually came from.
+  */
+  const [pending, { rows, total, page }, levels] = await Promise.all([
+    listPendingMembers(db, { clubId: club.id, cap: PENDING_CAP }),
+    searchClubMembers(db, { clubId: club.id, q, page: requestedPage, pageSize: MEMBERS_PAGE_SIZE }),
+    db.select().from(skillLevels).where(eq(skillLevels.clubId, club.id)).orderBy(skillLevels.rank),
+  ]);
 
   const from = total === 0 ? 0 : (page - 1) * MEMBERS_PAGE_SIZE + 1;
   const to = Math.min(page * MEMBERS_PAGE_SIZE, total);

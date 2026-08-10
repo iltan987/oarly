@@ -9,7 +9,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as schema from '@/db/schema';
 
 import {
-  assignSkillLevel, type ClubMemberRow, listPendingMembers, searchClubMembers, setMembershipStatus,
+  assignSkillLevel, type ClubMemberRow, listPendingMembers, MEMBERS_PAGE_SIZE, PENDING_CAP,
+  searchClubMembers, setMembershipStatus,
 } from './members-admin';
 
 const url = process.env.TEST_DATABASE_URL;
@@ -393,6 +394,44 @@ describe.skipIf(!url)('members-admin', () => {
       expect(res.total).toBe(2);
       expect(new Set(userIds(res))).toEqual(new Set([approved.userId, banned.userId]));
       expect(res.rows.map((r) => r.status).sort()).toEqual(['approved', 'banned']);
+    });
+
+    /**
+     * The two constants, pinned by behaviour rather than by `expect(X).toBe(25)`.
+     *
+     * Both defaults were reachable only through `opts.pageSize ?? …` / `opts.cap ?? …`,
+     * and every existing test passes an explicit value — so setting either constant to 7
+     * left the whole suite green while a live 200-member club silently changed its page
+     * size, its row range and its pending cap. These two call the loaders the way the
+     * ROUTE's defaults would if the page ever stopped passing them, and assert the size
+     * of what comes back.
+     *
+     * 26 rows, not 25, so the cap is observed cutting something off: a fixture the size of
+     * the page size cannot tell "limit 25" from "no limit at all".
+     */
+    it('defaults to a page of MEMBERS_PAGE_SIZE rows when no pageSize is given', async () => {
+      const club = await mkClub();
+      for (let i = 0; i < MEMBERS_PAGE_SIZE + 1; i++) await mkMember(club.id, { name: `Def ${String(i).padStart(2, '0')}` });
+
+      const res = await searchClubMembers(db, { clubId: club.id });
+      expect(MEMBERS_PAGE_SIZE).toBe(25);
+      expect(res.pageSize).toBe(25);
+      expect(res.rows).toHaveLength(25);
+      expect(res.total).toBe(26);
+    });
+
+    it('defaults to a queue of PENDING_CAP rows when no cap is given', async () => {
+      const club = await mkClub();
+      for (let i = 0; i < PENDING_CAP + 1; i++) {
+        await mkMember(club.id, { name: `Q ${String(i).padStart(2, '0')}`, status: 'pending' });
+      }
+
+      const res = await listPendingMembers(db, { clubId: club.id });
+      expect(PENDING_CAP).toBe(25);
+      expect(res.rows).toHaveLength(25);
+      // Counted before the cap, which is what lets the page render "+1 more" rather than
+      // simply losing the 26th request.
+      expect(res.total).toBe(26);
     });
 
     it('caps an empty query at the page size rather than returning the whole club', async () => {

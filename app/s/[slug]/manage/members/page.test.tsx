@@ -4,8 +4,12 @@ import { randomUUID } from 'node:crypto';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as MembersAdminModule from '@/lib/members-admin';
+
 import en from '../../../../../messages/en.json';
 import tr from '../../../../../messages/tr.json';
+
+type MembersAdmin = typeof MembersAdminModule;
 
 type Row = {
   membershipId: string; userId: string; name: string; email: string;
@@ -28,8 +32,21 @@ vi.mock('@/db', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ orderBy: () => Promise.resolve(levels.rows) }) }) }) },
 }));
 
-vi.mock('@/lib/members-admin', () => ({
-  MEMBERS_PAGE_SIZE: 25, PENDING_CAP: 25, listPendingMembers, searchClubMembers,
+/**
+ * The two loaders are stubbed; **the two constants are the real ones**, spread in from the
+ * actual module.
+ *
+ * This started as a flat `{ MEMBERS_PAGE_SIZE: 25, PENDING_CAP: 25, … }`, which made every
+ * `pageSize: 25` / `cap: 25` assertion below compare the mock to itself: setting both
+ * constants to 7 in `src/lib/members-admin.ts` left this file — and the entire suite —
+ * green, while a live 200-member club changed its page size, its row range and its pending
+ * cap. `importOriginal` is what turns those assertions back into assertions about the
+ * page's behaviour. (`members-admin` imports `DB`/`DbOrTx` as types only, so importing it
+ * for real here pulls in no database.)
+ */
+vi.mock('@/lib/members-admin', async (importOriginal) => ({
+  ...await importOriginal<MembersAdmin>(),
+  listPendingMembers, searchClubMembers,
 }));
 
 vi.mock('@/lib/membership', () => ({
@@ -39,16 +56,27 @@ vi.mock('@/lib/membership', () => ({
   }),
 }));
 
-// Keys are asserted on directly rather than resolved through the real catalogs — this
-// test is about which controls render and what the page asks the query for. Interpolated
-// values are echoed so a count or a row range that never reaches the message is visible.
-// `getFormatter` is stubbed to a marker rather than a date, so a revert to
-// `toLocaleDateString('en-GB', …)` — the hardcoded locale this page carried, on a page
-// whose default locale is Turkish — renders "12 August" where the marker is expected.
+/**
+ * Keys are asserted on directly rather than resolved through the real catalogs — this
+ * test is about which controls render and what the page asks the query for. Interpolated
+ * values are echoed so a count or a row range that never reaches the message is visible.
+ *
+ * `getFormatter` is stubbed to a marker rather than a date, so a revert to
+ * `toLocaleDateString('en-GB', …)` — the hardcoded locale this page carried, on a page
+ * whose default locale is Turkish — renders "12 August" where the marker is expected.
+ *
+ * The marker echoes `timeZone`, which the first version of this mock did not: a
+ * `timeZone` dropped from the options renders the date in the SERVER's zone, so a pause
+ * ending 2026-08-13T00:30+03:00 reads as "12 Ağustos" to an Istanbul owner — the same
+ * defect class as the hardcoded locale, one axis over, and invisible to a mock that only
+ * inspects `opts.month`.
+ */
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve((key: string, values?: Record<string, unknown>) =>
     (values ? `${key}:${JSON.stringify(values)}` : key)),
-  getFormatter: () => Promise.resolve({ dateTime: () => 'INTL-DATE' }),
+  getFormatter: () => Promise.resolve({
+    dateTime: (_d: Date, o: Intl.DateTimeFormatOptions) => `INTL-DATE@${o.timeZone}`,
+  }),
 }));
 
 // The queue's own behaviour — the reject gate, the row dimming — is
@@ -293,6 +321,32 @@ describe('ManageMembersPage roster density', () => {
     expect(rowOf('Ada')).toHaveClass('lg:grid', 'lg:grid-cols-[1fr_auto_12rem]');
   });
 
+  /**
+   * The status cell is rendered even when the member has no badge, and this is the
+   * assertion for it — the comment in `page.tsx` claimed it and nothing checked it.
+   *
+   * Wrapping the badge in `{restriction !== 'none' && …}` is the obvious tidy-up, it looks
+   * identical below `lg:`, and it silently breaks the one thing the width buys: with the
+   * cell gone, an unrestricted row is a TWO-column grid, `auto` and `12rem` collapse
+   * together, and the select jumps left on every row that has no badge — the ragged column
+   * this task removed, restored only for the rows that read as normal.
+   *
+   * Counted as element children rather than matched by class, because what has to hold is
+   * the arity of the grid, not what any one cell contains.
+   */
+  it('keeps the status cell in the grid for a member with no badge', async () => {
+    await renderPage({
+      rows: [
+        mkRow({ name: 'Ada', status: 'approved' }),
+        mkRow({ name: 'Askıdaki', status: 'banned', bannedUntil: null }),
+      ],
+    });
+    expect(rowOf('Ada').children).toHaveLength(3);
+    expect(rowOf('Askıdaki').children).toHaveLength(3);
+    // The unrestricted row's middle cell is the empty one — not a missing one.
+    expect(rowOf('Ada').children[1]).toBeEmptyDOMElement();
+  });
+
   it('gives every member a skill-level control', async () => {
     const rows = [mkRow({ name: 'Ada' }), mkRow({ name: 'Bahar' })];
     await renderPage({ rows });
@@ -332,13 +386,38 @@ describe('ManageMembersPage roster density', () => {
     expect(rowOf('Ada')).not.toHaveTextContent('Badge');
   });
 
-  // The date in the pause badge goes through the request's locale. Hardcoded `'en-GB'`
-  // put "12 August" in the middle of a Turkish sentence on a Turkish-default page.
-  it('formats the pause date through the request locale, not a hardcoded en-GB', async () => {
+  /**
+   * The date in the pause badge goes through the request's locale AND the club's
+   * timezone. Hardcoded `'en-GB'` put "12 August" in the middle of a Turkish sentence;
+   * a missing `timeZone` would put the date a day out for a ban ending just after
+   * midnight in Istanbul, which is precisely when a member checks it.
+   */
+  it('formats the pause date through the request locale and the club timezone', async () => {
     await renderPage({
       rows: [mkRow({ name: 'Duraklatılan', status: 'approved', bannedUntil: new Date('2099-08-12T09:00:00Z') })],
     });
-    expect(screen.getByText('pausedBadge:{"date":"INTL-DATE"}')).toBeInTheDocument();
+    expect(screen.getByText('pausedBadge:{"date":"INTL-DATE@Europe/Istanbul"}')).toBeInTheDocument();
+  });
+
+  /**
+   * The two classes that let a 60-character name shrink and wrap instead of overflowing.
+   *
+   * They are pinned HERE because the browser measurement that was originally offered as
+   * their evidence cannot fail: `Card` carries `overflow-hidden` (`ui/card.tsx:16`), so an
+   * over-wide name is CLIPPED, not scrolled — `documentElement.scrollWidth` stays at 360
+   * with both classes deleted and the name silently truncated with no ellipsis. A grid or
+   * flex item's automatic minimum size is its CONTENT, so `min-w-0` is what actually lets
+   * the identity column narrow; `break-words` is what breaks a single unbroken token,
+   * which a name containing spaces never exercises.
+   */
+  it('lets a long name shrink and wrap rather than force the row wider', async () => {
+    const long = 'Boğaziçi Üniversitesi Kürek ve Yelken İhtisas Kulübü Üyesiıı';
+    await renderPage({ rows: [mkRow({ name: long, email: 'uzun@example.com' })] });
+
+    const name = screen.getByText(long);
+    expect(name.parentElement).toHaveClass('min-w-0');
+    expect(name).toHaveClass('break-words');
+    expect(screen.getByText('uzun@example.com')).toHaveClass('break-words');
   });
 });
 

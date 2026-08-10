@@ -74,6 +74,19 @@ describe('PendingMembers reject gate', () => {
     expect(screen.getByText(/confirmRejectTitle/)).toHaveTextContent('Ayşe Bekleyen');
   });
 
+  // Same pair as the roster's, pinned for the same reason: `Card`'s `overflow-hidden`
+  // means an over-wide name is clipped rather than scrolled, so no `scrollWidth` check
+  // anywhere can notice these going missing.
+  it('lets a long request name shrink and wrap rather than force the row wider', () => {
+    const long = 'Boğaziçi Üniversitesi Kürek ve Yelken İhtisas Kulübü Üyesiıı';
+    renderQueue([{ membershipId: randomUUID(), name: long, email: 'uzun@example.com' }]);
+
+    const name = screen.getByText(long);
+    expect(name.parentElement).toHaveClass('min-w-0');
+    expect(name).toHaveClass('break-words');
+    expect(screen.getByText('uzun@example.com')).toHaveClass('break-words');
+  });
+
   it('confirming dispatches the reject action for the row that was clicked', async () => {
     vi.mocked(rejectMemberAction).mockResolvedValue({ ok: true });
     renderQueue();
