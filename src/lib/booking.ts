@@ -379,12 +379,24 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
       // Target the chosen boat's session that has a free seat (empty-seat-only).
       // The owner override covers the member-facing gates, not a session the club has
       // explicitly closed or cancelled — those take no new bookings from anyone.
+      //
+      // `booked` ONLY, deliberately, and NOT the `ACTIVE` set the one-booking-per-slot
+      // guard above uses: `capacity` bounds seated rows, and the queue behind them is
+      // additional to it, not counted against it. That is the rule `rosterDayTotals`
+      // states and `getDayRoster` computes `freeSeats` by (`roster.ts:107`) — the very
+      // number that decides whether the owner is shown this add form at all. Counting
+      // the waitlist here made the two disagree exactly once: `markNoShow` does not
+      // re-seat its own already-started session, so an absence leaves
+      // `booked = capacity - 1` with a waitlisted row still behind it, and the owner
+      // seating the person who actually turned up was refused as `session_full`.
+      // `applySeating` on the next line is what keeps this honest — it fills the seat
+      // from the queue whenever this count was the low one.
       const boatSessions = foc.sessions.filter((s) => s.boatTypeId === input.boatTypeId && s.status === 'open').sort((a, b) => (a.id < b.id ? -1 : 1));
       if (boatSessions.length === 0) return { ok: false, error: 'no_session' };
-      const activeRows = await tx.select({ sessionId: bookings.sessionId }).from(bookings).where(and(inArray(bookings.sessionId, boatSessions.map((s) => s.id)), inArray(bookings.status, [...ACTIVE])));
-      const activeCount = new Map<string, number>();
-      for (const r of activeRows) activeCount.set(r.sessionId, (activeCount.get(r.sessionId) ?? 0) + 1);
-      const target = boatSessions.find((s) => (activeCount.get(s.id) ?? 0) < s.capacity);
+      const seatedRows = await tx.select({ sessionId: bookings.sessionId }).from(bookings).where(and(inArray(bookings.sessionId, boatSessions.map((s) => s.id)), eq(bookings.status, 'booked')));
+      const seatedCount = new Map<string, number>();
+      for (const r of seatedRows) seatedCount.set(r.sessionId, (seatedCount.get(r.sessionId) ?? 0) + 1);
+      const target = boatSessions.find((s) => (seatedCount.get(s.id) ?? 0) < s.capacity);
       if (!target) return { ok: false, error: 'session_full' };
 
       const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'booked', effectiveAt: now, source: 'owner', bookingDate: dateISO }).returning({ id: bookings.id });
