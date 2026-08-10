@@ -1,117 +1,205 @@
 import { eq } from 'drizzle-orm';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
+import { AdminPagination } from '@/components/admin-pagination';
 import { StatusPill } from '@/components/booking-status-badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/empty-state';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { db } from '@/db';
-import { memberships, skillLevels, user } from '@/db/schema';
+import { skillLevels } from '@/db/schema';
+import { listPendingMembers, MEMBERS_PAGE_SIZE, PENDING_CAP, searchClubMembers } from '@/lib/members-admin';
 import { requireOwner } from '@/lib/membership';
+import { normalizePage } from '@/lib/pagination';
 import { restrictionState } from '@/lib/restriction';
+import { one } from '@/lib/search-params';
 
 import { ApproveButton, RejectButton } from './member-actions';
 import { SkillLevelSelect } from './skill-level-select';
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
-export default async function ManageMembersPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ManageMembersPage({ params, searchParams }: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { slug } = await params;
+  const sp = await searchParams;
   const { club } = await requireOwner(slug);
   const t = await getTranslations('manage');
   const now = new Date();
 
-  const rows = await db
-    .select({ membership: memberships, name: user.name, email: user.email })
-    .from(memberships)
-    .innerJoin(user, eq(memberships.userId, user.id))
-    .where(eq(memberships.clubId, club.id));
+  const q = one(sp.q)?.trim() || undefined;
+  // `?page=1.5` reaches `OFFSET` as `12.5` and raises `invalid input syntax for type
+  // bigint` out of the render — a 500 on a URL anyone can hand-edit.
+  // `searchClubMembers` clamps again on its own; this keeps a nonsense value from ever
+  // leaving the route. Belt and braces, as `app/admin/users/page.tsx:23-31` documents.
+  const requestedPage = normalizePage(one(sp.page));
 
+  const pending = await listPendingMembers(db, { clubId: club.id, cap: PENDING_CAP });
+  // `page` is what came BACK, not what was asked for: the library pulls an out-of-range
+  // page down to the last one that exists, and the range below plus the pagination links
+  // have to describe the page the rows actually came from.
+  const { rows, total, page } = await searchClubMembers(db, {
+    clubId: club.id, q, page: requestedPage, pageSize: MEMBERS_PAGE_SIZE,
+  });
   const levels = await db.select().from(skillLevels).where(eq(skillLevels.clubId, club.id)).orderBy(skillLevels.rank);
 
-  const pending = rows.filter((r) => r.membership.status === 'pending');
-  /*
-    The suspended/paused split is `restrictionState`'s, not this page's. It was
-    hand-rolled here — `status === 'banned'` for the red badge, `bannedUntil > now` for
-    the amber one — which is the module's whole job, including the strict `>` at the
-    boundary. Two copies of that predicate is how the owner's roster and the member's own
-    page start disagreeing about who is restricted.
-
-    `bannedUntil!` under `'paused'` is that state's invariant, not an assumption: the
-    model returns `paused` only when the date is non-null and in the future.
-  */
-  const approved = rows
-    .filter((r) => r.membership.status === 'approved' || r.membership.status === 'banned')
-    .map((r) => ({ ...r, restriction: restrictionState(r.membership, now) }));
-
-  if (rows.length === 0) {
-    return <p className="text-muted-foreground">{t('empty')}</p>;
-  }
+  const from = total === 0 ? 0 : (page - 1) * MEMBERS_PAGE_SIZE + 1;
+  const to = Math.min(page * MEMBERS_PAGE_SIZE, total);
 
   return (
     <div className="flex flex-col gap-8">
-      <section>
-        <h2 className="mb-3 font-heading text-lg font-semibold">{t('pendingHeading')}</h2>
-        {pending.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('empty')}</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {pending.map((r) => (
-              <li key={r.membership.id} className="transition-opacity has-data-pending:opacity-40">
-                <Card size="sm">
-                  <CardContent className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-heading text-sm font-semibold">{r.name}</span>
-                      <span className="text-xs text-muted-foreground">{r.email}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ApproveButton slug={slug} membershipId={r.membership.id} label={t('approve')} />
-                      <RejectButton slug={slug} membershipId={r.membership.id} label={t('reject')} />
-                    </div>
-                  </CardContent>
-                </Card>
-              </li>
+      {/*
+        Hidden ENTIRELY when the queue is empty — no heading, no sentence, no gap. An
+        empty work queue should occupy zero pixels: a heading above "nothing here" is a
+        standing reminder of work that does not exist, on the page the owner opens to
+        find work that does.
+      */}
+      {pending.total > 0 && (
+        <section>
+          <h2 className="mb-3 font-heading text-lg font-semibold">{t('pendingHeading')}</h2>
+          <Card className="gap-0 divide-y divide-border py-0">
+            {pending.rows.map((r) => (
+              <div key={r.membershipId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 p-4 transition-opacity has-data-pending:opacity-40">
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="font-heading text-sm font-semibold break-words">{r.name}</span>
+                  <span className="text-xs break-words text-muted-foreground">{r.email}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ApproveButton slug={slug} membershipId={r.membershipId} label={t('approve')} />
+                  <RejectButton slug={slug} membershipId={r.membershipId} label={t('reject')} />
+                </div>
+              </div>
             ))}
-          </ul>
-        )}
-      </section>
+          </Card>
+          {/*
+            A NUMBER, not a pager. Pending is never paginated and never filtered: it
+            drains, so it is small by construction, and a page 2 is a place for a join
+            request to sit unanswered for a month.
+          */}
+          {pending.total > pending.rows.length && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              {t('pendingMore', { count: pending.total - pending.rows.length })}
+            </p>
+          )}
+        </section>
+      )}
 
       <section>
         <h2 className="mb-3 font-heading text-lg font-semibold">{t('approvedHeading')}</h2>
-        {approved.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('empty')}</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {approved.map((r) => (
-              <li key={r.membership.id}>
-                <Card size="sm">
-                  <CardContent className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-heading text-sm font-semibold">{r.name}</span>
-                      <span className="text-xs text-muted-foreground">{r.email}</span>
-                      {r.restriction === 'suspended' ? (
-                        <StatusPill tone="bad">{t('bookings.bannedBadge')}</StatusPill>
-                      ) : r.restriction === 'paused' ? (
-                        <StatusPill tone="warn">{t('bookings.bannedUntilBadge', { date: r.membership.bannedUntil!.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: club.timezone }) })}</StatusPill>
-                      ) : null}
-                    </div>
-                    {levels.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">{t('noSkillLevels')}</p>
-                    ) : (
-                      <SkillLevelSelect
-                        slug={slug}
-                        membershipId={r.membership.id}
-                        skillLevels={levels}
-                        currentSkillLevelId={r.membership.skillLevelId}
-                        label={t('skillLevel')}
-                        noneLabel={t('none')}
-                      />
-                    )}
-                  </CardContent>
-                </Card>
-              </li>
-            ))}
-          </ul>
+
+        {/* A plain GET form, so the search lands in the URL and is shareable. The submit is
+            a plain Button, not PendingButton: `useFormStatus` reports nothing for a browser
+            navigation, so it would render a control that never shows progress.
+
+            `/manage/members`, never `/s/{slug}/manage/members` — the slug is in the
+            hostname, and the internal form would double-prefix through the proxy rewrite. */}
+        <form method="get" action="/manage/members" className="mb-4 flex max-w-md gap-2">
+          <Input name="q" defaultValue={q ?? ''} placeholder={t('membersSearch')} aria-label={t('membersSearch')} />
+          <Button type="submit" size="sm">{t('membersSearchCta')}</Button>
+        </form>
+
+        {levels.length === 0 && rows.length > 0 && (
+          // Once, above the list — not once per row. At 25 rows the per-row copy this
+          // replaces was 25 identical sentences down the column the eye scans for levels.
+          <p className="mb-3 text-sm text-muted-foreground">{t('noSkillLevels')}</p>
         )}
+
+        {rows.length === 0 ? (
+          /*
+            Three different facts, three different sentences. One shared string here is
+            the bug `app/admin/page.tsx:69-73` documents being fixed once already: "No
+            members yet" under a search that matched nothing is a flat false statement
+            about a club with 200 people in it.
+          */
+          q ? (
+            <EmptyState title={t('noMatchTitle')} body={t('noMatchBody')} />
+          ) : pending.total > 0 ? (
+            <EmptyState title={t('noApprovedTitle')} body={t('noApprovedBody')} />
+          ) : (
+            <EmptyState
+              title={t('noMembersTitle')}
+              body={t('noMembersBody')}
+              action={
+                <Link href="/" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                  {t('viewPublicPage')}
+                </Link>
+              }
+            />
+          )
+        ) : (
+          /*
+            One Card with `divide-y` rows, not one Card per member: 25 cards at `gap-2` is
+            25 shadows and 25 gutters, and a 200-member club made that the whole page. The
+            idiom `app/admin/users/page.tsx:64` already uses for the same 25 people.
+
+            At `lg:` the ragged `flex-wrap justify-between` row becomes a three-column
+            grid, and the fixed `12rem` last column is what the width buys: `1fr` absorbs
+            every difference in name length and badge width, so every skill-level select
+            shares one left edge down the whole list. Assigning levels to 30 members is one
+            vertical pass instead of 30 horizontal hunts. Below `lg:` the stack is
+            unchanged.
+          */
+          <Card className="gap-0 divide-y divide-border py-0">
+            {rows.map((r) => {
+              /*
+                The suspended/paused split is `restrictionState`'s, not this page's. Two
+                copies of that predicate is how the owner's roster and the member's own
+                page start disagreeing about who is restricted.
+
+                `bannedUntil!` under `'paused'` is that state's invariant, not an
+                assumption: the model returns `paused` only when the date is non-null and
+                in the future.
+              */
+              const restriction = restrictionState(r, now);
+              return (
+                <div
+                  key={r.membershipId}
+                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 p-4 lg:grid lg:grid-cols-[1fr_auto_12rem] lg:items-center lg:gap-4"
+                >
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="font-heading text-sm font-semibold break-words">{r.name}</span>
+                    <span className="text-xs break-words text-muted-foreground">{r.email}</span>
+                  </div>
+                  {/* Its own cell even when empty, so the select column below does not
+                      shift by the width of a badge. */}
+                  <div>
+                    {restriction === 'suspended' ? (
+                      <StatusPill tone="bad">{t('bookings.bannedBadge')}</StatusPill>
+                    ) : restriction === 'paused' ? (
+                      <StatusPill tone="warn">{t('bookings.bannedUntilBadge', { date: r.bannedUntil!.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: club.timezone }) })}</StatusPill>
+                    ) : null}
+                  </div>
+                  {levels.length > 0 && (
+                    <SkillLevelSelect
+                      slug={slug}
+                      membershipId={r.membershipId}
+                      skillLevels={levels}
+                      currentSkillLevelId={r.skillLevelId}
+                      label={t('skillLevel')}
+                      noneLabel={t('none')}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </Card>
+        )}
+
+        <AdminPagination
+          basePath="/manage/members"
+          query={{ q }}
+          page={page}
+          pageSize={MEMBERS_PAGE_SIZE}
+          total={total}
+          prevLabel={t('paginationPrev')}
+          nextLabel={t('paginationNext')}
+          rangeLabel={t('paginationRange', { from, to, total })}
+        />
       </section>
     </div>
   );
