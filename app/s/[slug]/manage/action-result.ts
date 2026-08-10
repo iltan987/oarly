@@ -65,7 +65,8 @@
  *     - `manage/members/page.tsx` — `<form method="get">` with no function action, so
  *       React's reset never runs at all.
  *     - hidden-input-only forms: `setBoatActiveAction`, `approveMemberAction`,
- *       `rejectMemberAction`, `deleteWindowAction`, `setOverrideAction`,
+ *       `rejectMemberAction`, `liftSuspensionAction`, `undoNoShowAction`,
+ *       `deleteWindowAction`, `setOverrideAction`,
  *       `clearOverrideAction`, `reorderSkillLevelAction`, `deleteSkillLevelAction`,
  *       `removeSocialAction`, `admin/users/admin-toggle.tsx`,
  *       `admin/club-status-button.tsx`, `book/book-calendar.tsx`,

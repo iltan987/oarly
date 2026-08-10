@@ -2,7 +2,9 @@ import { parseUserInput } from 'better-auth/db';
 import { describe, expect, it } from 'vitest';
 
 import { auth } from '@/auth';
+import { locales } from '@/i18n/config';
 import { GENDER_OPTIONS, PAYMENT_TYPES, signUpSchema } from '@/lib/schemas';
+import { THEMES } from '@/lib/theme';
 
 /**
  * Guards `user.additionalFields[*].validator` in `src/auth.ts`.
@@ -111,5 +113,32 @@ describe('auth user.additionalFields validators', () => {
   });
   it('refuses a payment type outside the pg enum', () => {
     expect(accepts('defaultPaymentType', 'invoice')).toBe(false);
+  });
+
+  /**
+   * `locale` and `theme` are the two fields the block above argued about and then left
+   * unbound. Both columns are `text NOT NULL`, so `/update-user` took any string of any
+   * length in either — no `.nullable()` case to cover, because NULL is not a value they
+   * can hold.
+   *
+   * The sets are asserted from the app's own constants rather than restated here, so
+   * adding a locale (or a fourth theme) cannot leave this file testing a stale list. The
+   * REFUSALS are the half that would otherwise be vacuous: `'de'` and `'sepia'` are
+   * plausible near-misses, and the long string is the unbounded-write shape itself.
+   */
+  it.each(locales)('accepts the supported locale %s', (locale) => {
+    expect(accepts('locale', locale)).toBe(true);
+  });
+  it.each(THEMES)('accepts the offered theme %s', (theme) => {
+    expect(accepts('theme', theme)).toBe(true);
+  });
+  it('refuses a locale or theme the app does not have, at any length', () => {
+    expect(accepts('locale', 'de')).toBe(false);
+    expect(accepts('locale', 'x'.repeat(5000))).toBe(false);
+    expect(accepts('theme', 'sepia')).toBe(false);
+    expect(accepts('theme', 'x'.repeat(5000))).toBe(false);
+    // Empty is the one a `.max()`-only bound would have let through.
+    expect(accepts('locale', '')).toBe(false);
+    expect(accepts('theme', '')).toBe(false);
   });
 });

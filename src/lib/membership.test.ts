@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/env', () => ({ env: { APP_URL: 'https://oarly.sbs' } }));
@@ -145,14 +146,65 @@ describe('requireMemberView', () => {
   });
 });
 
+/**
+ * Why the cases below use a distinct (userId, clubId) pair each — and what this file can
+ * and cannot say about `cache()`.
+ *
+ * NOT because reusing a pair risks a stale cached Promise. `getMembership` is
+ * `cache()`-wrapped, and in production that memoizes per RSC render and NOT outside one —
+ * for the reason set out on `getMembership` itself, which is the store
+ * `DefaultAsyncDispatcher.getCacheForType` hands back (a fresh `Map` whenever
+ * `resolveRequest()` is null), not the absence of a dispatcher.
+ *
+ * NONE OF THAT IS OBSERVABLE FROM HERE, and the check below exists to say so mechanically
+ * rather than in prose. This test file has never run an RSC render, but that is not even
+ * the reason: vitest resolves `react` WITHOUT the `react-server` export condition
+ * (`node_modules/react/package.json` `exports["."]`), so the `cache` in this process is
+ * the CLIENT build's — `exports.cache = function (fn) { return function () { return
+ * fn.apply(null, arguments); }; }` (`node_modules/react/cjs/react.development.js:917-921`),
+ * a passthrough that consults no dispatcher and memoizes nothing under any conditions. A
+ * counter that increments twice here is that passthrough, and it is compatible with every
+ * hypothesis about production; it distinguishes nothing.
+ *
+ * So distinct pairs are used only so each case reads standalone.
+ */
+describe('what this process can observe about cache()', () => {
+  it('resolves react to the client build, whose cache() ignores a dispatcher entirely', async () => {
+    const React = (await import('react')) as unknown as Record<string, unknown>;
+    const internals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE as
+      { A: unknown } | undefined;
+    // Undefined means `react` now resolves to the react-server build in this process, and
+    // the paragraph above no longer describes it — the note has to be re-derived, not the
+    // assertion relaxed.
+    expect(internals).toBeDefined();
+
+    let calls = 0;
+    const counted = cache((key: string) => { calls += 1; return `${key}:${calls}`; });
+
+    // A real memoizing dispatcher, the shape `getCacheForType` is called with. Under the
+    // react-server build this makes `cache()` memoize; under the client build's
+    // passthrough it changes nothing, which is the whole point.
+    const store = new Map<unknown, unknown>();
+    const previous = internals!.A;
+    internals!.A = {
+      getCacheForType: (resourceType: () => unknown) => {
+        if (!store.has(resourceType)) store.set(resourceType, resourceType());
+        return store.get(resourceType);
+      },
+      cacheSignal: () => null,
+    };
+    try {
+      counted('same-key');
+      counted('same-key');
+    } finally {
+      internals!.A = previous;
+    }
+
+    expect(calls).toBe(2);
+  });
+});
+
 describe('getMemberRestriction', () => {
-  // NOT because reusing a (userId, clubId) pair across cases risks a stale cached
-  // Promise: `cache()` only memoizes inside a real request-scoped React/Next.js render,
-  // which this bare `await mod.getMemberRestriction(...)` call never sets up. Verified
-  // directly — a `cache()`-wrapped counter called twice with the same key, with no
-  // active dispatcher, increments twice, in a plain Node script and inside a vitest
-  // `it()` alike. A unit test cannot observe this function's caching one way or the
-  // other; distinct pairs per case are used here only so each case reads standalone.
   it('is none for a visitor with no membership row, without reaching getRestriction\'s query', async () => {
     vi.spyOn(mod, 'getMembership').mockResolvedValue(null);
     await expect(mod.getMemberRestriction('no-member-user', 'club-a')).resolves.toEqual({ state: 'none' });

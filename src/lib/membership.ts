@@ -31,10 +31,23 @@ export type Membership = typeof memberships.$inferSelect;
  * so `cache()`'s argument-identity key lands on the same entry for every caller in one
  * request. It is also safe across a write: `requestToJoin` (`src/lib/join.ts`) reads
  * this, then inserts, from inside a Server Action — a plain async call with no active
- * React render and therefore no cache scope to leave a stale entry in (`cache()`
- * without a request dispatcher does not memoize at all; see `membership.test.ts`). The
- * page Next re-renders afterward to show the result is a fresh render with its own,
- * empty cache — it queries for real and sees the row the action just wrote.
+ * React render and therefore no cache scope to leave a stale entry in. The page Next
+ * re-renders afterward to show the result is a fresh render with its own, empty cache —
+ * it queries for real and sees the row the action just wrote.
+ *
+ * THE MECHANISM, because the obvious explanation is the wrong one. It is NOT that the
+ * async dispatcher is missing outside a render: `createRequest` assigns
+ * `ReactSharedInternalsServer.A = DefaultAsyncDispatcher` on the first RSC render of the
+ * process and never clears it (`node_modules/next/dist/compiled/react-server-dom-turbopack/
+ * cjs/react-server-dom-turbopack-server.node.development.js:1099-1106`), so from then on
+ * `cache()` finds a dispatcher everywhere, action code included. What defeats memoization
+ * is the STORE the dispatcher hands back. `DefaultAsyncDispatcher.getCacheForType` is
+ * `var cache = (cache = resolveRequest()) ? cache.cache : new Map();` (:6230), and
+ * `resolveRequest()` returns null outside a render — neither the `currentRequest` module
+ * variable nor the `requestStorage` AsyncLocalStorage store is set (:1235-1239). So every
+ * call outside a render gets a FRESH Map, is a guaranteed miss, and nothing it computes
+ * survives the call. Same conclusion, different reason — and the difference matters,
+ * because "no dispatcher" would also be false inside a Server Action.
  */
 export const getMembership = cache(async (db: DB, userId: string, clubId: string): Promise<Membership | null> => {
   const [row] = await db

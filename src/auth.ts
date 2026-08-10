@@ -7,6 +7,7 @@ import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { renderResetEmail, renderVerifyEmail } from '@/emails';
 import { deriveTrustedOrigins, env } from '@/env';
+import { locales } from '@/i18n/config';
 import {
   authRateLimitAfter,
   authRateLimitBefore,
@@ -17,6 +18,7 @@ import { recordSignupConsent } from '@/lib/consent';
 import { isDateISO } from '@/lib/date-iso';
 import { sendEmail } from '@/lib/email';
 import { GENDER_OPTIONS, PAYMENT_TYPES } from '@/lib/schemas';
+import { THEMES } from '@/lib/theme';
 
 /**
  * Derived here rather than in `src/env.ts` because that module is imported by a client
@@ -116,10 +118,21 @@ export const auth = betterAuth({
      * exceeds 80 characters is refused rather than truncated, because silently mangling
      * someone's own name is the worse of the two failures.
      *
-     * `gender` and `defaultPaymentType` are pinned to the same constant the UI renders from,
-     * so a crafted `/update-user` cannot put an unknown answer in a KVKK-sensitive column or
-     * a non-enum string in front of the `payment_type` pg enum. `.nullable()` on both keeps
-     * "never answered" writable.
+     * `gender`, `defaultPaymentType`, `locale` and `theme` are pinned to the same constants
+     * the UI renders from, so a crafted `/update-user` cannot put an unknown answer in a
+     * KVKK-sensitive column or a non-enum string in front of the `payment_type` pg enum.
+     * `.nullable()` on `gender` keeps "never answered" writable.
+     *
+     * `locale` and `theme` were the two fields this block argued about and then left out.
+     * Both are `text NOT NULL` (`src/db/schema/auth.ts:25-26`), so `/update-user` wrote an
+     * arbitrary-length string into either — no `.nullable()`, because NULL is not a value
+     * they can hold. The blast radius is small, and that is the whole argument for binding
+     * them rather than against: `userLocale()` above narrows on READ and
+     * `next-themes` is handed `theme` client-side, so a junk value is invisible until
+     * something starts trusting the column. `locales` is `@/i18n/config`'s, the same list
+     * `asLocale` narrows to and the same one `messages/{tr,en}.json` exist for; `THEMES` is
+     * `@/lib/theme`'s, the three `user-menu.tsx` renders as radio items. Neither import
+     * pulls anything client-only into this module.
      *
      * `birthday` is validated here too, and NOT because Better Auth coerces it — a coercion
      * that cannot reject is not a validation, and this one cannot reject. `/update-user`'s
@@ -155,8 +168,8 @@ export const auth = betterAuth({
       birthday: { type: 'date', required: false, validator: { input: z.union([z.date(), z.string().refine(isDateISO, 'YYYY-MM-DD'), z.null()]) } },
       gender: { type: 'string', required: false, validator: { input: z.enum(GENDER_OPTIONS).nullable() } },
       defaultPaymentType: { type: 'string', required: false, defaultValue: 'regular', validator: { input: z.enum(PAYMENT_TYPES) } },
-      locale: { type: 'string', required: false, defaultValue: 'tr' },
-      theme: { type: 'string', required: false, defaultValue: 'system' },
+      locale: { type: 'string', required: false, defaultValue: 'tr', validator: { input: z.enum(locales) } },
+      theme: { type: 'string', required: false, defaultValue: 'system', validator: { input: z.enum(THEMES) } },
       isAdmin: { type: 'boolean', required: false, defaultValue: false, input: false },
     },
   },
