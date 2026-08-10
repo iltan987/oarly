@@ -20,37 +20,63 @@
  *
  * WHICH FORMS NEED IT is not a question about this type. React's reset does not know what an
  * action returns — it fires for any `<form action={fn}>` — so the population to check is
- * defined by SHAPE: an uncontrolled `defaultValue` input inside a `<form action={…}>`.
- * Enumerated that way, across the whole app:
+ * defined by SHAPE: an UNCONTROLLED input inside a `<form action={…}>`. Both halves count,
+ * and the second is the worse one:
  *
- *   ECHOED (a refusal reachable in ordinary use silently reverts typed content, and the
- *   message does not necessarily name what it reverted):
- *     - `manage/profile/profile-form.tsx`      `ProfileSaveResult`   5 fields, incl. a 2000-char description
- *     - `manage/boats/boats-editor.tsx`        `BoatSaveResult`      3 fields; `minAttendance > seats`
- *     - `manage/schedule/window-form.tsx`      `WindowFormState`     3 fields; uneven tiling, overlap
- *     - `manage/policies/policies-form.tsx`    `PoliciesState`       2 fields; blank lead days
- *     - `app/account/account-form.tsx`         `AccountActionResult` 6 fields (outside the manage area)
+ *   - WITH a `defaultValue`, a reset REVERTS the field to the stored value; and
+ *   - WITHOUT one, a reset WIPES it, because `form.reset()` restores a control to its value
+ *     ATTRIBUTE and an input with no `defaultValue` has `''`.
  *
- *   LEFT, deliberately:
- *     - `manage/skill-levels/skill-levels-editor.tsx` — one <=40-char level name, and the add
- *       form clears itself on success by design.
- *     - `manage/profile`'s add-social form — a platform and a handle, both short, likewise
- *       cleared on success.
- *     - `manage/members/skill-level-select.tsx` — the submitted value is a hidden input driven
- *       by React state, which a reset does not touch. Nothing typed, nothing to lose.
- *     - `manage/members/page.tsx` — `<form method="get">` with no function action, so React's
- *       reset never runs.
- *     - every form here whose only fields are hidden inputs: `setBoatActiveAction`,
- *       `approveMemberAction`, `rejectMemberAction`, `assignSkillAction`,
- *       `deleteWindowAction`, `setOverrideAction`, `clearOverrideAction`,
- *       `reorderSkillLevelAction`, `deleteSkillLevelAction`, `removeSocialAction`.
+ * The first sweep for this only looked for `defaultValue` and therefore missed every form of
+ * the second kind. Re-run over the whole app, both kinds:
+ *
+ *   ECHOED — a refusal reachable in ordinary use silently loses typed content, and the
+ *   message does not necessarily name what it lost:
+ *     - `manage/profile/profile-form.tsx`     reverts 5 fields, incl. a 2000-char description
+ *     - `account/account-form.tsx`            reverts 6 fields
+ *     - `manage/boats/boats-editor.tsx`       reverts 3; `minAttendance > seats`
+ *     - `manage/schedule/window-form.tsx`     reverts 3; uneven tiling, overlap
+ *     - `manage/policies/policies-form.tsx`   reverts 2; and see THE LINE below
+ *     - `request-club/request-club-form.tsx`  WIPES 2; `slug_taken` names only the slug
+ *     - `admin/clubs/new/page.tsx`            WIPES 3; `slug_taken` / `owner_not_found`
+ *
+ *   LEFT, with the reason each is actually left for:
+ *     - `manage/skill-levels`'s add form and `manage/profile`'s add-social form — both WIPE
+ *       (no `defaultValue`), and neither is left because they clear on success: that is the
+ *       success path, and a refusal here toasts the generic `actionError`, naming nothing.
+ *       They are left because what is lost is one short identifier (a <=40-char level name)
+ *       or two (a platform and a handle), typed seconds earlier and retyped in seconds.
+ *     - `manage/skill-levels`'s rename form — reverts one <=40-char name, still on screen.
+ *     - `admin/requests/decision-buttons.tsx` — its `note` Textarea would be wiped, but the
+ *       reset is not what removes it: the effect calls `setPendingDecision(null)` on EVERY
+ *       resolved state, so the `{pendingDecision && <form>}` guard unmounts the dialog and
+ *       the note with it. Both refusals also make the note moot — `note_required` means it
+ *       was empty, and `not_pending` means someone else already decided the request, so
+ *       there is nothing to resubmit.
+ *
+ *   CHECKED AND NOT AT RISK, recorded so the next sweep does not redo the work:
+ *     - `manage/bookings/bookings-roster.tsx`'s owner-add form — every field is a hidden
+ *       input driven by React state, and the member search box is both controlled AND
+ *       portalled out of the form by its Popover, so `form.reset()` never reaches it.
+ *     - `admin/clubs/[id]/transfer-owner.tsx` — the search box is OUTSIDE the `<form>`,
+ *       which holds one hidden input.
+ *     - `manage/members/skill-level-select.tsx` — the submitted value is a hidden input
+ *       driven by React state, which a reset does not touch.
+ *     - `manage/members/page.tsx` — `<form method="get">` with no function action, so
+ *       React's reset never runs at all.
+ *     - hidden-input-only forms: `setBoatActiveAction`, `approveMemberAction`,
+ *       `rejectMemberAction`, `deleteWindowAction`, `setOverrideAction`,
+ *       `clearOverrideAction`, `reorderSkillLevelAction`, `deleteSkillLevelAction`,
+ *       `removeSocialAction`, `admin/users/admin-toggle.tsx`,
+ *       `admin/club-status-button.tsx`, `book/book-calendar.tsx`,
+ *       `components/confirm-dialog.tsx`, `join/join-form.tsx`.
  *
  * THE LINE, and it is not a field count — `policies-form.tsx` is what corrected that. Its
  * reachable refusal is `invalid_input` (switch booking-open to "lead" mode, leave the days
  * blank, and the schema's refine rejects it), whose message is the GENERIC one and names no
  * field — while the reset also reverted `waitlistCapacity`, which the owner may have changed
  * in the same save. One field, silently, with the error naming nothing. So: echo where a
- * refusal reachable in ORDINARY use can revert typed content the user is not told about. Add
+ * refusal reachable in ORDINARY use can lose typed content the user is not told about. Add
  * such a field to any form above and the action owes an echo.
  */
 export type ManageActionResult = { ok: true } | { ok: false };

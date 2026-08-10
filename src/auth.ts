@@ -137,6 +137,16 @@ export const auth = betterAuth({
      * `Date` is accepted alongside the string because a programmatic caller may pass one, and
      * `isDateISO` rather than a shape regex because `2026-02-31` matches the shape, is not a
      * date, and lands as 22008.
+     *
+     * ONE THING THIS BOUND DOES NOT FIX, stated because the path above is documented in
+     * detail and would otherwise imply it does: once the value is valid, the coercion still
+     * hands a `Date` to a `date` column through pg's LOCAL-offset serialisation. Measured
+     * under `TZ=America/New_York`, `1990-04-17` leaves `prepareValue` as
+     * `1990-04-16T20:00:00.000-04:00` and Postgres stores 1990-04-16 — off by one on any
+     * server west of UTC. It is pre-existing and unreachable from this app's own UI
+     * (`saveAccountAction` writes the string straight through drizzle's `PgDateString`,
+     * which does not build a `Date` at all); it would bite the first caller to write a
+     * birthday through Better Auth. Passing `YYYY-MM-DD` rather than a `Date` avoids it.
      */
     additionalFields: {
       firstName: { type: 'string', required: false, validator: { input: z.string().max(80) } },

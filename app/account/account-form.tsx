@@ -138,20 +138,19 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
   const bad = (name: string) => badFields.includes(name);
 
   /*
-   * MARKED, not excluded — every name `fields` can carry has a control here that can show it.
-   * The two closed sets cannot be mistyped, so a refusal naming one means a hand-crafted
-   * payload; but leaving them unmarked would put the form back in the state this change
-   * removed — the summary saying "check the fields" and nothing saying which. The
-   * `rejected*` guards below then fall back to the stored answer for exactly those values,
-   * so the marked control shows a usable option rather than a blank.
-   */
-
-  /*
-   * The two closed sets are echoed back only if the refused value is actually one of the
-   * answers this form offers. They cannot be mistyped — they are a Select and a RadioGroup
-   * — so a value outside the set means a hand-crafted POST, and seeding a `defaultValue`
-   * from it would leave the Select blank and the RadioGroup with nothing checked, which is
-   * a worse starting point for the retry than the stored answer.
+   * The two closed sets need care in BOTH directions, which is why they get their own
+   * bindings rather than a bare `rejected?.gender`.
+   *
+   * They are MARKED like every other field: `state.fields` carries every zod path, so
+   * leaving `gender` and `defaultPaymentType` unmarked above would put the form back in the
+   * state the field markers removed — a summary saying "check the fields" and nothing saying
+   * which.
+   *
+   * But they are ECHOED only when the refused value is one of the answers this form offers.
+   * A Select and a RadioGroup cannot be mistyped, so a value outside the set means a
+   * hand-crafted POST, and seeding a `defaultValue` from it would leave the Select blank and
+   * the RadioGroup with nothing checked — a worse starting point for the retry than the
+   * stored answer, and worse still on a control the marker has just pointed at.
    */
   const rejectedGender =
     rejected !== null && (rejected.gender === '' || (GENDER_OPTIONS as readonly string[]).includes(rejected.gender))

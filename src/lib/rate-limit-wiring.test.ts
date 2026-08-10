@@ -243,8 +243,10 @@ describe('requestClubAction rate limiting', () => {
 
     const state = await requestClubAction({}, fd);
     // `getTranslations` is stubbed to echo the key, so this asserts the exact i18n key the
-    // form renders, not just "some error".
-    expect(state).toEqual({ errors: { form: 'errorTooManyRequests' } });
+    // form renders, not just "some error". `toMatchObject`, because the refusal also carries
+    // `values` — the submitted name and slug, echoed back so the rate-limited visitor does
+    // not find an emptied form (see `app/request-club/actions.ts`).
+    expect(state).toMatchObject({ errors: { form: 'errorTooManyRequests' } });
   });
 });
 
