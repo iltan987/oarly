@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
@@ -8,7 +8,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
-import { assignSkillLevel, setMembershipStatus } from './members-admin';
+import {
+  assignSkillLevel, type ClubMemberRow, listPendingMembers, searchClubMembers, setMembershipStatus,
+} from './members-admin';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -247,5 +249,225 @@ describe.skipIf(!url)('members-admin', () => {
     expect(await setMembershipStatus(db, { membershipId: ghost, clubId, status: 'approved', actorId: owner.id })).toBe(false);
     const rows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.target, ghost));
     expect(rows).toHaveLength(0);
+  });
+
+  // ── The two read paths behind /manage/members ──────────────────────────────────
+  describe('the roster loaders', () => {
+    async function mkClub() {
+      const [club] = await db.insert(schema.clubs)
+        .values({ slug: `r-${randomUUID()}`, name: 'Roster Club', status: 'active' }).returning();
+      return club;
+    }
+
+    /** One user + one membership of `clubId`. Every id is a fresh uuid: a sentinel would
+     *  survive a failed run as an orphan and make the next run pass in isolation. */
+    async function mkMember(
+      clubId: string,
+      opts: { name: string; status?: 'pending' | 'approved' | 'rejected' | 'banned'; email?: string; joinedAt?: Date },
+    ) {
+      const id = randomUUID();
+      const email = opts.email ?? `${id}@t.co`;
+      await db.insert(schema.user).values({ id, name: opts.name, email });
+      const [m] = await db.insert(schema.memberships).values({
+        userId: id, clubId, role: 'member', status: opts.status ?? 'approved',
+        ...(opts.joinedAt ? { joinedAt: opts.joinedAt } : {}),
+      }).returning();
+      return { userId: id, email, membershipId: m.id };
+    }
+
+    const userIds = (r: { rows: ClubMemberRow[] }) => r.rows.map((row) => row.userId);
+
+    /**
+     * The tie-break, and the shape of this fixture is the whole test: every member shares
+     * ONE name, so `ORDER BY name` alone leaves Postgres free to return the tied rows in
+     * whatever order each execution happens to produce — and a LIMIT/OFFSET query plans
+     * differently from its own next page. A fixture with distinct names proves nothing at
+     * all here: it passes under any ordering, including none.
+     *
+     * The expected order is read back FROM POSTGRES rather than sorted in JS, because
+     * `user.id` is `text` and its ordering is the database's collation, not JavaScript's
+     * `<`. That makes the assertion exact instead of approximately right.
+     */
+    it('does not let two members with the same name overlap or vanish across pages', async () => {
+      const club = await mkClub();
+      const name = `Mehmet ${randomUUID().slice(0, 8)}`;
+      const made = [];
+      for (let i = 0; i < 10; i++) made.push(await mkMember(club.id, { name }));
+
+      const ordered = await db.select({ id: schema.user.id }).from(schema.user)
+        .where(inArray(schema.user.id, made.map((m) => m.userId)))
+        .orderBy(asc(schema.user.id));
+      const expected = ordered.map((r) => r.id);
+
+      const first = await searchClubMembers(db, { clubId: club.id, page: 1, pageSize: 5 });
+      const second = await searchClubMembers(db, { clubId: club.id, page: 2, pageSize: 5 });
+
+      expect(userIds(first)).toEqual(expected.slice(0, 5));
+      expect(userIds(second)).toEqual(expected.slice(5));
+      // Stated as the property as well as the mechanism: nobody on both pages, nobody on
+      // neither. A member who lands on neither page is one who quietly never gets a level.
+      expect(new Set([...userIds(first), ...userIds(second)]).size).toBe(10);
+      expect(userIds(first).filter((id) => userIds(second).includes(id))).toEqual([]);
+    });
+
+    // The count is taken BEFORE the page is resolved, because the clamp needs it. Asking
+    // for page 99 of a 3-page list must show page 3 — not an empty page above a row range
+    // that describes rows nobody can see, with a Previous link into another empty page.
+    it('clamps a page past the end down to the last page that has rows', async () => {
+      const club = await mkClub();
+      const stamp = randomUUID().slice(0, 8);
+      for (let i = 0; i < 5; i++) await mkMember(club.id, { name: `${stamp}-${i}` });
+
+      const res = await searchClubMembers(db, { clubId: club.id, page: 99, pageSize: 2 });
+      expect(res.total).toBe(5);
+      expect(res.page).toBe(3);
+      expect(res.rows).toHaveLength(1);
+      expect(res.rows[0].name).toBe(`${stamp}-4`);
+    });
+
+    it.each([
+      ['a fraction', 1.5],
+      ['Infinity', Number.POSITIVE_INFINITY],
+      ['a huge float', 1e20],
+      ['zero', 0],
+    ] as const)('answers a query asking for %s of a page instead of raising from Postgres', async (_label, page) => {
+      const club = await mkClub();
+      await mkMember(club.id, { name: 'Solo' });
+      const res = await searchClubMembers(db, { clubId: club.id, page, pageSize: 2 });
+      expect(res.page).toBe(1);
+      expect(res.rows).toHaveLength(1);
+    });
+
+    it('matches a case-insensitive fragment of either the name or the email', async () => {
+      const club = await mkClub();
+      const stamp = randomUUID().slice(0, 8);
+      const hit = await mkMember(club.id, { name: `Zeynep ${stamp}`, email: `zey-${stamp}@t.co` });
+      await mkMember(club.id, { name: 'Somebody Else' });
+
+      expect(userIds(await searchClubMembers(db, { clubId: club.id, q: `ZEYNEP ${stamp}` }))).toEqual([hit.userId]);
+      expect(userIds(await searchClubMembers(db, { clubId: club.id, q: `ZEY-${stamp}` }))).toEqual([hit.userId]);
+    });
+
+    // `_` is a single-character wildcard unescaped, so this search would also return the
+    // `litX…` member — a result set quietly too WIDE, with nothing on screen to explain it.
+    it('treats LIKE metacharacters in the query as literal text', async () => {
+      const club = await mkClub();
+      const stamp = randomUUID().slice(0, 8);
+      const literal = await mkMember(club.id, { name: `lit_${stamp}` });
+      await mkMember(club.id, { name: `litX${stamp}` });
+
+      const res = await searchClubMembers(db, { clubId: club.id, q: `lit_${stamp}` });
+      expect(userIds(res)).toEqual([literal.userId]);
+      expect(res.total).toBe(1);
+    });
+
+    // The roster is one club's. A club_id dropped from the WHERE would leak every other
+    // tenant's members into this owner's page, which is the worst failure on this route.
+    it('never returns a member of another club', async () => {
+      const mine = await mkClub();
+      const theirs = await mkClub();
+      const stamp = randomUUID().slice(0, 8);
+      const ours = await mkMember(mine.id, { name: `shared ${stamp}` });
+      await mkMember(theirs.id, { name: `shared ${stamp}` });
+
+      const res = await searchClubMembers(db, { clubId: mine.id, q: stamp });
+      expect(userIds(res)).toEqual([ours.userId]);
+      expect(res.total).toBe(1);
+    });
+
+    /**
+     * `banned` belongs on the roster and `pending` and `rejected` do not — the same split
+     * the page renders. A banned member is still a member (they carry a badge and a skill
+     * level); a rejected one has no surface in the product at all, and a pending one is
+     * the work queue's, not the roster's.
+     */
+    it('returns approved and banned members, and neither pending nor rejected ones', async () => {
+      const club = await mkClub();
+      const stamp = randomUUID().slice(0, 8);
+      const approved = await mkMember(club.id, { name: `a ${stamp}`, status: 'approved' });
+      const banned = await mkMember(club.id, { name: `b ${stamp}`, status: 'banned' });
+      await mkMember(club.id, { name: `p ${stamp}`, status: 'pending' });
+      await mkMember(club.id, { name: `r ${stamp}`, status: 'rejected' });
+
+      const res = await searchClubMembers(db, { clubId: club.id, q: stamp });
+      expect(res.total).toBe(2);
+      expect(new Set(userIds(res))).toEqual(new Set([approved.userId, banned.userId]));
+      expect(res.rows.map((r) => r.status).sort()).toEqual(['approved', 'banned']);
+    });
+
+    it('caps an empty query at the page size rather than returning the whole club', async () => {
+      const club = await mkClub();
+      for (let i = 0; i < 4; i++) await mkMember(club.id, { name: `cap-${i}` });
+      const res = await searchClubMembers(db, { clubId: club.id, pageSize: 2 });
+      expect(res.rows).toHaveLength(2);
+      expect(res.total).toBe(4);
+    });
+
+    /**
+     * Pending has no `q` parameter to pass, and that is the design: a join request must
+     * not be filterable out from under an owner who typed a name to find somebody else.
+     * The assertion is that the queue is complete under a search that matches NONE of it —
+     * the fixture's pending names deliberately share nothing with the term.
+     */
+    it('lists every pending request regardless of what the roster search matched', async () => {
+      const club = await mkClub();
+      const stamp = randomUUID().slice(0, 8);
+      await mkMember(club.id, { name: `approved ${stamp}`, status: 'approved' });
+      const p1 = await mkMember(club.id, { name: 'Ayşe Waiting', status: 'pending' });
+      const p2 = await mkMember(club.id, { name: 'Burak Waiting', status: 'pending' });
+
+      // The owner searched for the approved member; the queue is unaffected.
+      const searched = await searchClubMembers(db, { clubId: club.id, q: stamp });
+      expect(searched.total).toBe(1);
+
+      const pending = await listPendingMembers(db, { clubId: club.id });
+      expect(pending.total).toBe(2);
+      expect(new Set(userIds(pending))).toEqual(new Set([p1.userId, p2.userId]));
+      expect(pending.rows.every((r) => r.status === 'pending')).toBe(true);
+    });
+
+    // Oldest first: the longest-waiting request has already cost the club the most, and
+    // must not be pushed under newer ones by the cap.
+    it('puts the longest-waiting request first and counts the ones past the cap', async () => {
+      const club = await mkClub();
+      const oldest = await mkMember(club.id, { name: 'Oldest', status: 'pending', joinedAt: new Date('2020-01-01T00:00:00Z') });
+      const middle = await mkMember(club.id, { name: 'Middle', status: 'pending', joinedAt: new Date('2021-01-01T00:00:00Z') });
+      await mkMember(club.id, { name: 'Newest', status: 'pending', joinedAt: new Date('2022-01-01T00:00:00Z') });
+
+      const capped = await listPendingMembers(db, { clubId: club.id, cap: 2 });
+      expect(userIds(capped)).toEqual([oldest.userId, middle.userId]);
+      // The total is counted before the cap, so the page can say "+1 more" — a number to
+      // keep going from, rather than a pager to leave people behind.
+      expect(capped.total).toBe(3);
+    });
+
+    it('does not put another club\'s pending request in this club\'s queue', async () => {
+      const mine = await mkClub();
+      const theirs = await mkClub();
+      const ours = await mkMember(mine.id, { name: 'Ours', status: 'pending' });
+      await mkMember(theirs.id, { name: 'Theirs', status: 'pending' });
+
+      const pending = await listPendingMembers(db, { clubId: mine.id });
+      expect(userIds(pending)).toEqual([ours.userId]);
+      expect(pending.total).toBe(1);
+    });
+
+    it('carries the skill level and the ban date the page renders from', async () => {
+      const club = await mkClub();
+      const [lvl] = await db.insert(schema.skillLevels)
+        .values({ clubId: club.id, name: 'Beginner', rank: 1 }).returning();
+      const until = new Date('2030-06-01T09:00:00Z');
+      const m = await mkMember(club.id, { name: `lvl-${randomUUID().slice(0, 8)}`, status: 'banned' });
+      await db.update(schema.memberships).set({ skillLevelId: lvl.id, bannedUntil: until })
+        .where(eq(schema.memberships.id, m.membershipId));
+
+      const res = await searchClubMembers(db, { clubId: club.id, q: m.email });
+      expect(res.rows).toHaveLength(1);
+      expect(res.rows[0]).toMatchObject({
+        membershipId: m.membershipId, userId: m.userId, email: m.email,
+        skillLevelId: lvl.id, status: 'banned',
+      });
+      expect(res.rows[0].bannedUntil?.toISOString()).toBe(until.toISOString());
+    });
   });
 });
