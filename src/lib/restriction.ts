@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, or } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 
 import type { DB } from '@/db';
 import { penalties, sessions, slots } from '@/db/schema';
@@ -155,6 +155,18 @@ export function pickCause(
  * A permanent penalty has `banned_until IS NULL`. `NULL > now()` is unknown, not
  * false, so a bare `gt` silently discards it — leaving the single most serious
  * restriction as the only one with no explanation attached.
+ *
+ * ## `lifted_at IS NULL`, in step with `recomputeBan`
+ *
+ * A penalty an owner reversed is kept in the table for the audit trail (see
+ * `penalties.lifted_at` in `src/db/schema/bookings.ts`), and `recomputeBan` already
+ * leaves it out of the fold. This read has to leave it out too, or the two disagree
+ * about what a live penalty is and the explanation can name a suspension that was
+ * withdrawn. Today's write paths cannot actually produce that pairing — a lift stamps
+ * every row in force, so the rows left live are always NEWER than any lifted one, and
+ * `pickCause` picks the newest — which is exactly why the predicate has to be stated
+ * here rather than relied on as an emergent property of the writers. It is asserted
+ * directly in `restriction.integration.test.ts` against a hand-built row set.
  */
 export async function getRestrictions(
   db: DB,
@@ -191,6 +203,7 @@ export async function getRestrictions(
     .where(
       and(
         inArray(penalties.membershipId, restricted.map((m) => m.id)),
+        isNull(penalties.liftedAt),
         or(eq(penalties.permanent, true), gt(penalties.bannedUntil, now)),
       ),
     );

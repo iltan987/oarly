@@ -327,4 +327,31 @@ describe.skipIf(!url)('getRestrictions', () => {
     const r = await getRestriction(db, ref(m), NOW);
     expect(r).toEqual({ state: 'suspended', cause: { reason: 'no_show', sessionStartAt: permanentStart } });
   });
+
+  /**
+   * A penalty an owner has lifted is kept in the table for the audit trail, and must
+   * never explain a restriction. `recomputeBan` already drops `lifted_at IS NOT NULL`
+   * rows from the fold; this is the other half of the same rule, on the read model.
+   *
+   * The row set is built by hand because today's write paths cannot produce it: a lift
+   * stamps everything in force at once, so the rows still live after one are always
+   * newer than the lifted ones and `pickCause` would prefer them anyway. That makes the
+   * predicate look redundant right up until something writes a penalty by another route
+   * — a manually-issued one, which `penalties.session_id`'s own comment already
+   * anticipates. Asserted here so it is a rule rather than a coincidence.
+   */
+  it('never explains a restriction with a penalty that was lifted', async () => {
+    const { club, boat } = await seedClub();
+    const m = await seedMembership(club, { status: 'banned', bannedUntil: null });
+    const lifted = await seedSession(club, boat, new Date('2026-06-01T04:00:00.000Z'));
+    await db.insert(schema.penalties).values({
+      membershipId: m.id, sessionId: lifted.session.id, reason: 'no_show',
+      permanent: true, createdAt: new Date('2026-06-01T06:00:00.000Z'),
+      liftedAt: new Date('2026-06-02T06:00:00.000Z'),
+    });
+
+    // No live row is left to explain it, so the cause is honestly absent rather than a
+    // suspension the club already withdrew.
+    expect(await getRestriction(db, ref(m), NOW)).toEqual({ state: 'suspended', cause: null });
+  });
 });

@@ -23,6 +23,10 @@ export type AuditAction =
   | 'member.approve'
   | 'member.reject'
   | 'member.skill_assign'
+  // Reversing the penalties a member is serving — the only undo a permanent
+  // suspension has. `member.*` rather than `attendance.*` because its target is a
+  // membership id, not a booking id; the `attendance.*` pair are per-absence.
+  | 'member.penalty_lift'
   // Attendance and penalties
   | 'attendance.noshow'
   | 'attendance.noshow_undo'
