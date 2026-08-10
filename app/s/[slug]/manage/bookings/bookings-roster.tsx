@@ -113,13 +113,27 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
     // Two session cards per row at `lg:`, which halves the scroll for a club running six
     // boats in a morning window.
     //
-    // `items-start` is load-bearing, NOT cosmetic. Grid items stretch to their row's
-    // height by default, so without it a card that grows by one optimistic seat grows the
-    // whole row — and its NEIGHBOUR's card stretches with it, moving that card's Remove
-    // controls at t≈0 and again at round-trip completion. That is exactly the delayed
-    // reflow the comment at :56-60 and `src/components/pending-button.tsx:25-29` exist to
-    // prevent, arriving from the container instead of from the row. `items-start` lets
-    // each card keep its own height, so an add on one card moves nothing on the other.
+    // `items-start` keeps each card's BOX at its own content height. A grid item stretches
+    // to its row's height by default, so without it the shorter card of a pair grows to its
+    // neighbour's height and paints the difference as empty card — and its bottom edge then
+    // moves every time the OTHER card gains or loses a row. Measured at 1440px across an
+    // optimistic add and its confirmation: with this class the short card is 137px at all
+    // three moments, with 12px of padding below its last control; without it, 438 → 470 →
+    // 425, with 313 → 345 → 300px of empty card under content that never changed.
+    //
+    // What it does NOT do is hold any CONTROL still — an earlier version of this comment
+    // said it did, and the measurement that was offered as proof returns the same 0.000px
+    // either way. `Card` is `display:flex; flex-direction:column; justify-content:normal`
+    // with a single child that does not grow (`src/components/ui/card.tsx:15`), so a
+    // stretched card gains its space BELOW the content: with `items-start` deleted, all
+    // four of the untouched card's buttons stayed at 200/249/249/251, unchanged.
+    //
+    // The precondition for a control to move is something bottom-anchored inside the card,
+    // and there is none. Verified rather than assumed: `justify-content: space-between` on
+    // the card moves nothing (it has one child, so there is no space to distribute), while
+    // `margin-top: auto` on `CardContent` moves every button by +288px. If a footer or a
+    // second Card child is ever added here, that is the point at which this reasoning has
+    // to be redone — not before.
     <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
       {sessions.map((s, i) => {
         const time = `${fmt(f, s.startAt, timezone)}–${fmt(f, s.endAt, timezone)}`;

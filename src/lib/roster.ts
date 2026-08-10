@@ -45,7 +45,7 @@ export type CountableSession = Pick<RosterSession, 'seated' | 'waitlisted' | 'ca
  * The rule that matters is `status === 'booked'`. `seated` INCLUDES `no_show` rows — they
  * are kept visible so an owner can undo the mark (see `VISIBLE` above) — so
  * `s.seated.length` reports a session that had an absence as fuller than it is, and shows
- * seats as taken that `freeSeats` (same rule, line 78) is simultaneously offering to the
+ * seats as taken that `freeSeats` (same rule, `:107`) is simultaneously offering to the
  * add form. `waitlisted` needs no such filter: `getDayRoster` puts only `waitlisted` rows
  * in that bucket.
  */

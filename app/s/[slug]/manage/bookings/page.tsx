@@ -52,7 +52,14 @@ export default async function ManageBookingsPage({ params, searchParams }: { par
         console canvas is 1024px wide and a date control floating in the middle of it is
         what the width would otherwise buy. Left-aligned, the day's numbers have somewhere
         to sit — beside the control that changes the day, rather than one page away on
-        /manage. `flex-wrap` is what keeps them off the control's row at 360px.
+        /manage.
+
+        `flex-wrap` decides what happens when they do NOT fit beside it, which in Turkish
+        with a waitlist half ("7/16 dolu · 3 yedek") is 320px and 360px: they take a line of
+        their own, on one line, and the row is 56px. Without it nothing overflows — the <p>
+        is squeezed into whatever is left instead, breaking the sentence mid-phrase and
+        leaving the arrows vertically off-centre against a two-line block (a 40px row).
+        Measured; at 375px and up the two share a line either way.
       */}
       <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-start">
         <Link aria-label={t('prevDay')} className={buttonVariants({ size: 'icon-sm', variant: 'ghost' })} href={`/manage/bookings?date=${addDaysISO(dateISO, -1)}`}>

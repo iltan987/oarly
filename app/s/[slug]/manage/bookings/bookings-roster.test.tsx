@@ -347,9 +347,8 @@ describe('BookingsRoster session grid', () => {
   ];
 
   /**
-   * jsdom cannot lay out, so what is pinned here is the declaration; the measurement —
-   * a neighbouring card's last button not moving by a pixel when the other card of the
-   * same grid row takes an optimistic seat — is in the task report.
+   * jsdom cannot lay out, so what is pinned here is the declaration; the measurement is in
+   * the task report.
    *
    * Asserted on the shared parent of the two cards, found by walking UP from a card,
    * rather than on `container.querySelector('.items-start')`: `Card`, `CardContent` and
@@ -368,19 +367,23 @@ describe('BookingsRoster session grid', () => {
   });
 
   /**
-   * `items-start` is the one class in this file that protects the invariant `:56-60`
-   * exists for, and it is invisible in every other assertion here.
+   * A grid item stretches to its row's height by default, so without `items-start` the
+   * shorter card of a pair grows to match the taller one: a few hundred pixels of empty
+   * card, whose bottom edge then moves whenever the OTHER card gains or loses a row.
    *
-   * A grid item stretches to its row's height by default. Without `items-start`, the two
-   * cards of a row are always the same height, so an optimistic seat added to ONE card
-   * grows the row and stretches the OTHER — moving a different member's `Remove` control
-   * at t≈0 and back again at round-trip completion, on a card the operator never touched.
-   * That is precisely the delayed reflow that made `PendingButton` fade in place rather
-   * than unmount.
+   * What this class does NOT do is hold any CONTROL still, and both this comment and the
+   * one in `bookings-roster.tsx` said it did until the claim was measured. `Card` is
+   * `flex flex-col` with no `justify-*` and nothing bottom-anchored, so a stretched card
+   * gains its space BELOW the content and every button stays exactly where it was — all
+   * four measured at an unchanged 200/249/249/251 with `items-start` deleted. The
+   * distinguishing measurement is the short card's own HEIGHT (137px at every moment with
+   * the class, 438 → 470 → 425 tracking its neighbour without it), and it is in the report.
    *
-   * Deliberate break: delete `items-start` from the container and this assertion fails.
+   * This assertion is therefore a token pin and nothing more, which is all jsdom can offer:
+   * delete `items-start` and it fails, but it is the report's height measurement — not this
+   * — that says why the class is there.
    */
-  it('lets each session card keep its own height, so an add on one cannot move the other', () => {
+  it('keeps each session card at its own height rather than stretching it to its row', () => {
     render(<BookingsRoster slug="club" sessions={two()} timezone="UTC" multisportEnabled />);
     expect(gridOf('Dört tek')).toHaveClass('items-start');
   });
