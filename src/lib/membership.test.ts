@@ -146,9 +146,13 @@ describe('requireMemberView', () => {
 });
 
 describe('getMemberRestriction', () => {
-  // `cache()` memoizes by argument value, so every case below uses its own (userId,
-  // clubId) pair — reusing one across cases would have the second assertion observe
-  // the first case's cached Promise instead of this case's mock.
+  // NOT because reusing a (userId, clubId) pair across cases risks a stale cached
+  // Promise: `cache()` only memoizes inside a real request-scoped React/Next.js render,
+  // which this bare `await mod.getMemberRestriction(...)` call never sets up. Verified
+  // directly — a `cache()`-wrapped counter called twice with the same key, with no
+  // active dispatcher, increments twice, in a plain Node script and inside a vitest
+  // `it()` alike. A unit test cannot observe this function's caching one way or the
+  // other; distinct pairs per case are used here only so each case reads standalone.
   it('is none for a visitor with no membership row, without reaching getRestriction\'s query', async () => {
     vi.spyOn(mod, 'getMembership').mockResolvedValue(null);
     await expect(mod.getMemberRestriction('no-member-user', 'club-a')).resolves.toEqual({ state: 'none' });
