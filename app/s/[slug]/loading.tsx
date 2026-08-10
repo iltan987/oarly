@@ -1,41 +1,53 @@
 import { AppShell } from '@/components/app-shell';
-import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 /**
- * The tenant fallback, and the one place in this app where the fallback must draw the
- * page chrome itself.
+ * The fallback for EVERY tenant surface, and it is deliberately nothing but the header.
  *
- * Every other `loading.tsx` here is content-only, because `/admin` and `/manage` and the
- * `(member)` group each render their header and nav in a `layout.tsx` ABOVE the Suspense
- * boundary, so that chrome persists and redrawing it would double it. `app/s/[slug]/
- * layout.tsx` renders only `ClubTheme` — a `<div>` carrying the accent custom property —
- * so from here DOWN, header and footer belong to the page. A content-only fallback would
- * render a bare card on an empty page and then pop a whole header and footer in around
- * it.
+ * ## It is not the club landing page's fallback — it is the whole tenant's
  *
- * So it goes through `AppShell` with skeleton slots rather than hand-rolling a header:
- * the `h-14` row, the `max-w-[90rem] px-4 sm:px-6` container and the `max-w-md` centered
- * content column then come from the same code the real page uses, and cannot drift from
- * it. The club name and logo are genuinely unknown here — resolving them is the very
- * lookup being waited on.
+ * `manage/` and `(member)/` have `loading.tsx` files of their own, but those sit BELOW
+ * this one. On a cold load the segments render top-down, so this is what paints first on
+ * `/manage/...` and `/book` too; theirs only take over once `app/s/[slug]/layout.tsx` has
+ * resolved. Measured on a cold `/manage/members` with a 3s delay in the manage layout:
+ * this fallback at 411ms, the console at 3197ms — against 3403ms of blank tab with no
+ * fallback at all.
  *
- * Serves the club landing page and `/join`; `manage/` and `(member)/` have their own.
+ * ## Which is why it draws no content and no footer
  *
- * NOTE on what this does and does not cover. The club lookup in `layout.tsx` is uncached
- * runtime data in a layout, and `loading.js` does not show a fallback for a layout above
- * it (`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/
- * loading.md`) — without Cache Components the response blocks until that layout resolves.
- * What streams behind this fallback is the PAGE's work: `getCurrentUser`,
- * `getMembership`, `getRestriction` (the page's own `requireClub` is free, memoized by
- * `cache()` from the layout's call). That is most of the landing page's latency, and it
- * was previously spent on a blank tab.
+ * The first version of this file mirrored the landing page: a centred `max-w-md` card with
+ * an avatar and two CTA bars, plus a footer. On the landing page that is a good silhouette.
+ * On the other two tenant surfaces it was a lie that then visibly corrected itself — an
+ * owner refreshing `/manage` got a narrow centred card that swapped to a full-width console
+ * with a sidebar (`max-w-md` -> `max-w-[90rem]`), and a member got `md` -> `2xl`. The
+ * footer was worse than a mismatch: neither `manage/layout.tsx` nor `(member)/layout.tsx`
+ * passes one, so it drew a whole page region that never arrives.
+ *
+ * The header is the one thing that IS identical on all three. `AppShell` owns it, and both
+ * `ConsoleShell` and `(member)/layout.tsx` pass `brand`/`menu` straight through to it — so
+ * a header-only fallback is correct everywhere and jumps nowhere. The `width` prop below is
+ * inert with no children; it cannot commit this file to a content column it does not know.
+ *
+ * That is the deliberate trade: less silhouette on the landing page, zero shape mismatch on
+ * the other two. Going through `AppShell` rather than hand-rolling a header row is what
+ * makes "correct everywhere" true by construction — the `h-14` row, the
+ * `max-w-[90rem] px-4 sm:px-6` container and the brand/menu slots come from the same code
+ * the real chrome uses. (An earlier hand-rolled footer here proved the point in the
+ * negative: it missed `text-sm` and landed ~4px off the real one.)
+ *
+ * ## What it does and does not cover
+ *
+ * The club lookup in `app/s/[slug]/layout.tsx` is uncached runtime data in a layout, and
+ * `loading.js` shows no fallback for a layout above it (`node_modules/next/dist/docs/
+ * 01-app/03-api-reference/03-file-conventions/loading.md`) — without Cache Components the
+ * response blocks until that layout resolves. What streams behind this is everything
+ * BELOW: the landing page's `getCurrentUser`/`getMembership`/`getRestriction`, and the
+ * nested layouts of `manage/` and `(member)/`.
  */
 export default function Loading() {
   return (
     <AppShell
       width="md"
-      align="center"
       brand={
         <div className="flex min-w-0 items-center gap-2">
           <Skeleton className="size-8 shrink-0 rounded-field" />
@@ -43,28 +55,8 @@ export default function Loading() {
         </div>
       }
       menu={<Skeleton className="size-8 rounded-full" />}
-      footer={
-        <footer className="mt-auto w-full">
-          <div className="mx-auto flex w-full max-w-[90rem] items-center justify-between gap-x-6 px-4 py-6 sm:px-6">
-            <Skeleton className="h-4 w-28 rounded" />
-            <Skeleton className="h-4 w-40 rounded" />
-          </div>
-        </footer>
-      }
     >
-      <div className="flex flex-col items-center">
-        <Card className="w-full items-center gap-6 p-8">
-          <Skeleton className="size-16 rounded-card" />
-          <div className="flex w-full flex-col items-center gap-2">
-            <Skeleton className="h-7 w-48 rounded" />
-            <Skeleton className="h-4 w-64 rounded" />
-          </div>
-          <div className="flex w-full flex-col items-center gap-2">
-            <Skeleton className="h-9 w-full rounded-md" />
-            <Skeleton className="h-9 w-full rounded-md" />
-          </div>
-        </Card>
-      </div>
+      {null}
     </AppShell>
   );
 }

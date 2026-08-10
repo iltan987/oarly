@@ -6,49 +6,61 @@ import AdminLoading from '../../admin/loading';
 import Loading from './loading';
 
 /**
- * The tenant fallback is the ONE fallback in this app that must draw the page chrome, and
- * that is the only interesting thing about it — so it is what these tests pin.
+ * This fallback serves EVERY tenant surface — it paints before `manage/`'s and
+ * `(member)/`'s own fallbacks on a cold load, because those sit below it. So the property
+ * worth pinning is not what it draws but what it refuses to draw: anything that differs
+ * between the three surfaces.
  *
  * `app/admin/loading.test.tsx` asserts the opposite for the console fallbacks: no nav, no
- * links, because `/admin` and `/manage` render their header and nav in a `layout.tsx`
- * above the Suspense boundary and drawing them twice would make the sidebar flicker.
- * `app/s/[slug]/layout.tsx` renders only `ClubTheme`, a `<div>` carrying the accent — so
- * here the header and footer belong to the page, and a content-only fallback would pop a
- * whole header and footer in around the card when the page resolved.
+ * links, because `/admin` and `/manage` render their chrome in a `layout.tsx` above the
+ * Suspense boundary. Here `app/s/[slug]/layout.tsx` renders only `ClubTheme`, a `<div>`
+ * carrying the accent, so the header is the page's — and the header is the ONLY thing all
+ * three tenant surfaces share.
  *
- * The admin fallback is rendered alongside as the control. Without it, "renders a header"
- * reads as a generic good-practice assertion rather than what it is: a deliberate
- * divergence from the rule every other fallback in the repo follows.
+ * Note what these tests structurally cannot see: rendered in isolation, jsdom cannot lay
+ * out and knows nothing about which segment mounts this. The first version of this file
+ * drew a landing-card silhouette and a footer, passed its own tests, and still flashed the
+ * wrong shape on `/manage`. That was caught by timing a cold load in a browser, not here.
  */
 describe('the tenant fallback', () => {
   it('draws the page chrome, because the tenant layout renders none', () => {
     const { container } = render(<Loading />);
     expect(container.querySelector('header')).not.toBeNull();
-    expect(container.querySelector('footer')).not.toBeNull();
   });
 
-  it('is alone in doing so — the admin fallback draws neither', () => {
+  it('is alone in doing so — the admin fallback draws none', () => {
     const { container } = render(<AdminLoading />);
     expect(container.querySelector('header')).toBeNull();
-    expect(container.querySelector('footer')).toBeNull();
-  });
-
-  it('mirrors the landing card underneath the chrome', () => {
-    const { container } = render(<Loading />);
-    const card = container.querySelector('[data-slot="card"]');
-    expect(card).not.toBeNull();
-    // Avatar, name, tagline and two CTAs: enough silhouette that the card does not
-    // change height when the real content arrives.
-    expect((card as HTMLElement).querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(5);
   });
 
   /**
-   * No links, and no club name or logo. Resolving the club is precisely the lookup this
-   * fallback is waiting on, so anything it rendered from club data would be invented.
+   * No footer. `manage/layout.tsx` and `(member)/layout.tsx` pass none, so drawing one
+   * here paints a page region that never arrives on two of the three surfaces it covers.
    */
-  it('renders nothing it does not yet know', () => {
+  it('draws no footer, which two of its three surfaces never have', () => {
+    const { container } = render(<Loading />);
+    expect(container.querySelector('footer')).toBeNull();
+  });
+
+  /**
+   * No content silhouette either. The content column is `max-w-md` on the landing page,
+   * `max-w-2xl` for a member and `max-w-[90rem]` in the console — any shape drawn here is
+   * wrong on two of them and visibly corrects itself when the real page lands.
+   */
+  it('draws no content silhouette, whose width it cannot know', () => {
+    const { container } = render(<Loading />);
+    const main = container.querySelector('main');
+    expect(main).not.toBeNull();
+    expect((main as HTMLElement).querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0);
+  });
+
+  /** Nothing it does not yet know: resolving the club is the lookup being waited on. */
+  it('renders no club name, logo or link', () => {
     const { container } = render(<Loading />);
     expect(container.querySelectorAll('a')).toHaveLength(0);
     expect(container.querySelectorAll('img')).toHaveLength(0);
+    // The header skeletons are still there — the control on the assertion above, so a
+    // fallback that rendered literally nothing could not pass this file.
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
   });
 });
