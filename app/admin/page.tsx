@@ -67,7 +67,10 @@ export default async function AdminClubsPage({ searchParams }: {
           submit is a plain Button, not PendingButton: `useFormStatus` reports nothing for
           a browser navigation, so it would render a control that never shows progress. */}
       <div className="mb-6 flex flex-wrap items-center gap-2">
-        <form method="get" action="/admin" className="flex min-w-0 flex-1 gap-2">
+        {/* `max-w-md`, not `flex-1` alone: the console canvas is 1024px wide at `lg:`, and
+            an unbounded input turned all of it into one box for a 20-character club name.
+            `flex-1` still lets it take the row below `md`, where the cap is inert. */}
+        <form method="get" action="/admin" className="flex min-w-0 max-w-md flex-1 gap-2">
           <Input name="q" defaultValue={q ?? ''} placeholder={t('clubsSearch')} aria-label={t('clubsSearch')} />
           <Button type="submit" size="sm">{t('clubsSearchCta')}</Button>
         </form>
@@ -108,13 +111,27 @@ export default async function AdminClubsPage({ searchParams }: {
             // decided in the requests queue, not here.
             const canToggleStatus = isActive || c.status === 'suspended';
             return (
-              <div key={c.id} className="flex items-center justify-between gap-3 p-4">
-                <div className="flex flex-col gap-0.5">
-                  <Link href={`/admin/clubs/${c.id}`} className="font-medium hover:underline">{c.name}</Link>
-                  <span className="text-sm text-muted-foreground">{c.slug}</span>
+              /*
+                Below `lg:` this is unchanged: a stacked identity on the left, status and
+                action on the right. At `lg:` the stack UN-stacks into four columns, so
+                name, slug, member count, status and control each share one left edge down
+                the whole page — the alignment the canvas width buys, in the shape
+                `/manage/members` established. `1fr` absorbs every difference in club-name
+                length, so the three fixed columns to its right cannot drift.
+
+                `lg:contents` on the identity wrapper is what makes that possible: a grid
+                only lays out its OWN children, so without it the three spans stay a stack
+                in column 1 and the status/action pair sits in column 2, leaving `7rem` and
+                `auto` empty and the page looking exactly as it did before. Pinned in
+                page.test.tsx for that reason — the grid template alone cannot show it.
+              */
+              <div key={c.id} className="flex items-center justify-between gap-3 p-4 lg:grid lg:grid-cols-[1fr_9rem_7rem_auto] lg:items-center lg:gap-4">
+                <div className="flex min-w-0 flex-col gap-0.5 lg:contents">
+                  <Link href={`/admin/clubs/${c.id}`} className="min-w-0 font-medium break-words hover:underline">{c.name}</Link>
+                  <span className="min-w-0 text-sm break-words text-muted-foreground">{c.slug}</span>
                   <span className="text-xs text-muted-foreground">{t('clubsMemberCount', { count: c.memberCount })}</span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex shrink-0 items-center gap-3">
                   <StatusPill tone={toneByStatus[c.status]}>{statusLabel[c.status]}</StatusPill>
                   {canToggleStatus ? (
                     <ClubStatusButton

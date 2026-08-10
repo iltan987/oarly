@@ -53,7 +53,9 @@ export default async function AdminUsersPage({ searchParams }: {
       {/* A plain GET form, so the search lands in the URL and is shareable. The submit
           is a plain Button, not PendingButton: `useFormStatus` reports nothing for a
           browser navigation, so it would render a control that never shows progress. */}
-      <form method="get" action="/admin/users" className="mb-6 flex gap-2">
+      {/* `max-w-md` for the same reason as `/admin` and `/manage/members`: without it the
+          <Input> grows to the whole 1024px canvas for a name-or-email search. */}
+      <form method="get" action="/admin/users" className="mb-6 flex max-w-md gap-2">
         <Input name="q" defaultValue={q ?? ''} placeholder={t('usersSearch')} aria-label={t('usersSearch')} />
         <Button type="submit" size="sm">{t('usersSearchCta')}</Button>
       </form>
@@ -63,17 +65,39 @@ export default async function AdminUsersPage({ searchParams }: {
       ) : (
         <Card className="gap-0 divide-y divide-border py-0">
           {rows.map((u) => (
-            <div key={u.id} className="flex flex-wrap items-start justify-between gap-3 p-4">
-              <div className="flex flex-col gap-1">
-                <span className="flex items-center gap-2 font-medium">
-                  {u.name}
-                  {u.isAdmin && <StatusPill tone="accent">{t('usersAdminBadge')}</StatusPill>}
-                </span>
-                <span className="text-sm text-muted-foreground">{u.email}</span>
+            /*
+              The memberships list is the tallest thing on this page — a user in six clubs
+              is six lines — and below `lg:` it sits UNDER the identity, so every row is as
+              tall as its longest club list. At `lg:` it moves BESIDE the identity in a
+              `1fr` column, which is roughly 40% off the height of the page with nothing
+              removed and no row truncated.
+
+              `lg:contents` on the identity wrapper is what promotes its two children into
+              the row's grid; without it they stay one stacked cell in the `18rem` column
+              and the layout is unchanged, which is why it is pinned in page.test.tsx
+              rather than left to the grid template. The `18rem` first column is the fixed
+              one, so the club lists share a left edge down the whole page however long a
+              name or an email is.
+            */
+            <div key={u.id} className="flex flex-wrap items-start justify-between gap-3 p-4 lg:grid lg:grid-cols-[18rem_1fr_auto] lg:items-start lg:gap-4">
+              <div className="flex min-w-0 flex-col gap-1 lg:contents">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className="flex items-center gap-2 font-medium">
+                    {u.name}
+                    {u.isAdmin && <StatusPill tone="accent">{t('usersAdminBadge')}</StatusPill>}
+                  </span>
+                  <span className="text-sm break-words text-muted-foreground">{u.email}</span>
+                </div>
+                {/*
+                  Its own cell in BOTH branches, so a user in no club leaves the column
+                  empty rather than collapsing the row to two columns and pulling the
+                  admin toggle left on exactly the rows that read as ordinary — the defect
+                  `/manage/members` fixed for its status cell.
+                */}
                 {u.memberships.length === 0 ? (
                   <span className="text-xs text-muted-foreground">{t('usersNoMemberships')}</span>
                 ) : (
-                  <ul className="text-xs text-muted-foreground">
+                  <ul className="min-w-0 text-xs break-words text-muted-foreground">
                     {u.memberships.map((m) => (
                       <li key={m.clubId}>{m.clubName} — {roleLabel[m.role]} / {memberStatusLabel[m.status]}</li>
                     ))}

@@ -247,6 +247,110 @@ describe('AdminClubsPage search and pagination', () => {
   });
 });
 
+describe('AdminClubsPage list density', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  /** `[row, identity wrapper]` for a club, walked UP from its name link. */
+  function rowOf(name: string): [HTMLElement, HTMLElement] {
+    const identity = screen.getByRole('link', { name }).parentElement;
+    const row = identity?.parentElement;
+    if (!identity || !row) throw new Error(`no row for ${name}`);
+    return [row, identity];
+  }
+
+  /**
+   * jsdom cannot lay out, so the declaration is what is pinned here; the measurement —
+   * one distinct `left` per column down the page at 1440px — is in the task report.
+   * `toHaveClass` matches exact tokens, so `9rem → 7rem` fails this.
+   *
+   * Asserted on the row element, reached from the club's own link, rather than by
+   * querying for the class: `Card` and `StatusPill` are shadcn primitives with their own
+   * layout classes, and a `.lg\:grid` selector would match a nested one just as happily.
+   */
+  it('un-stacks the club row into four aligned columns at lg', async () => {
+    await renderPage([mkRow('active')]);
+    const [row] = rowOf('Boğaziçi Kürek');
+    expect(row).toHaveClass('lg:grid', 'lg:grid-cols-[1fr_9rem_7rem_auto]', 'lg:items-center');
+    // Below `lg:` the row is unchanged: identity stacked left, controls right.
+    expect(row).toHaveClass('flex', 'items-center', 'justify-between');
+  });
+
+  /**
+   * The half the grid template cannot show. A grid lays out its OWN children, and the
+   * name/slug/count are children of a wrapper — so without `lg:contents` on that wrapper
+   * the four-track template is fed exactly two items: the stack in `1fr` and the
+   * status/action pair in `9rem`, with `7rem` and `auto` empty. The page then renders
+   * precisely as it did before this task, and the template assertion above still passes.
+   *
+   * Asserted on the wrapper element, and paired with the arity that makes the four tracks
+   * add up: three promoted children plus the controls cell.
+   */
+  it('promotes name, slug and count into the row grid so all four columns are fed', async () => {
+    await renderPage([mkRow('active', { memberCount: 7 })]);
+    const [row, identity] = rowOf('Boğaziçi Kürek');
+    expect(identity).toHaveClass('lg:contents');
+    expect(identity.children).toHaveLength(3);
+    expect(row.children).toHaveLength(2);
+    // …and those three are the three facts, in the order the columns are sized for.
+    expect(identity.children[0]).toHaveTextContent('Boğaziçi Kürek');
+    expect(identity.children[1]).toHaveTextContent('bogazici');
+    expect(identity.children[2]).toHaveTextContent('clubsMemberCount:{"count":7}');
+  });
+
+  /**
+   * The status cell is present on a row with no toggle, so the `auto` column is fed on
+   * every row. Wrapping the whole controls div in `{canToggleStatus && …}` would collapse
+   * a pending or rejected row to three columns and pull its pill left, out of the column
+   * every other row's pill sits in.
+   */
+  it('keeps the controls cell on a row that has no status toggle', async () => {
+    await renderPage([mkRow('rejected')]);
+    const [row] = rowOf('Boğaziçi Kürek');
+    expect(row.children).toHaveLength(2);
+    expect(row.children[1]).toHaveTextContent('statusRejected');
+    // `shrink-0` on that cell: below `lg:` it is a flex item beside a long club name, and
+    // without it the pill and the toggle are squeezed by the name rather than the name
+    // wrapping.
+    expect(row.children[1]).toHaveClass('shrink-0');
+  });
+
+  /**
+   * The two classes that let a long club name wrap inside a `1fr` column instead of
+   * forcing the row wider.
+   *
+   * Pinned here rather than left to a browser measurement, because the obvious measurement
+   * cannot fail: `Card` carries `overflow-hidden` (`ui/card.tsx:16`), so an over-wide name
+   * is CLIPPED, never scrolled, and `documentElement.scrollWidth` is unchanged with both
+   * classes deleted and the name silently truncated. A grid item's automatic minimum size
+   * is its CONTENT, so `min-w-0` is what lets the name column narrow at all; `break-words`
+   * is what breaks a single unbroken token, which a name containing spaces never
+   * exercises. The slug carries both for the same reason in a fixed `9rem` column.
+   */
+  it('lets a long club name and a long slug wrap rather than force the row wider', async () => {
+    const long = 'Boğaziçi Üniversitesi Kürek ve Yelken İhtisas Kulübüıı';
+    await renderPage([mkRow('active', { name: long, slug: 'bogazici-universitesi-kurek-yelken' })]);
+    const name = screen.getByRole('link', { name: long });
+    expect(name).toHaveClass('min-w-0', 'break-words');
+    expect(screen.getByText('bogazici-universitesi-kurek-yelken')).toHaveClass('min-w-0', 'break-words');
+  });
+
+  /**
+   * The unbounded-canvas defect in miniature, and the one the product owner named: the
+   * form is `flex-1` inside the controls row, so with no cap the <Input> became a
+   * 1024px-wide box for a 20-character club name.
+   *
+   * Deliberate break: delete `max-w-md` and this fails.
+   */
+  it('caps the search box rather than letting it take the whole canvas', async () => {
+    await renderPage([mkRow('active')]);
+    const form = screen.getByRole('textbox', { name: 'clubsSearch' }).closest('form');
+    expect(form).toHaveClass('max-w-md');
+    // The cap is on the form, not on the Input: capping the Input alone would leave the
+    // submit button stranded at the far right of the canvas.
+    expect(screen.getByRole('textbox', { name: 'clubsSearch' })).not.toHaveClass('max-w-md');
+  });
+});
+
 describe('admin message catalogs', () => {
   // NOT superseded by src/i18n/messages-parity.test.ts, and not redundant with it.
   //
