@@ -394,6 +394,8 @@
     "confirmRejectBody": "Bu istek listelerinizden kalıcı olarak çıkar. Geri alma yolu yok ve bu kişi yeniden istek gönderemez.",
     "confirmRejectCta": "İsteği reddet",
     "confirmRejectKeep": "Beklemede bırak",
+    "pausedBadge": "{date} tarihine kadar duraklatıldı",
+    "suspendedBadge": "Askıda",
     "memberApproved": "Üye onaylandı",
     "memberRejected": "Üye reddedildi",
     "skillSaved": "Seviye kaydedildi",
@@ -600,9 +602,7 @@
       "markedWithCancellations": "Katılmama kaydedildi. {count} ileri tarihli rezervasyon iptal edildi.",
       "markAlready": "Bu üye zaten katılmadı olarak işaretlenmiş.",
       "undone": "Katılmama kaydı kaldırıldı. Bu ceza nedeniyle iptal edilen yerler geri alınmadı.",
-      "undoConflict": "Bu yer artık geri alınamıyor — başkası tarafından tutulmuş.",
-      "bannedUntilBadge": "{date} tarihine kadar yasaklı",
-      "bannedBadge": "Askıya alındı"
+      "undoConflict": "Bu yer artık geri alınamıyor — başkası tarafından tutulmuş."
     }
   },
   "booking": {

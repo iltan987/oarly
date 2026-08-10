@@ -4,9 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The translation keys are asserted on directly (with interpolated values appended)
 // rather than resolved through real message files — this test is about wiring, not copy.
+// `useFormatter` is stubbed to report WHICH shape it was asked for rather than a date, so
+// a revert to `new Intl.DateTimeFormat('en-GB', …)` — the hardcoded locale this file
+// carried on a Turkish-default page — renders "12 August" where a marker is expected and
+// the two tests below fail.
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string, values?: Record<string, unknown>) =>
     (values ? `${key}:${JSON.stringify(values)}` : key),
+  useFormatter: () => ({
+    dateTime: (_d: Date, opts: Intl.DateTimeFormatOptions) => (opts.month ? 'INTL-DATE' : 'INTL-TIME'),
+  }),
 }));
 
 vi.mock('sonner', () => ({
@@ -344,6 +351,28 @@ describe('BookingsRoster mark-absent flow', () => {
 
     resolve?.({ ok: true, cancelled: 0 });
     await waitFor(() => expect(screen.getByText('Alice').closest('li')).not.toHaveClass('opacity-40'));
+  });
+
+  /**
+   * `confirmAbsentBan`'s `{date}` is the sentence telling an owner how long they are
+   * about to ban a member for, and it was built by a hardcoded `'en-GB'` formatter with
+   * `month: 'long'` — so a Turkish owner read "12 August" inside a Turkish sentence, on
+   * the one dialog in this file that costs somebody their booking access.
+   */
+  it('formats the ban date through the request locale, not a hardcoded en-GB', () => {
+    const session = makeSession({ banEndsAt: new Date('2026-08-12T09:00:00Z') });
+    render(<BookingsRoster slug="club" sessions={[session]} timezone="Europe/Istanbul" multisportEnabled />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'markAbsent' })[0]);
+    expect(screen.getByText(/confirmAbsentBan/)).toHaveTextContent('INTL-DATE');
+  });
+
+  // The session header's clock too. It is locale-invariant across tr/en — a 24-hour clock
+  // is a 24-hour clock — so this is the half that was wrong only on paper; it goes through
+  // the same formatter so there is no second convention left in the file to drift.
+  it('formats the session clock through the request locale as well', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="Europe/Istanbul" multisportEnabled />);
+    expect(screen.getByText(/Test boat/)).toHaveTextContent('INTL-TIME–INTL-TIME');
   });
 
   // Spec §5.2's benign-race treatment, extended to mark-absent: a repeat mark means

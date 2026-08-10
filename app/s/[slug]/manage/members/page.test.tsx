@@ -42,9 +42,13 @@ vi.mock('@/lib/membership', () => ({
 // Keys are asserted on directly rather than resolved through the real catalogs — this
 // test is about which controls render and what the page asks the query for. Interpolated
 // values are echoed so a count or a row range that never reaches the message is visible.
+// `getFormatter` is stubbed to a marker rather than a date, so a revert to
+// `toLocaleDateString('en-GB', …)` — the hardcoded locale this page carried, on a page
+// whose default locale is Turkish — renders "12 August" where the marker is expected.
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve((key: string, values?: Record<string, unknown>) =>
     (values ? `${key}:${JSON.stringify(values)}` : key)),
+  getFormatter: () => Promise.resolve({ dateTime: () => 'INTL-DATE' }),
 }));
 
 // The queue's own behaviour — the reject gate, the row dimming — is
@@ -308,15 +312,33 @@ describe('ManageMembersPage roster density', () => {
     expect(screen.queryByRole('button', { name: /^skill-/ })).toBeNull();
   });
 
-  it('renders a restriction badge for a banned member and none for a plain one', async () => {
+  /**
+   * The two restriction states are `restrictionState`'s call, not this page's: a second
+   * copy of that predicate is how the owner's roster and the member's own page start
+   * disagreeing about who is restricted. A permanent penalty sets `status = 'banned'`
+   * and leaves `banned_until` null, which is why the suspended fixture below carries no
+   * date — read the date first and an expulsion reports itself as unrestricted.
+   */
+  it('tells a suspension from a pause, and leaves an unrestricted member unbadged', async () => {
     await renderPage({
       rows: [
         mkRow({ name: 'Ada', status: 'approved' }),
-        mkRow({ name: 'Suspended One', status: 'banned' }),
+        mkRow({ name: 'Askıdaki', status: 'banned', bannedUntil: null }),
+        mkRow({ name: 'Duraklatılan', status: 'approved', bannedUntil: new Date('2099-08-12T09:00:00Z') }),
       ],
     });
-    expect(screen.getByText('bookings.bannedBadge')).toBeInTheDocument();
-    expect(rowOf('Ada')).not.toHaveTextContent('bookings.bannedBadge');
+    expect(rowOf('Askıdaki')).toHaveTextContent('suspendedBadge');
+    expect(rowOf('Duraklatılan')).toHaveTextContent('pausedBadge');
+    expect(rowOf('Ada')).not.toHaveTextContent('Badge');
+  });
+
+  // The date in the pause badge goes through the request's locale. Hardcoded `'en-GB'`
+  // put "12 August" in the middle of a Turkish sentence on a Turkish-default page.
+  it('formats the pause date through the request locale, not a hardcoded en-GB', async () => {
+    await renderPage({
+      rows: [mkRow({ name: 'Duraklatılan', status: 'approved', bannedUntil: new Date('2099-08-12T09:00:00Z') })],
+    });
+    expect(screen.getByText('pausedBadge:{"date":"INTL-DATE"}')).toBeInTheDocument();
   });
 });
 

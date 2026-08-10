@@ -143,6 +143,86 @@ describe('the restriction vocabulary', () => {
 });
 
 /**
+ * The same two states, seen from the OTHER side of the club.
+ *
+ * `/manage/members` badges a restricted member for the owner, off `restrictionState` —
+ * the very predicate the member's own card above uses. Task 6 gave the member
+ * *Duraklatıldı* and left the owner's badge saying *yasaklı* ("banned"), so one fact was
+ * described in two registers depending on who was reading, and the harsher one went to
+ * the person who decides what happens next. The divergence was purely lexical: the
+ * predicate never differed.
+ *
+ * Guarded here rather than in `page.test.tsx` for this file's usual reason — that test
+ * mocks next-intl and asserts on KEY NAMES, so it cannot see a word of this copy.
+ */
+describe('the owner-facing roster badges', () => {
+  const trManage = tr.manage as Record<string, string>;
+  const enManage = en.manage as Record<string, string>;
+
+  const BADGE_KEYS = ['pausedBadge', 'suspendedBadge'] as const;
+
+  it('still defines both badge keys in both locales', () => {
+    // First and separately: a rename leaves every check below testing `undefined` against
+    // a regex — passing while asserting nothing.
+    expect(BADGE_KEYS.filter((k) => typeof trManage[k] !== 'string')).toEqual([]);
+    expect(BADGE_KEYS.filter((k) => typeof enManage[k] !== 'string')).toEqual([]);
+  });
+
+  it('badges a pause with the pause word and never with the suspension word', () => {
+    expect(trManage.pausedBadge).toMatch(PAUSE_ROOT);
+    expect(trManage.pausedBadge).not.toMatch(SUSPENSION_ROOT);
+    expect(enManage.pausedBadge).not.toMatch(/suspend|ban/i);
+  });
+
+  it('badges a suspension with the suspension word and never with the pause word', () => {
+    expect(trManage.suspendedBadge).toMatch(SUSPENSION_ROOT);
+    expect(trManage.suspendedBadge).not.toMatch(PAUSE_ROOT);
+    expect(enManage.suspendedBadge).toMatch(/suspend/i);
+  });
+
+  /**
+   * The exact word that was there, named. `yasak` is the vocabulary of a prohibition
+   * imposed on a person and it is what the badge said for a 48-hour cooling-off — the
+   * same accusation `askı` carries, reached by a different road, so a sweep for `askı`
+   * alone would not have caught it and will not catch its return.
+   */
+  it('never calls a timed pause a ban', () => {
+    expect(trManage.pausedBadge).not.toMatch(/yasak/i);
+    expect(trManage.suspendedBadge).not.toMatch(/yasak/i);
+  });
+
+  /**
+   * The badge and the member's own card must agree, which is the whole point: an owner
+   * looking at the roster and a member looking at their page are reading one predicate.
+   * The suspended badge IS `restriction.suspendedTitle`, deliberately.
+   */
+  it('uses the same words the member is shown for the same state', () => {
+    expect(trManage.suspendedBadge).toBe(trRestriction.suspendedTitle);
+    expect(trManage.pausedBadge).toContain('{date}');
+    expect(enManage.pausedBadge).toContain('{date}');
+  });
+
+  it('never lets the two badges share a string', () => {
+    expect(trManage.pausedBadge).not.toBe(trManage.suspendedBadge);
+    expect(enManage.pausedBadge).not.toBe(enManage.suspendedBadge);
+  });
+
+  /**
+   * The orphans, asserted gone. These lived under `manage.bookings` — a group they were
+   * never rendered from — and the parity test compares the two catalogs to EACH OTHER, so
+   * a dead key present in both is invisible to it forever. Re-adding either is how the
+   * owner/member divergence comes back.
+   */
+  it('no longer carries the ban-worded badges it replaced', () => {
+    for (const catalog of [tr, en]) {
+      const bookings = (catalog.manage as Record<string, Record<string, string>>).bookings;
+      expect(bookings.bannedBadge).toBeUndefined();
+      expect(bookings.bannedUntilBadge).toBeUndefined();
+    }
+  });
+});
+
+/**
  * `booking.cancelledBy.*` renders on `/bookings` directly beneath the restriction card
  * above, so it inherits that card's register or it contradicts it: an explanation of what
  * the club RECORDED, never a verdict about the member. Same reason this file exists at

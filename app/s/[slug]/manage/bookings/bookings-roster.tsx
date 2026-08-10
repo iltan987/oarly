@@ -1,5 +1,5 @@
 'use client';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import { startTransition, useActionState, useEffect, useOptimistic, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -39,6 +39,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
 }) {
   const t = useTranslations('manage.bookings');
   const tm = useTranslations('manage');
+  const f = useFormatter();
 
   // Drives the fade-in-place on the row being removed. Base UI's Dialog renders the
   // confirm form in a portal, so the row's PendingButton-based `has-data-pending:` CSS
@@ -111,7 +112,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
   return (
     <div className="flex flex-col gap-3">
       {sessions.map((s, i) => {
-        const time = `${fmt(s.startAt, timezone)}–${fmt(s.endAt, timezone)}`;
+        const time = `${fmt(f, s.startAt, timezone)}–${fmt(f, s.endAt, timezone)}`;
         const sessionKey = s.sessionId ?? `${s.boatTypeId}-${i}`;
         const pending = pendingAdditions.filter((p) => p.sessionKey === sessionKey);
         return (
@@ -226,7 +227,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
         open={confirming !== null}
         onOpenChange={(open) => { if (!open) setConfirming(null); }}
         title={t('confirmAbsentTitle', { name: confirming?.name ?? '' })}
-        description={absenceConsequence(t, confirming?.session, timezone)}
+        description={absenceConsequence(t, f, confirming?.session, timezone)}
         confirmLabel={t('confirmAbsentCta')}
         dismissLabel={tm('cancel')}
         destructive
@@ -266,6 +267,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
  */
 function absenceConsequence(
   t: ReturnType<typeof useTranslations>,
+  f: Formatter,
   session: RosterSessionWithPenalty | undefined,
   timezone: string,
 ): string {
@@ -273,7 +275,7 @@ function absenceConsequence(
   if (session.banPermanent) return t('confirmAbsentPermanent');
   if (session.banEndsAt === null) return t('confirmAbsentNoPenalty');
   if (session.banLapsed) return t('confirmAbsentLapsed');
-  return t('confirmAbsentBan', { date: fmtDate(session.banEndsAt, timezone) });
+  return t('confirmAbsentBan', { date: fmtDate(f, session.banEndsAt, timezone) });
 }
 
 /**
@@ -366,6 +368,19 @@ function AddMemberFields({ session, slug, multisportEnabled, onSubmitted, onAdde
   );
 }
 
-// startAt/endAt are UTC instants; render the wall-clock in the club timezone.
-const fmt = (d: Date, tz: string) => new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).format(d);
-const fmtDate = (d: Date, tz: string) => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).format(d);
+/**
+ * startAt/endAt are UTC instants; these render the wall-clock in the CLUB's timezone, in
+ * the READER's locale.
+ *
+ * Both were `new Intl.DateTimeFormat('en-GB', …)` — a hardcoded locale on a page whose
+ * default is Turkish. `fmt` is locale-invariant across tr/en (a 24-hour clock is a
+ * 24-hour clock) and was merely wrong on paper; `fmtDate` was wrong on screen, because
+ * `month: 'long'` renders "12 August" and it feeds `confirmAbsentBan`'s `{date}` — the
+ * sentence telling a Turkish owner how long they are about to ban a member for.
+ *
+ * The formatter is passed in rather than called here: `useFormatter` is a hook, and these
+ * are module-level helpers called from render and from `absenceConsequence`.
+ */
+type Formatter = ReturnType<typeof useFormatter>;
+const fmt = (f: Formatter, d: Date, tz: string) => f.dateTime(d, { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
+const fmtDate = (f: Formatter, d: Date, tz: string) => f.dateTime(d, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });

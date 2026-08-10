@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getFormatter, getTranslations } from 'next-intl/server';
 
 import { AdminPagination } from '@/components/admin-pagination';
 import { StatusPill } from '@/components/booking-status-badge';
@@ -30,6 +30,17 @@ export default async function ManageMembersPage({ params, searchParams }: {
   const sp = await searchParams;
   const { club } = await requireOwner(slug);
   const t = await getTranslations('manage');
+  /*
+    The badge date used to be `toLocaleDateString('en-GB', …)` on a page whose default
+    locale is Turkish, so a Turkish owner read "12 August" in the middle of a Turkish
+    sentence. `getFormatter()` resolves the request's locale, the same way
+    `restriction-notice.tsx:169` formats the date the MEMBER is shown for the same ban.
+
+    Options inline rather than named: `src/i18n/request.ts` returns no `formats` config,
+    so there is nothing to name and a `format="short"` string would silently fall back.
+  */
+  const f = await getFormatter();
+  const day = (d: Date) => f.dateTime(d, { day: 'numeric', month: 'long', timeZone: club.timezone });
   const now = new Date();
 
   const q = one(sp.q)?.trim() || undefined;
@@ -156,13 +167,22 @@ export default async function ManageMembersPage({ params, searchParams }: {
                     <span className="font-heading text-sm font-semibold break-words">{r.name}</span>
                     <span className="text-xs break-words text-muted-foreground">{r.email}</span>
                   </div>
-                  {/* Its own cell even when empty, so the select column below does not
-                      shift by the width of a badge. */}
+                  {/*
+                    Its own cell even when empty, so the select column below does not
+                    shift by the width of a badge.
+
+                    The words are `restriction`'s, not this page's second set. The owner
+                    badge said *yasaklı* ("banned") for the exact state the member is told
+                    is *Duraklatıldı* ("paused"), off the same predicate — so an owner
+                    reading the roster and a member reading their own page described one
+                    fact with two registers, one of which Task 6 removed on purpose.
+                    Guarded in `src/i18n/tr-restriction-vocabulary.test.ts`.
+                  */}
                   <div>
                     {restriction === 'suspended' ? (
-                      <StatusPill tone="bad">{t('bookings.bannedBadge')}</StatusPill>
+                      <StatusPill tone="bad">{t('suspendedBadge')}</StatusPill>
                     ) : restriction === 'paused' ? (
-                      <StatusPill tone="warn">{t('bookings.bannedUntilBadge', { date: r.bannedUntil!.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: club.timezone }) })}</StatusPill>
+                      <StatusPill tone="warn">{t('pausedBadge', { date: day(r.bannedUntil!) })}</StatusPill>
                     ) : null}
                   </div>
                   {levels.length > 0 && (

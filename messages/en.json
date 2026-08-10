@@ -394,6 +394,8 @@
     "confirmRejectBody": "The request leaves your lists for good. There is no undo, and this person cannot ask again.",
     "confirmRejectCta": "Reject the request",
     "confirmRejectKeep": "Leave it waiting",
+    "pausedBadge": "Paused until {date}",
+    "suspendedBadge": "Suspended",
     "memberApproved": "Member approved.",
     "memberRejected": "Member rejected.",
     "skillSaved": "Skill level saved.",
@@ -600,9 +602,7 @@
       "markedWithCancellations": "Absence recorded. {count} upcoming bookings were cancelled.",
       "markAlready": "That member was already marked absent.",
       "undone": "Absence removed. Any seats this penalty cancelled were not restored.",
-      "undoConflict": "This seat can no longer be restored — it has since been taken.",
-      "bannedUntilBadge": "Banned until {date}",
-      "bannedBadge": "Suspended"
+      "undoConflict": "This seat can no longer be restored — it has since been taken."
     }
   },
   "booking": {
