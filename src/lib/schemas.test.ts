@@ -11,6 +11,18 @@ describe('schemas', () => {
     expect(signUpSchema.safeParse({ ...base, consent: false }).success).toBe(false);
     expect(signUpSchema.safeParse({ ...base, consent: true, password: 'short' }).success).toBe(false);
   });
+  /**
+   * `first_name`, `last_name` and `phone` are `text` columns, so these `.max()`es are the
+   * only width these values have. Asserted at the bound AND one over it: a `.max(80)`
+   * lost in a refactor still passes an "accepts 80" assertion on its own.
+   */
+  it.each([['firstName', 80], ['lastName', 80], ['phone', 40]] as const)(
+    'signUpSchema bounds %s at %i characters', (field, max) => {
+      const base = { firstName: 'A', lastName: 'B', phone: '5551112233', email: 'a@b.co', password: 'longenough', consent: true as const };
+      expect(signUpSchema.safeParse({ ...base, [field]: 'x'.repeat(max) }).success).toBe(true);
+      expect(signUpSchema.safeParse({ ...base, [field]: 'x'.repeat(max + 1) }).success).toBe(false);
+    },
+  );
   it('createClubSchema validates name/slug length and owner email', () => {
     expect(createClubSchema.safeParse({ name: 'Boğaziçi', slug: 'bogazici', ownerEmail: 'o@c.co' }).success).toBe(true);
     expect(createClubSchema.safeParse({ name: 'x', slug: 'bogazici', ownerEmail: 'o@c.co' }).success).toBe(false);
@@ -86,6 +98,25 @@ describe('accountProfileSchema', () => {
   it.each(['firstName', 'lastName', 'phone'])('inherits signUpSchema\'s rule for %s', (field) => {
     expect(accountProfileSchema.safeParse({ ...base, [field]: '' }).success).toBe(false);
   });
+
+  /**
+   * The upper bound half of the same inheritance, at the bound and one over it. This is
+   * about the `.pick()` and not about the numbers: a restated `z.string().min(1).max(80)`
+   * here would satisfy these three cases, so the identity assertion below is the one that
+   * would actually fail — `.pick()` reuses the very field schema object, a restatement
+   * cannot.
+   */
+  it.each([['firstName', 80], ['lastName', 80], ['phone', 40]] as const)(
+    'inherits signUpSchema\'s bound for %s at %i characters', (field, max) => {
+      expect(accountProfileSchema.safeParse({ ...base, [field]: 'x'.repeat(max) }).success).toBe(true);
+      expect(accountProfileSchema.safeParse({ ...base, [field]: 'x'.repeat(max + 1) }).success).toBe(false);
+    },
+  );
+  it.each(['firstName', 'lastName', 'phone'] as const)(
+    'takes %s from signUpSchema by reference, not by restating it', (field) => {
+      expect(accountProfileSchema.shape[field]).toBe(signUpSchema.shape[field]);
+    },
+  );
   it('does not carry email, password or consent across from signUpSchema', () => {
     expect(accountProfileSchema.safeParse(base).success).toBe(true);
     expect(Object.keys(accountProfileSchema.shape).sort()).toEqual(

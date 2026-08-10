@@ -70,18 +70,18 @@ export function SignUpForm({ title }: { title: string }) {
           <div className="grid grid-cols-2 gap-3">
             <Field data-invalid={!!errors.firstName}>
               <FieldLabel htmlFor="firstName">{t('firstName')}</FieldLabel>
-              <Input id="firstName" autoComplete="given-name" aria-invalid={!!errors.firstName} {...register('firstName')} />
+              <Input id="firstName" autoComplete="given-name" maxLength={80} aria-invalid={!!errors.firstName} {...register('firstName')} />
               {errors.firstName && <FieldError>{t('errorRequired')}</FieldError>}
             </Field>
             <Field data-invalid={!!errors.lastName}>
               <FieldLabel htmlFor="lastName">{t('lastName')}</FieldLabel>
-              <Input id="lastName" autoComplete="family-name" aria-invalid={!!errors.lastName} {...register('lastName')} />
+              <Input id="lastName" autoComplete="family-name" maxLength={80} aria-invalid={!!errors.lastName} {...register('lastName')} />
               {errors.lastName && <FieldError>{t('errorRequired')}</FieldError>}
             </Field>
           </div>
           <Field data-invalid={!!errors.phone}>
             <FieldLabel htmlFor="phone">{t('phone')}</FieldLabel>
-            <Input id="phone" type="tel" autoComplete="tel" aria-invalid={!!errors.phone} {...register('phone')} />
+            <Input id="phone" type="tel" autoComplete="tel" maxLength={40} aria-invalid={!!errors.phone} {...register('phone')} />
             {errors.phone && <FieldError>{t('errorRequired')}</FieldError>}
           </Field>
           <Field data-invalid={!!errors.email}>

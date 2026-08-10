@@ -8,9 +8,27 @@ export const signInSchema = z.object({
   password: z.string().min(1),
 });
 export const signUpSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  phone: z.string().min(1),
+  /*
+   * The `.max()`es are the ONLY width these three values have anywhere. `first_name`,
+   * `last_name` and `phone` are all `text` in `src/db/schema/auth.ts` — Postgres imposes
+   * no limit on `text`, and Better Auth passes an additionalField straight through — so
+   * without these a sign-up or an `/account` save would persist a value of any size.
+   *
+   * The numbers are taken, not invented, and no column width contradicts them (`text`
+   * has none):
+   *  - 80 for the two names: the `maxLength` the `/account` inputs already render
+   *    (`app/account/account-form.tsx`), and this file's own width for a human-typed
+   *    name or handle (`clubRequestSchema.name`, `socialSchema.handle`).
+   *  - 40 for the phone: again the rendered `maxLength` on `/account`, and the width
+   *    this file already gives the other phone number it validates
+   *    (`clubProfileSchema.phone`, whose `clubs.phone` column is `text` too).
+   *
+   * `accountProfileSchema` PICKS these three rather than restating them, so the bound
+   * added here is the bound `/account` enforces — see its doc comment below.
+   */
+  firstName: z.string().min(1).max(80),
+  lastName: z.string().min(1).max(80),
+  phone: z.string().min(1).max(40),
   email: z.email(),
   password: z.string().min(8),
   consent: z.literal(true), // KVKK gate — must be explicitly true
