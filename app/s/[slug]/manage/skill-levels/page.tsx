@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 
+import { BackLink } from '@/components/back-link';
 import { db } from '@/db';
 import { requireOwner } from '@/lib/membership';
 import { countSkillLevelRefs, listSkillLevels } from '@/lib/skill-levels';
@@ -13,6 +14,7 @@ export default async function SkillLevelsPage({ params }: { params: Promise<{ sl
   const { slug } = await params;
   const { club } = await requireOwner(slug, '/manage/skill-levels');
   const t = await getTranslations('manage.skillLevels');
+  const tManage = await getTranslations('manage');
   const levels = await listSkillLevels(db, club.id);
   const refs = Object.fromEntries(
     await Promise.all(levels.map(async (l) => [l.id, await countSkillLevelRefs(db, { clubId: club.id, skillLevelId: l.id })] as const)),
@@ -20,6 +22,7 @@ export default async function SkillLevelsPage({ params }: { params: Promise<{ sl
 
   return (
     <div className="flex flex-col gap-4">
+      <BackLink href="/manage/settings" label={tManage('settings.navLabel')} />
       <div>
         <h2 className="font-heading text-lg font-semibold">{t('title')}</h2>
         <p className="text-sm text-muted-foreground">{t('intro')}</p>
