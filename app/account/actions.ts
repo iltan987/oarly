@@ -17,10 +17,39 @@ import { updateUserProfile } from '@/lib/user-profile';
  * copy. "Check the fields" is actively misleading advice to someone whose fields are fine
  * and who simply has to wait.
  */
-export type AccountActionResult = { ok: true } | { ok: false; reason: 'invalid' | 'rate_limited' };
+export type AccountActionResult =
+  | { ok: true }
+  | { ok: false; reason: 'invalid' | 'rate_limited'; attempt: number; values: AccountFormValues };
+
+/**
+ * The six fields the form submits, exactly as they were submitted — untrimmed, so a refused
+ * save hands the member back the characters they have in front of them.
+ *
+ * `attempt` and `values` are what stop a refusal from discarding those characters. React 19
+ * resets an uncontrolled form after ANY completed form action: `<form action>` schedules
+ * the reset before the action even runs (react-dom 19.2.8, `startHostTransition` →
+ * `requestFormReset`) and it lands as a native `.reset()` on the form node. Measured in a
+ * browser on this exact form — a whitespace-only `firstName` passes `required`, this action
+ * trims it to `''`, `accountProfileSchema` refuses it, and the field snapped back to the
+ * stored name on the same DOM node with a `reset` event fired.
+ *
+ * Returned from the SERVER, not snapshotted in the client, so the pre-hydration path — where
+ * the refusal is a full-page POST and the form is re-rendered server-side from this result —
+ * preserves the edits too. `attempt` drives the form's remount key: a refusal never
+ * revalidates, so `user.updatedAt` cannot move, and feeding a new `defaultValue` to a LIVE
+ * uncontrolled input is exactly what Base UI warns about.
+ */
+export type AccountFormValues = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  birthday: string;
+  gender: string;
+  defaultPaymentType: string;
+};
 
 export async function saveAccountAction(
-  _prev: AccountActionResult | null,
+  prev: AccountActionResult | null,
   formData: FormData,
 ): Promise<AccountActionResult> {
   /*
@@ -33,22 +62,39 @@ export async function saveAccountAction(
    */
   const user = await requireUser('/account');
 
+  // Read once, up here, so BOTH refusals below can hand the values back — including the
+  // rate-limited one, which never reaches the parse.
+  const submitted: AccountFormValues = {
+    firstName: String(formData.get('firstName') ?? ''),
+    lastName: String(formData.get('lastName') ?? ''),
+    phone: String(formData.get('phone') ?? ''),
+    birthday: String(formData.get('birthday') ?? ''),
+    gender: String(formData.get('gender') ?? ''),
+    defaultPaymentType: String(formData.get('defaultPaymentType') ?? ''),
+  };
+  const refuse = (reason: 'invalid' | 'rate_limited'): AccountActionResult => ({
+    ok: false,
+    reason,
+    attempt: (prev !== null && !prev.ok ? prev.attempt : 0) + 1,
+    values: submitted,
+  });
+
   // Per-ACCOUNT, and above the parse for the reason `bookSeatAction` documents: an
   // exhausted caller must not cost us a validation pass or a DB round trip.
   const verdict = await enforceRateLimit([
     { key: `account:acct:${user.id}`, rule: RATE_LIMITS.accountUpdatePerAccount },
   ]);
-  if (verdict.limited) return { ok: false, reason: 'rate_limited' };
+  if (verdict.limited) return refuse('rate_limited');
 
   const parsed = accountProfileSchema.safeParse({
-    firstName: String(formData.get('firstName') ?? '').trim(),
-    lastName: String(formData.get('lastName') ?? '').trim(),
-    phone: String(formData.get('phone') ?? '').trim(),
-    birthday: String(formData.get('birthday') ?? '').trim(),
-    gender: String(formData.get('gender') ?? '').trim(),
-    defaultPaymentType: String(formData.get('defaultPaymentType') ?? '').trim(),
+    firstName: submitted.firstName.trim(),
+    lastName: submitted.lastName.trim(),
+    phone: submitted.phone.trim(),
+    birthday: submitted.birthday.trim(),
+    gender: submitted.gender.trim(),
+    defaultPaymentType: submitted.defaultPaymentType.trim(),
   });
-  if (!parsed.success) return { ok: false, reason: 'invalid' };
+  if (!parsed.success) return refuse('invalid');
 
   const d = parsed.data;
   await updateUserProfile(db, user.id, {

@@ -286,7 +286,7 @@ describe('saveAccountAction rate limiting', () => {
       expect(await saveAccountAction(null, accountFormData())).toEqual({ ok: true });
     }
     expect(await saveAccountAction(null, accountFormData()))
-      .toEqual({ ok: false, reason: 'rate_limited' });
+      .toMatchObject({ ok: false, reason: 'rate_limited' });
   });
 
   it('refuses BEFORE parsing, so an exhausted caller costs nothing', async () => {
@@ -298,7 +298,7 @@ describe('saveAccountAction rate limiting', () => {
     vi.mocked(updateUserProfile).mockClear();
 
     expect(await saveAccountAction(null, new FormData()))
-      .toEqual({ ok: false, reason: 'rate_limited' });
+      .toMatchObject({ ok: false, reason: 'rate_limited' });
     expect(updateUserProfile).not.toHaveBeenCalled();
   });
 
@@ -306,7 +306,7 @@ describe('saveAccountAction rate limiting', () => {
     currentUserId = 'account-window-user';
     for (let i = 0; i < LIMIT; i += 1) await saveAccountAction(null, accountFormData());
     expect(await saveAccountAction(null, accountFormData()))
-      .toEqual({ ok: false, reason: 'rate_limited' });
+      .toMatchObject({ ok: false, reason: 'rate_limited' });
 
     vi.setSystemTime(T0 + RATE_LIMITS.accountUpdatePerAccount.windowSec * 1000);
     expect(await saveAccountAction(null, accountFormData())).toEqual({ ok: true });
@@ -318,7 +318,7 @@ describe('saveAccountAction rate limiting', () => {
     currentUserId = 'account-a';
     for (let i = 0; i < LIMIT; i += 1) await saveAccountAction(null, accountFormData());
     expect(await saveAccountAction(null, accountFormData()))
-      .toEqual({ ok: false, reason: 'rate_limited' });
+      .toMatchObject({ ok: false, reason: 'rate_limited' });
 
     currentUserId = 'account-b';
     expect(await saveAccountAction(null, accountFormData())).toEqual({ ok: true });

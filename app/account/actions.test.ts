@@ -111,7 +111,7 @@ describe('saveAccountAction', () => {
     // caller costs no validation pass and no DB round trip.
     const res = await saveAccountAction(null, form({ ...VALID, firstName: '' }));
 
-    expect(res).toEqual({ ok: false, reason: 'rate_limited' });
+    expect(res).toMatchObject({ ok: false, reason: 'rate_limited' });
     expect(updateUserProfile).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
   });
@@ -129,9 +129,45 @@ describe('saveAccountAction', () => {
   ])('refuses %s without writing or revalidating', async (_label, patch) => {
     const res = await saveAccountAction(null, form({ ...VALID, ...patch }));
 
-    expect(res).toEqual({ ok: false, reason: 'invalid' });
+    expect(res).toMatchObject({ ok: false, reason: 'invalid' });
     expect(updateUserProfile).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Every refusal hands the SUBMITTED values back, untrimmed, and increments `attempt`.
+   * That is what `AccountForm` re-seeds its uncontrolled inputs from after React 19 resets
+   * them, so without it a refused save silently discards whatever the member had typed.
+   *
+   * Both refusals, because they leave the action at different points: `rate_limited`
+   * returns above the parse, so the values have to be read before the limiter runs.
+   * `attempt` is asserted as a SEQUENCE (0 → 1 → 2) because the form key needs a value that
+   * changes on every consecutive refusal, not merely a non-zero one.
+   */
+  it.each([
+    ['invalid', { limited: false }, { ...VALID, firstName: '  ' }],
+    ['rate_limited', { limited: true, retryAfterSec: 60 }, { ...VALID, firstName: '  ' }],
+  ] as const)('hands the submitted values back on a %s refusal', async (reason, verdict, fields) => {
+    enforceRateLimit.mockResolvedValue(verdict);
+    const submitted = { ...fields, lastName: '  Lovelace  ' };
+
+    const first = await saveAccountAction(null, form(submitted));
+    expect(first).toEqual({
+      ok: false,
+      reason,
+      attempt: 1,
+      // Untrimmed: the member gets back the characters they have in front of them.
+      values: { ...submitted },
+    });
+
+    const second = await saveAccountAction(first, form(submitted));
+    expect(second).toMatchObject({ ok: false, attempt: 2 });
+  });
+
+  // A refusal AFTER a success starts the count again, so the form key moves off `:0`.
+  it('starts the attempt count from a previous success', async () => {
+    expect(await saveAccountAction({ ok: true }, form({ ...VALID, phone: '' })))
+      .toMatchObject({ ok: false, reason: 'invalid', attempt: 1 });
   });
 
   it('trims each field before parsing, so a padded but valid name is accepted', async () => {

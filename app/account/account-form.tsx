@@ -61,22 +61,35 @@ const PAYMENT_LABEL_KEYS: Record<(typeof PAYMENT_TYPES)[number], string> = {
  * works before (and without) hydration, and the toast effect lives in this stable
  * component rather than inside the keyed `<form>` below.
  *
- * `key={profile.updatedAt.getTime()}` reproduces that file's reasoning exactly.
- * `user.updatedAt` carries `$onUpdate` (`src/db/schema/auth.ts`), so a successful save
- * revalidates this route and re-feeds the just-saved values as new `defaultValue`s on live
- * uncontrolled inputs — which Base UI warns about. Re-keying remounts them with fresh
- * defaults after each save, and ONLY then: the timestamp moves when the row is persisted,
- * never while typing. A FAILED save does not revalidate, so `updatedAt` is unchanged, the
- * form does not remount.
+ * The remount key reproduces that file's reasoning exactly, in both of its halves.
  *
- * What a failed save does NOT do is preserve the member's in-flight edits, and that is
- * React's doing rather than this key's: React 19 resets an uncontrolled form after ANY
- * completed form action, success or failure. Measured directly against both a native
- * `<input defaultValue>` and this repo's Base UI `Input` — both revert to their
- * `defaultValue`. It is left as-is because `action={formAction}` on uncontrolled inputs is
- * what makes this form work before hydration, and because the only refusal reachable
- * through this UI is `rate_limited`: every field here is also natively constrained
- * (`required`, `type="date"`, two closed option sets), so `invalid` needs a crafted POST.
+ * `profile.updatedAt` is the SUCCESS half. `user.updatedAt` carries `$onUpdate`
+ * (`src/db/schema/auth.ts`), so a successful save revalidates this route and re-feeds the
+ * just-saved values as new `defaultValue`s on live uncontrolled inputs — which Base UI
+ * warns about ("A component is changing the default value state of an uncontrolled input
+ * after being initialized"). Re-keying remounts them with fresh defaults after each save,
+ * and ONLY then: the timestamp moves when the row is persisted, never while typing.
+ *
+ * `state.attempt` is the REFUSAL half, and it exists because React 19 resets an
+ * uncontrolled form after ANY completed form action, success or failure — `<form action>`
+ * schedules the reset before the action even runs (react-dom 19.2.8,
+ * `startHostTransition` → `requestFormReset`), and it lands as a native `.reset()` on the
+ * form node. Without it a refused save silently reverted every field to the stored row.
+ * Measured in a browser on this page: a whitespace-only `firstName` passes `required`,
+ * `saveAccountAction` trims it to `''` and `accountProfileSchema` refuses it — and the
+ * field snapped back to the stored name on the SAME `<form>` DOM node, with a `reset`
+ * event fired on it. (The same run on a successful save replaced the node instead, and the
+ * field showed the typed text only because the revalidation had re-fed it — the identical
+ * screen, a different cause, and not this bug.)
+ *
+ * A refusal never revalidates, so `updatedAt` cannot move and cannot carry that remount;
+ * `attempt` increments on each refusal instead, and the defaults it remounts with are
+ * `state.values` — what the member just submitted — rather than the stored row.
+ *
+ * The values come back FROM THE SERVER rather than being snapshotted here because
+ * `action={formAction}` on uncontrolled inputs is what makes this form work before
+ * hydration: on that path the refusal is a full-page POST and this component is rendered
+ * on the server from the same result, so the edits survive there too.
  */
 export function AccountForm({ profile }: { profile: AccountProfile }) {
   const t = useTranslations('account');
@@ -109,25 +122,44 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
 
   const invalid = state !== null && !state.ok && state.reason === 'invalid';
 
+  const rejected = state !== null && !state.ok ? state.values : null;
+  const formKey = `${profile.updatedAt.getTime()}:${state !== null && !state.ok ? state.attempt : 0}`;
+
+  /*
+   * The two closed sets are echoed back only if the refused value is actually one of the
+   * answers this form offers. They cannot be mistyped — they are a Select and a RadioGroup
+   * — so a value outside the set means a hand-crafted POST, and seeding a `defaultValue`
+   * from it would leave the Select blank and the RadioGroup with nothing checked, which is
+   * a worse starting point for the retry than the stored answer.
+   */
+  const rejectedGender =
+    rejected !== null && (rejected.gender === '' || (GENDER_OPTIONS as readonly string[]).includes(rejected.gender))
+      ? rejected.gender
+      : null;
+  const rejectedPaymentType =
+    rejected !== null && (PAYMENT_TYPES as readonly string[]).includes(rejected.defaultPaymentType)
+      ? (rejected.defaultPaymentType as (typeof PAYMENT_TYPES)[number])
+      : null;
+
   return (
-    <form key={profile.updatedAt.getTime()} action={formAction} className="flex flex-col gap-5">
+    <form key={formKey} action={formAction} className="flex flex-col gap-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field>
           <FieldLabel htmlFor="firstName">{t('firstName')}</FieldLabel>
           <Input id="firstName" name="firstName" autoComplete="given-name" required maxLength={80}
-            defaultValue={profile.firstName} />
+            defaultValue={rejected?.firstName ?? profile.firstName} />
         </Field>
         <Field>
           <FieldLabel htmlFor="lastName">{t('lastName')}</FieldLabel>
           <Input id="lastName" name="lastName" autoComplete="family-name" required maxLength={80}
-            defaultValue={profile.lastName} />
+            defaultValue={rejected?.lastName ?? profile.lastName} />
         </Field>
       </div>
 
       <Field>
         <FieldLabel htmlFor="phone">{t('phone')}</FieldLabel>
         <Input id="phone" name="phone" type="tel" autoComplete="tel" required maxLength={40}
-          defaultValue={profile.phone} />
+          defaultValue={rejected?.phone ?? profile.phone} />
       </Field>
 
       {/*
@@ -154,7 +186,7 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
       */}
       <Field>
         <FieldLabel htmlFor="birthday">{t('birthday')}</FieldLabel>
-        <Input id="birthday" name="birthday" type="date" defaultValue={profile.birthday} />
+        <Input id="birthday" name="birthday" type="date" defaultValue={rejected?.birthday ?? profile.birthday} />
         <FieldDescription>{t('birthdayDescription')}</FieldDescription>
       </Field>
 
@@ -174,7 +206,7 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
         <FieldLabel htmlFor="gender">{t('gender')}</FieldLabel>
         <Select
           name="gender"
-          defaultValue={profile.gender}
+          defaultValue={rejectedGender ?? profile.gender}
           items={[
             { value: '', label: t('genderUnset') },
             ...GENDER_OPTIONS.map((g) => ({ value: g, label: t(GENDER_LABEL_KEYS[g]) })),
@@ -213,7 +245,7 @@ export function AccountForm({ profile }: { profile: AccountProfile }) {
         <FieldDescription>{t('paymentTypeDescription')}</FieldDescription>
         <RadioGroup
           name="defaultPaymentType"
-          defaultValue={profile.defaultPaymentType}
+          defaultValue={rejectedPaymentType ?? profile.defaultPaymentType}
           className="grid gap-2 sm:grid-cols-2"
         >
           {PAYMENT_TYPES.map((p) => (

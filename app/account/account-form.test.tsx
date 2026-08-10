@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useActionState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Key-echo translations, per this repo's component-test convention. The words themselves
@@ -38,6 +39,28 @@ const PROFILE: AccountProfile = {
  */
 const undrained: ((result: AccountActionResult) => void)[] = [];
 
+/**
+ * A refusal that echoes back what was actually submitted, exactly as `saveAccountAction`
+ * does. The echo is what the component re-seeds its inputs from, so a mock that returned a
+ * bare `{ ok: false, reason }` would be testing a contract the action does not have.
+ * The action's own half of it is pinned in `actions.test.ts`.
+ */
+function refuseEchoingSubmission(reason: 'invalid' | 'rate_limited') {
+  vi.mocked(saveAccountAction).mockImplementation(async (prev, formData) => ({
+    ok: false,
+    reason,
+    attempt: (prev !== null && !prev.ok ? prev.attempt : 0) + 1,
+    values: {
+      firstName: String(formData.get('firstName') ?? ''),
+      lastName: String(formData.get('lastName') ?? ''),
+      phone: String(formData.get('phone') ?? ''),
+      birthday: String(formData.get('birthday') ?? ''),
+      gender: String(formData.get('gender') ?? ''),
+      defaultPaymentType: String(formData.get('defaultPaymentType') ?? ''),
+    },
+  }));
+}
+
 /** Hold the action unresolved and hand back its resolver. */
 function deferAction(): (result: AccountActionResult) => void {
   let resolve!: (result: AccountActionResult) => void;
@@ -51,6 +74,19 @@ function submit() {
   const form = document.querySelector('form');
   if (!form) throw new Error('form not found');
   fireEvent.submit(form);
+}
+
+/**
+ * Submit and wait for the action's result to be COMMITTED, not merely dispatched.
+ *
+ * The distinction is the whole reason this exists: an uncontrolled field already holds the
+ * typed text the moment it is typed, so `waitFor(() => expect(field).toHaveValue('Ada'))`
+ * passes before the action has even been called — it would go green with the fix removed
+ * and only fail on timing. Wrapping the submit in an async `act` flushes the transition and
+ * the resolved action inside it, so every assertion after it is about the settled form.
+ */
+async function submitAndSettle() {
+  await act(async () => { submit(); });
 }
 
 /** The FormData React handed the action on the Nth submit. */
@@ -270,7 +306,7 @@ describe('AccountForm', () => {
    * is why both are asserted here and each against the other's key.
    */
   it('gives the rate-limited refusal its own message, not the generic one', async () => {
-    vi.mocked(saveAccountAction).mockResolvedValue({ ok: false, reason: 'rate_limited' });
+    refuseEchoingSubmission('rate_limited');
     const { unmount } = render(<AccountForm profile={PROFILE} />);
     submit();
 
@@ -280,7 +316,7 @@ describe('AccountForm', () => {
     unmount();
 
     vi.clearAllMocks();
-    vi.mocked(saveAccountAction).mockResolvedValue({ ok: false, reason: 'invalid' });
+    refuseEchoingSubmission('invalid');
     render(<AccountForm profile={PROFILE} />);
     submit();
 
@@ -292,7 +328,7 @@ describe('AccountForm', () => {
   // A rate-limited caller's fields are fine, so no inline field error may appear — the
   // inline error belongs to `invalid` alone.
   it('shows the inline error for invalid only, never for rate_limited', async () => {
-    vi.mocked(saveAccountAction).mockResolvedValue({ ok: false, reason: 'rate_limited' });
+    refuseEchoingSubmission('rate_limited');
     const { unmount } = render(<AccountForm profile={PROFILE} />);
     submit();
 
@@ -301,7 +337,7 @@ describe('AccountForm', () => {
     unmount();
 
     vi.clearAllMocks();
-    vi.mocked(saveAccountAction).mockResolvedValue({ ok: false, reason: 'invalid' });
+    refuseEchoingSubmission('invalid');
     render(<AccountForm profile={PROFILE} />);
     submit();
 
@@ -335,28 +371,147 @@ describe('AccountForm', () => {
     expect(toast.success).toHaveBeenCalledTimes(1);
   });
 
+  // ---- a refusal must not discard what the member typed ---------------------------------
+
   /**
-   * A refusal must leave the form showing the STORED profile, not a blank one.
-   *
-   * Written this way because the intuitive assertion — that the member's in-flight edit
-   * survives — is FALSE, and was measured to be false rather than assumed either way:
-   * React 19 resets an uncontrolled form after any completed form action, so 'Ada' is gone
-   * whatever this component does (reproduced against a bare `<input defaultValue>` outside
-   * this repo's primitives, so it is React's behaviour and not Base UI's). Asserting the
-   * edit survives would fail; asserting nothing would leave the far worse outcome — a
-   * refusal that blanks every field — unguarded. So this pins the recoverable state.
+   * The premise, pinned on its own so a failure here reads as "React changed" rather than
+   * "the account form broke": React 19 resets an UNCONTROLLED form after any completed form
+   * action, refusal included. A bare `<input defaultValue>` and a bare `<form action>` —
+   * none of this repo's primitives, none of its components — so what this measures is
+   * React's behaviour, and it is the reason `AccountForm` and `ProfileForm` have to hand
+   * the submitted values back at all. If this ever goes green-by-passing (React stops
+   * resetting), the seeding below becomes belt-and-braces rather than load-bearing, and the
+   * comments on both forms need revisiting.
    */
-  it('leaves the stored values in the form after a refusal, rather than blanking it', async () => {
-    vi.mocked(saveAccountAction).mockResolvedValue({ ok: false, reason: 'invalid' });
+  it('React resets an uncontrolled form after a completed action (the premise)', async () => {
+    const action = vi.fn(async () => null);
+    function Bare() {
+      const [, formAction] = useActionState<null, FormData>(action, null);
+      return (
+        <form action={formAction}>
+          <input aria-label="bare" name="bare" defaultValue="stored" />
+          <button type="submit">go</button>
+        </form>
+      );
+    }
+    render(<Bare />);
+
+    fireEvent.change(screen.getByLabelText('bare'), { target: { value: 'typed' } });
+    expect(screen.getByLabelText('bare')).toHaveValue('typed');
+
+    fireEvent.submit(document.querySelector('form')!);
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByLabelText('bare')).toHaveValue('stored'));
+  });
+
+  /**
+   * …and the fix for it. A refused save hands the submitted values back
+   * (`AccountActionResult.values`) and bumps `attempt`, which re-keys the form so the
+   * uncontrolled inputs remount seeded with those values instead of the stored row.
+   *
+   * Remove either half — the echo or the `attempt` in the key — and React's reset above
+   * wins: 'Ada' becomes 'İltan' again and this fails.
+   */
+  it('keeps the member\'s edits after a refusal, ready to retry', async () => {
+    refuseEchoingSubmission('invalid');
     render(<AccountForm profile={{ ...PROFILE, birthday: '1990-04-17', gender: 'female' }} />);
 
     fireEvent.change(screen.getByLabelText('firstName'), { target: { value: 'Ada' } });
-    submit();
+    fireEvent.change(screen.getByLabelText('phone'), { target: { value: '5559998877' } });
+    await submitAndSettle();
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-    expect(screen.getByLabelText('firstName')).toHaveValue('İltan');
-    expect(screen.getByLabelText('phone')).toHaveValue('5551112233');
+    expect(toast.error).toHaveBeenCalledWith('errorInvalid');
+    expect(screen.getByLabelText('firstName')).toHaveValue('Ada');
+    expect(screen.getByLabelText('phone')).toHaveValue('5559998877');
+    // Untouched fields keep the stored answers, which are also what was submitted.
+    expect(screen.getByLabelText('lastName')).toHaveValue('Caner');
     expect(screen.getByLabelText('birthday')).toHaveValue('1990-04-17');
     expect(screen.getByRole('combobox', { name: 'gender' })).toHaveTextContent('genderFemale');
+  });
+
+  /**
+   * A SECOND refusal has to keep the second edit, and this is the case that catches a key
+   * that only changes once: `attempt` goes 1 -> 2, so the form remounts again. With a
+   * boolean "was refused" flag instead, the key would be identical across both refusals.
+   */
+  it('keeps the edits across a second consecutive refusal', async () => {
+    refuseEchoingSubmission('invalid');
+    render(<AccountForm profile={PROFILE} />);
+
+    fireEvent.change(screen.getByLabelText('firstName'), { target: { value: 'Ada' } });
+    await submitAndSettle();
+    expect(screen.getByLabelText('firstName')).toHaveValue('Ada');
+
+    fireEvent.change(screen.getByLabelText('firstName'), { target: { value: 'Ada Lovelace' } });
+    await submitAndSettle();
+    expect(saveAccountAction).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('firstName')).toHaveValue('Ada Lovelace');
+  });
+
+  /**
+   * `attempt` in the form key, pinned by the mechanism it drives rather than by the value —
+   * because the VALUE survives either way, and that is measured, not assumed. In Chrome,
+   * with `attempt` removed from the key, the same `<form>` node stayed mounted, a `reset`
+   * event fired on it, and the typed text still survived: React updates an uncontrolled
+   * input's `defaultValue` attribute before it calls `.reset()`, so the reset restores the
+   * NEW default.
+   *
+   * What it does not survive is Base UI. That same run logged "Base UI: A component is
+   * changing the default value state of an uncontrolled FieldControl after being
+   * initialized. To suppress this warning opt to use a controlled FieldControl" — the exact
+   * warning this form's remount key exists to avoid. With `attempt` present the node is
+   * replaced and the console is clean.
+   *
+   * Asserted as node identity and not as a console spy: Base UI dedupes each warning
+   * globally for the process, so only the first test to trip it would ever see it.
+   */
+  it('remounts the form on a refusal rather than re-defaulting a live input', async () => {
+    refuseEchoingSubmission('invalid');
+    const { container } = render(<AccountForm profile={PROFILE} />);
+    const before = container.querySelector('form');
+
+    fireEvent.change(screen.getByLabelText('firstName'), { target: { value: 'Ada' } });
+    await submitAndSettle();
+
+    expect(screen.getByLabelText('firstName')).toHaveValue('Ada');
+    expect(container.querySelector('form')).not.toBe(before);
+  });
+
+  /**
+   * The rate-limited refusal too — its values never reach the parse, so they are read
+   * before the limiter in the action. A member who waits out the limit must not have to
+   * retype what they had already typed.
+   */
+  it('keeps the member\'s edits after a rate-limited refusal', async () => {
+    refuseEchoingSubmission('rate_limited');
+    render(<AccountForm profile={PROFILE} />);
+
+    fireEvent.change(screen.getByLabelText('lastName'), { target: { value: 'Byron' } });
+    await submitAndSettle();
+
+    expect(toast.error).toHaveBeenCalledWith('errorTooManyRequests');
+    expect(screen.getByLabelText('lastName')).toHaveValue('Byron');
+  });
+
+  /**
+   * The success path is unchanged and must stay that way: a save that persists revalidates,
+   * `updatedAt` moves, and the form re-seeds from the STORED row — not from a stale
+   * `state.values` left over from an earlier refusal.
+   */
+  it('re-seeds from the stored row after a success that follows a refusal', async () => {
+    refuseEchoingSubmission('invalid');
+    const { rerender } = render(<AccountForm profile={PROFILE} />);
+
+    fireEvent.change(screen.getByLabelText('firstName'), { target: { value: 'Ada' } });
+    await submitAndSettle();
+    expect(screen.getByLabelText('firstName')).toHaveValue('Ada');
+
+    vi.mocked(saveAccountAction).mockResolvedValue({ ok: true });
+    await submitAndSettle();
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    // The revalidated render: the row was saved under a corrected name.
+    rerender(<AccountForm profile={{ ...PROFILE, firstName: 'Ada', updatedAt: new Date('2026-08-01T10:05:00Z') }} />);
+    expect(screen.getByLabelText('firstName')).toHaveValue('Ada');
+    expect(screen.getByLabelText('lastName')).toHaveValue('Caner');
   });
 });
