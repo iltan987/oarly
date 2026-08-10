@@ -1,9 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
 
+import type { ManageActionResult } from '../action-result';
 import { deleteWindowAction } from './actions';
 import { WindowForm } from './window-form';
 
@@ -21,8 +24,26 @@ const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 export function ScheduleEditor({ slug, windows, boats, weekdayNames, labels }: {
   slug: string; windows: WindowRow[]; boats: Boat[]; weekdayNames: Record<number, string>; labels: Labels;
 }) {
+  const tm = useTranslations('manage');
   const [addingDay, setAddingDay] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // One hoisted state for every row's delete form, not one per row: a successful
+  // delete revalidates the route and removes that <li>, which would unmount a
+  // row-local effect before its toast could fire. This component survives the
+  // removal. (Same reasoning as SkillLevelsEditor.)
+  const [delState, delAction] = useActionState<ManageActionResult | null, FormData>(deleteWindowAction.bind(null, slug), null);
+  // Each resolved action produces a fresh object, so identity distinguishes "a new
+  // result arrived" from "this effect re-ran": without it, any unrelated re-render
+  // (opening an editor, adding a window) would re-toast a failure already dismissed.
+  const delHandled = useRef<ManageActionResult | null>(null);
+  useEffect(() => {
+    if (delState === null || delState === delHandled.current) return;
+    delHandled.current = delState;
+    // Success needs no toast — the row disappears. Failure is the case that was
+    // invisible before: a refused id, or a window another tab already deleted.
+    if (!delState.ok) toast.error(tm('actionError'));
+  }, [delState, tm]);
 
   if (boats.length === 0) return <p className="text-sm text-muted-foreground">{labels.needBoats}</p>;
 
@@ -50,7 +71,7 @@ export function ScheduleEditor({ slug, windows, boats, weekdayNames, labels }: {
                         </span>
                         <div className="flex items-center gap-2">
                           <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingId(w.id); setAddingDay(null); }}>{labels.edit}</Button>
-                          <form action={deleteWindowAction.bind(null, slug)}>
+                          <form action={delAction}>
                             <input type="hidden" name="windowId" value={w.id} />
                             <PendingButton size="sm" variant="ghost">{labels.delete}</PendingButton>
                           </form>

@@ -67,11 +67,10 @@ const UUID = '4d4b7b0f-1f6c-4d7e-9b1a-2f2c9b8a1234';
 /** Each of these reaches a `uuid` bind as 22P02. `''` is covered separately. */
 const BAD = ['abc', '1', "'; DROP TABLE clubs; --", '4d4b7b0f-1f6c-4d7e-9b1a-2f2c9b8a123'];
 
-/** `void` (no contract), `{ ok: false }`, or `WindowFormState`'s `{ status: 'error' }`. */
+/** `{ ok: false }` or `WindowFormState`'s `{ status: 'error' }`. */
 function isRefusal(result: unknown): boolean {
-  if (result === undefined) return true;
   const r = result as Record<string, unknown>;
-  return r.ok === false || r.status === 'error';
+  return r?.ok === false || r?.status === 'error';
 }
 
 function fd(entries: Record<string, string>): FormData {
@@ -104,7 +103,7 @@ const CASES: [string, (bad: string) => Promise<unknown>, () => ReturnType<typeof
   ['reorderSkillLevelAction', (b) => reorderSkillLevelAction('s', null, fd({ skillLevelId: b, direction: 'up' })), () => lib.reorderSkillLevel],
   ['deleteSkillLevelAction', (b) => deleteSkillLevelAction('s', null, fd({ skillLevelId: b })), () => lib.deleteSkillLevel],
   ['saveWindowAction', (b) => saveWindowAction('s', { status: 'idle', error: null }, fd({ ...windowFields(), windowId: b })), () => lib.updateWindow],
-  ['deleteWindowAction', (b) => deleteWindowAction('s', fd({ windowId: b })), () => lib.deleteWindow],
+  ['deleteWindowAction', (b) => deleteWindowAction('s', null, fd({ windowId: b })), () => lib.deleteWindow],
   ['removeSocialAction', (b) => removeSocialAction('s', null, fd({ socialId: b })), () => lib.removeSocial],
 ];
 
@@ -118,10 +117,8 @@ describe('manage actions refuse a malformed uuid before it reaches the database'
       // Never reaches the query: the throw is what escapes to the error boundary.
       expect(spy()).not.toHaveBeenCalled();
       // And it is a refusal the form can render, not `undefined` from a crash.
-      // Three shapes: `ManageActionResult` for most, `WindowFormState` for
-      // `saveWindowAction` (it predates the shared type), and `undefined` for
-      // `deleteWindowAction`, which returns `void` and so has no error contract at
-      // all — which is precisely why the guard matters most there.
+      // Two shapes: `ManageActionResult` for most, and `WindowFormState` for
+      // `saveWindowAction`, which predates the shared type.
       expect(isRefusal(result), `${_name} returned ${JSON.stringify(result)}`).toBe(true);
     }
   });
