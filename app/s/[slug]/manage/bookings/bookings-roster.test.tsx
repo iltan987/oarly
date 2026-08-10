@@ -4,9 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The translation keys are asserted on directly (with interpolated values appended)
 // rather than resolved through real message files — this test is about wiring, not copy.
+// `useFormatter` is stubbed to report WHICH shape it was asked for rather than a date, so
+// a revert to `new Intl.DateTimeFormat('en-GB', …)` — the hardcoded locale this file
+// carried on a Turkish-default page — renders "12 August" where a marker is expected and
+// the two tests below fail.
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string, values?: Record<string, unknown>) =>
     (values ? `${key}:${JSON.stringify(values)}` : key),
+  // The marker echoes `timeZone` as well as the shape asked for. Without that half, a
+  // `timeZone` dropped from the options renders the CLUB's wall clock in the server's
+  // zone — a ban ending 00:30 in Istanbul reported as the previous day — and no
+  // assertion in this file would have moved.
+  useFormatter: () => ({
+    dateTime: (_d: Date, opts: Intl.DateTimeFormatOptions) =>
+      `${opts.month ? 'INTL-DATE' : 'INTL-TIME'}@${opts.timeZone}`,
+  }),
 }));
 
 vi.mock('sonner', () => ({
@@ -316,6 +328,75 @@ describe('BookingsRoster MultiSport toggle', () => {
   });
 });
 
+describe('BookingsRoster session grid', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** The <div> the session cards are laid out in: name -> header -> CardContent -> Card -> grid. */
+  function gridOf(boatName: string): HTMLElement {
+    const card = screen.getByText(new RegExp(boatName)).closest('[data-slot="card"]');
+    const grid = card?.parentElement;
+    if (!grid) throw new Error(`no grid around ${boatName}`);
+    return grid;
+  }
+
+  const two = () => [
+    makeSession({ sessionId: 's1', boatName: 'Dört tek' }),
+    makeSession({ sessionId: 's2', boatName: 'İki tek' }),
+  ];
+
+  /**
+   * jsdom cannot lay out, so what is pinned here is the declaration; the measurement is in
+   * the task report.
+   *
+   * Asserted on the shared parent of the two cards, found by walking UP from a card,
+   * rather than on `container.querySelector('.items-start')`: `Card`, `CardContent` and
+   * the shadcn primitives inside a row carry their own layout classes, so a class query
+   * would happily match a nested element and pass with this container reverted to
+   * `flex flex-col`.
+   */
+  it('lays the sessions out as a two-column grid at lg, in one container', () => {
+    render(<BookingsRoster slug="club" sessions={two()} timezone="UTC" multisportEnabled />);
+    const grid = gridOf('Dört tek');
+    expect(grid).toBe(gridOf('İki tek'));
+    expect(grid).toHaveClass('grid', 'grid-cols-1', 'lg:grid-cols-2');
+    // The single column below `lg:` is half the pair: `grid-cols-2` alone would put two
+    // cards side by side on a 360px phone.
+    expect(grid).not.toHaveClass('flex-col');
+  });
+
+  /**
+   * A grid item stretches to its row's height by default, so without `items-start` the
+   * shorter card of a pair grows to match the taller one: a few hundred pixels of empty
+   * card, whose bottom edge then moves whenever the OTHER card gains or loses a row.
+   *
+   * What this class does NOT do is hold any CONTROL still, and both this comment and the
+   * one in `bookings-roster.tsx` said it did until the claim was measured. `Card` is
+   * `flex flex-col` with no `justify-*` and nothing bottom-anchored, so a stretched card
+   * gains its space BELOW the content and every button stays exactly where it was — all
+   * four measured at an unchanged 200/249/249/251 with `items-start` deleted. The
+   * distinguishing measurement is the short card's own HEIGHT (137px at every moment with
+   * the class, 438 → 470 → 425 tracking its neighbour without it), and it is in the report.
+   *
+   * This assertion is therefore a token pin and nothing more, which is all jsdom can offer:
+   * delete `items-start` and it fails, but it is the report's height measurement — not this
+   * — that says why the class is there.
+   */
+  it('keeps each session card at its own height rather than stretching it to its row', () => {
+    render(<BookingsRoster slug="club" sessions={two()} timezone="UTC" multisportEnabled />);
+    expect(gridOf('Dört tek')).toHaveClass('items-start');
+  });
+
+  // The container is the roster's own, not the page's: with one session there is still a
+  // grid, and the card is still its direct child. (A single session at `lg:` occupies one
+  // of the two columns, which is what `lg:max-w-5xl` on the canvas makes readable.)
+  it('renders a single session as a direct child of the same grid', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession({ boatName: 'Tek kişilik' })]} timezone="UTC" multisportEnabled />);
+    expect(gridOf('Tek kişilik')).toHaveClass('grid', 'items-start');
+  });
+});
+
 describe('BookingsRoster mark-absent flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -344,6 +425,31 @@ describe('BookingsRoster mark-absent flow', () => {
 
     resolve?.({ ok: true, cancelled: 0 });
     await waitFor(() => expect(screen.getByText('Alice').closest('li')).not.toHaveClass('opacity-40'));
+  });
+
+  /**
+   * `confirmAbsentBan`'s `{date}` is the sentence telling an owner how long they are
+   * about to ban a member for, and it was built by a hardcoded `'en-GB'` formatter with
+   * `month: 'long'` — so a Turkish owner read "12 August" inside a Turkish sentence, on
+   * the one dialog in this file that costs somebody their booking access.
+   */
+  it('formats the ban date through the request locale and the club timezone', () => {
+    const session = makeSession({ banEndsAt: new Date('2026-08-12T09:00:00Z') });
+    render(<BookingsRoster slug="club" sessions={[session]} timezone="Europe/Istanbul" multisportEnabled />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'markAbsent' })[0]);
+    expect(screen.getByText(/confirmAbsentBan/)).toHaveTextContent('INTL-DATE@Europe/Istanbul');
+  });
+
+  // The session header's clock too. It is locale-invariant across tr/en — a 24-hour clock
+  // is a 24-hour clock — so this is the half that was wrong only on paper; it goes through
+  // the same formatter so there is no second convention left in the file to drift. The
+  // timezone is NOT invariant: these are UTC instants and the club's wall clock is the
+  // whole point of the prop.
+  it('formats the session clock through the request locale and the club timezone', () => {
+    render(<BookingsRoster slug="club" sessions={[makeSession()]} timezone="Europe/Istanbul" multisportEnabled />);
+    expect(screen.getByText(/Test boat/))
+      .toHaveTextContent('INTL-TIME@Europe/Istanbul–INTL-TIME@Europe/Istanbul');
   });
 
   // Spec §5.2's benign-race treatment, extended to mark-absent: a repeat mark means

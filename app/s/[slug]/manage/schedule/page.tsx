@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
+import { BackLink } from '@/components/back-link';
 import { db } from '@/db';
 import { listBoats } from '@/lib/boats';
 import { requireOwner } from '@/lib/membership';
@@ -15,11 +16,13 @@ export default async function SchedulePage({ params }: { params: Promise<{ slug:
   const { slug } = await params;
   const { club } = await requireOwner(slug, '/manage/schedule');
   const t = await getTranslations('manage.schedule');
+  const tManage = await getTranslations('manage');
   const [windows, boats] = await Promise.all([listWindowsWithBoats(db, club.id), listBoats(db, club.id)]);
   const activeBoats = boats.filter((b) => b.active);
 
   return (
     <div className="flex flex-col gap-4">
+      <BackLink href="/manage/settings" label={tManage('settings.navLabel')} />
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="font-heading text-lg font-semibold">{t('title')}</h2>

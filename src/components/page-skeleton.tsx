@@ -1,7 +1,7 @@
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function PageSkeleton() {
-  // Content-only: the real MemberHeader (identity row + nav) now persists in the
+  // Content-only: the real chrome (AppShell's header + MemberTabs) persists in the
   // (member) group layout above this, so this skeleton just mirrors the title +
   // card region that follows it. The card silhouettes are a moderate height that
   // sits between the Book day cards and the smaller My Bookings rows, since both

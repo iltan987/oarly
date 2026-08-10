@@ -9,6 +9,7 @@ import { memberships, user } from '@/db/schema';
 import { ownerAddBooking, ownerRemoveBooking } from '@/lib/booking';
 import { requireOwner } from '@/lib/membership';
 import { notifyBookingConfirmation, notifyOwnerRemoval, notifyWaitlistPromotion } from '@/lib/notify';
+import { restrictionState } from '@/lib/restriction';
 import { escapeLike } from '@/lib/search-params';
 
 export type MemberHit = { userId: string; name: string; email: string; phone: string | null };
@@ -24,9 +25,13 @@ export async function searchClubMembersAction(slug: string, query: string): Prom
   const q = query.trim();
   if (q.length < 2) return [];
   const like = `%${escapeLike(q)}%`;
-  const now = Date.now();
+  const now = new Date();
   const rows = await db
-    .select({ userId: memberships.userId, name: user.name, email: user.email, phone: user.phone, bannedUntil: memberships.bannedUntil })
+    // `status` is selected as well as filtered on, so the row handed to
+    // `restrictionState` is a real membership rather than one with `'approved'` written
+    // in by hand — a synthesised field is exactly how a shared predicate stops meaning
+    // what it says.
+    .select({ userId: memberships.userId, name: user.name, email: user.email, phone: user.phone, status: memberships.status, bannedUntil: memberships.bannedUntil })
     .from(memberships)
     .innerJoin(user, eq(user.id, memberships.userId))
     .where(and(
@@ -36,8 +41,11 @@ export async function searchClubMembersAction(slug: string, query: string): Prom
     ))
     .orderBy(user.name)
     .limit(20);
+  // This filter used to be written as the COMPLEMENT (`bannedUntil == null || <= now`),
+  // which is why a grep for the ban check never found it. Same answer, stated the way
+  // every other caller states it.
   return rows
-    .filter((r) => r.bannedUntil == null || r.bannedUntil.getTime() <= now)
+    .filter((r) => restrictionState(r, now) === 'none')
     .map((r) => ({ userId: r.userId, name: r.name, email: r.email, phone: r.phone }));
 }
 

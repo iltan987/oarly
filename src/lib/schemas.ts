@@ -15,6 +15,55 @@ export const signUpSchema = z.object({
   password: z.string().min(8),
   consent: z.literal(true), // KVKK gate — must be explicitly true
 });
+
+/**
+ * The four answers offered for `gender`, in render order — the account form iterates this
+ * rather than repeating the literals, so the option list and the schema cannot disagree.
+ * `''` ("not set") is deliberately NOT one of them: see `accountProfileSchema` below.
+ */
+export const GENDER_OPTIONS = ['female', 'male', 'other', 'prefer_not_to_say'] as const;
+
+/**
+ * `payment_type`'s values, restated for the browser. See `accountProfileSchema`'s note on
+ * why this is not imported from `@/db/schema/enums`; `schemas.test.ts` pins it to
+ * `paymentTypeEnum.enumValues`.
+ */
+export const PAYMENT_TYPES = ['regular', 'multisport'] as const;
+
+/**
+ * The `/account` profile form — the only way any of these six columns is ever edited
+ * after sign-up.
+ *
+ * `firstName` / `lastName` / `phone` are PICKED from `signUpSchema`, not restated. That
+ * is the anti-drift mechanism: the same three values are collected at sign-up and edited
+ * here, so if `phone` ever gains a format rule there, this inherits it with no edit.
+ *
+ * `birthday` and `gender` were never collected at sign-up, so EVERY existing row has them
+ * NULL. `''` is how the form says "not set", and the action maps it to NULL — which keeps
+ * "never answered" distinguishable from an explicit `prefer_not_to_say`. Fabricating a
+ * value for a special-category-adjacent field would be wrong under KVKK, so there is no
+ * default here and none in the UI.
+ *
+ * `refine(isDateISO)` rather than a shape regex, for the reason `dateOverrideSchema` gives:
+ * `2026-02-31` matches `/^\d{4}-\d{2}-\d{2}$/`, is not a date, and reaches a `date` column
+ * as 22008 — a 500 out of the action instead of the refusal the contract promises.
+ *
+ * `defaultPaymentType`'s literals are RESTATED, not imported from `paymentTypeEnum`. This
+ * module is imported by client components (`app/(auth)/sign-up/sign-up-form.tsx`), and
+ * `@/db/schema/enums` would pull `drizzle-orm/pg-core` into the browser bundle.
+ * `schemas.test.ts` asserts these two equal `paymentTypeEnum.enumValues`, server-side, so
+ * the copy cannot drift from the pg enum.
+ */
+export const accountProfileSchema = signUpSchema
+  .pick({ firstName: true, lastName: true, phone: true })
+  .extend({
+    birthday: z.union([z.string().refine(isDateISO, 'YYYY-MM-DD'), z.literal('')]),
+    gender: z.union([z.enum(GENDER_OPTIONS), z.literal('')]),
+    defaultPaymentType: z.enum(PAYMENT_TYPES),
+  });
+
+export type AccountProfileInput = z.infer<typeof accountProfileSchema>;
+
 export const forgotPasswordSchema = z.object({ email: z.email() });
 export const resetPasswordSchema = z.object({ newPassword: z.string().min(8) });
 

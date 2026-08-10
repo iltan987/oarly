@@ -30,8 +30,13 @@ vi.mock('next-intl/server', () => ({
 }));
 
 // A client component with its own next-intl boundary; the page's own paging URLs and
-// row range are what this file is about.
-vi.mock('./admin-toggle', () => ({ AdminToggle: () => null }));
+// row range are what this file is about. It renders a marker rather than `null` because
+// the row's grid arity is asserted below — a cell that renders nothing is still a cell,
+// but a component returning `null` produces no element at all and would make the row look
+// one column short for reasons that have nothing to do with the page.
+vi.mock('./admin-toggle', () => ({
+  AdminToggle: ({ userName }: { userName: string }) => <button type="button">toggle-{userName}</button>,
+}));
 
 import AdminUsersPage from './page';
 
@@ -144,5 +149,114 @@ describe('AdminUsersPage', () => {
     const url = new URL(next ?? '', 'http://x');
     expect(url.searchParams.get('q')).toBe('ada');
     expect(url.searchParams.get('page')).toBe('2');
+  });
+});
+
+describe('AdminUsersPage list density', () => {
+  function mkUser(over: Partial<AdminUserRow> = {}): AdminUserRow {
+    return {
+      id: 'u1', name: 'Ayşe', email: 'ayse@example.com', isAdmin: false,
+      createdAt: new Date('2026-01-01T00:00:00Z'), memberships: [], ...over,
+    };
+  }
+
+  const club = (clubId: string, clubName: string): AdminUserRow['memberships'][number] =>
+    ({ clubId, clubName, role: 'member', status: 'approved' });
+
+  /** `[row, identity wrapper]` for a user, walked UP from their admin toggle. */
+  function rowOf(name: string): [HTMLElement, HTMLElement] {
+    const row = screen.getByRole('button', { name: `toggle-${name}` }).parentElement;
+    const identity = row?.children[0] as HTMLElement | undefined;
+    if (!row || !identity) throw new Error(`no row for ${name}`);
+    return [row, identity];
+  }
+
+  async function renderUser(over: Partial<AdminUserRow> = {}) {
+    searchUsers.mockReturnValue(result({ total: 1, rows: [mkUser(over)] }));
+    await renderPage({});
+  }
+
+  /**
+   * The memberships list is the tallest element on this page — a user in six clubs is six
+   * lines — and it sat UNDER the identity, so every row was as tall as its own club list.
+   * Beside it, in a `1fr` column, the page is roughly 40% shorter with nothing removed.
+   *
+   * jsdom cannot lay out; the declaration is what is pinned, and the measurement is in the
+   * task report. `toHaveClass` matches exact tokens, so `18rem → 12rem` fails this.
+   * Asserted on the row element rather than by class query — `Card` and `StatusPill` are
+   * shadcn primitives carrying their own layout classes.
+   */
+  it('puts the club list beside the identity at lg instead of under it', async () => {
+    await renderUser({ memberships: [club('c1', 'Kayıkhane'), club('c2', 'Bebek')] });
+    const [row] = rowOf('Ayşe');
+    expect(row).toHaveClass('lg:grid', 'lg:grid-cols-[18rem_1fr_9rem]', 'lg:items-start');
+    // Below `lg:` the row is unchanged: the wrapping stack this page already had.
+    expect(row).toHaveClass('flex', 'flex-wrap', 'items-start');
+  });
+
+  /**
+   * The half the grid template cannot show. The identity and the club list are children of
+   * a wrapper, and a grid lays out only its OWN children — so without `lg:contents` the
+   * three-track template is fed two items, the whole stack lands in `18rem`, `1fr` goes
+   * empty and the page renders exactly as it did before. The template assertion above
+   * passes either way, which is why this is asserted separately, on the wrapper element.
+   */
+  it('promotes the identity and the club list into the row grid', async () => {
+    await renderUser({ memberships: [club('c1', 'Kayıkhane')] });
+    const [row, identity] = rowOf('Ayşe');
+    expect(identity).toHaveClass('lg:contents');
+    expect(identity.children).toHaveLength(2);
+    expect(identity.children[0]).toHaveTextContent('ayse@example.com');
+    expect(identity.children[1]).toHaveTextContent('Kayıkhane');
+    // Identity, club list, toggle — the three tracks, all fed.
+    expect(row.children).toHaveLength(2);
+  });
+
+  /**
+   * A user in no club still occupies the middle cell. Rendering nothing there — the
+   * obvious tidy-up, since the sentence is only a placeholder — collapses those rows to
+   * two columns and pulls the admin toggle left on exactly the users who look ordinary,
+   * which is the ragged column this task removes. The same defect `/manage/members` fixed
+   * for its always-present status cell.
+   */
+  it('keeps the club-list cell for a user who belongs to no club', async () => {
+    await renderUser({ memberships: [] });
+    const [, identity] = rowOf('Ayşe');
+    expect(identity.children).toHaveLength(2);
+    expect(identity.children[1]).toHaveTextContent('usersNoMemberships');
+  });
+
+  /**
+   * What lets a long email and a long club name wrap inside their columns instead of
+   * forcing the row wider. Pinned in jsdom rather than measured: `Card` carries
+   * `overflow-hidden` (`ui/card.tsx:16`), so an over-wide value is CLIPPED, never
+   * scrolled, and `documentElement.scrollWidth` is identical with these deleted. A grid
+   * item's automatic minimum size is its CONTENT, which is what `min-w-0` caps.
+   */
+  it('lets a long email and a long club name wrap rather than force the row wider', async () => {
+    await renderUser({
+      email: 'cok.uzun.bir.eposta.adresi@bogazici-universitesi-kurek.example.com',
+      memberships: [club('c1', 'Boğaziçi Üniversitesi Kürek ve Yelken İhtisas Kulübü')],
+    });
+    const [, identity] = rowOf('Ayşe');
+    expect(identity.children[0]).toHaveClass('min-w-0');
+    expect(screen.getByText('cok.uzun.bir.eposta.adresi@bogazici-universitesi-kurek.example.com'))
+      .toHaveClass('break-words');
+    expect(identity.children[1]).toHaveClass('min-w-0', 'break-words');
+  });
+
+  /**
+   * `flex gap-2` with no cap let the <Input> grow to the full 1024px canvas — a
+   * console-wide box for a name-or-email search.
+   *
+   * Deliberate break: delete `max-w-md` and this fails.
+   */
+  it('caps the search box rather than letting it take the whole canvas', async () => {
+    await renderPage({});
+    const form = screen.getByRole('textbox', { name: 'usersSearch' }).closest('form');
+    expect(form).toHaveClass('max-w-md');
+    // On the form, not on the Input: capping the Input alone strands the submit button at
+    // the far right of the canvas.
+    expect(screen.getByRole('textbox', { name: 'usersSearch' })).not.toHaveClass('max-w-md');
   });
 });

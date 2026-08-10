@@ -69,7 +69,7 @@ function makeDay(session: MemberVirtualSession): MemberCalendarDay {
 describe('BookCalendar payment chips', () => {
   it('shows a chip per payment choice when more than one is offered', () => {
     const days = [makeDay(makeSession({ paymentChoices: ['regular', 'multisport'] }))];
-    render(<BookCalendar slug="club" days={days} timeZone="UTC" bannedUntil={null} bannedPermanently={false} />);
+    render(<BookCalendar slug="club" days={days} timeZone="UTC" />);
     expect(screen.getByText('paymentRegular')).toBeInTheDocument();
     expect(screen.getByText('paymentMultisport')).toBeInTheDocument();
   });
@@ -80,7 +80,7 @@ describe('BookCalendar payment chips', () => {
   // not, so a lone redundant "Cash" badge kept rendering on every session card.
   it('hides the chips entirely when only one payment type is possible', () => {
     const days = [makeDay(makeSession({ paymentChoices: ['regular'], defaultPayment: 'regular' }))];
-    render(<BookCalendar slug="club" days={days} timeZone="UTC" bannedUntil={null} bannedPermanently={false} />);
+    render(<BookCalendar slug="club" days={days} timeZone="UTC" />);
     expect(screen.queryByText('paymentRegular')).not.toBeInTheDocument();
     expect(screen.queryByText('paymentMultisport')).not.toBeInTheDocument();
   });

@@ -3,6 +3,43 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Two variants the shadcn base-nova style's components require and this file never
+ * defined. They are copied VERBATIM from the vendored
+ * `node_modules/shadcn/dist/tailwind.css`, which the manual-install docs tell you to
+ * `@import` wholesale; only these two are taken, because the other 627 lines are base
+ * styles this project already has its own versions of.
+ *
+ * Why only these two matter. Tailwind v4 ships built-in `data-*` variants that compile to
+ * a bare attribute selector, so `data-open:` -> `[data-open]` happens to match what Base
+ * UI emits, and the same is true of `data-checked`, `data-selected`, `data-disabled` and
+ * `data-active`. `data-horizontal` and `data-vertical` are the two that do NOT: Base UI
+ * writes `data-orientation="horizontal"` (see
+ * `@base-ui/react/separator/SeparatorDataAttributes.js`), so the built-in variant looked
+ * for a `data-horizontal` attribute that is never present and silently matched nothing.
+ *
+ * The visible consequence, measured in Chrome before this landed: `ui/separator.tsx` is
+ * `data-horizontal:h-px data-horizontal:w-full`, so EVERY `<Separator />` in the product
+ * computed `height: 0px` and rendered as nothing at all — a `role="separator"` in the
+ * accessibility tree with no rule under it. `ui/toggle-group.tsx`'s `data-vertical:*` and
+ * `ui/field.tsx`'s `group-has-data-horizontal/field:*` were dead for the same reason.
+ *
+ * Fixed here and not in `src/components/ui/*`: those files are CLI-generated and match the
+ * registry byte for byte (`shadcn add separator --overwrite` reproduces the current file),
+ * so the defect was never in them — it was the stylesheet they were generated against.
+ */
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
+  }
+}
+
 :root {
   --radius: 0.625rem;
 
@@ -38,6 +75,20 @@
   --warn-bg: #fbeedc;
   --bad: #b91c1c;
   --bad-bg: #fbebeb;
+  /*
+    Ink for a PARAGRAPH on the matching tinted surface, the way --brand-ink is ink on
+    --brand-tint. --warn on --warn-bg measures 4.39:1 in this theme — under the 4.5 AA
+    floor, and 14px font-medium is not WCAG "large text" (that needs >=18.66px bold).
+    Fine for the two-word StatusPill the pairing was designed for; not for prose.
+
+    Literal hex, not color-mix(in oklab, ... 85%, black): these are the exact sRGB values
+    that mix produces, and unlike --brand-ink (whose input is the runtime-overridable
+    --club-accent) these tones are fixed per theme, so nothing needs computing at runtime.
+    Hex is also what makes them machine-checkable — restriction-notice.contrast.test.ts
+    parses this file and fails below 4.5:1.
+  */
+  --warn-ink: #904106;
+  --bad-ink: #941414;
   --info: #1d4ed8;
   --info-bg: #e6eefd;
   --surface-2: #f3f7f9;
@@ -77,6 +128,9 @@
   --warn-bg: #2e2410;
   --bad: #f87171;
   --bad-bg: #2e1616;
+  /* Ink mixes toward WHITE here, as --brand-ink does. See the light block. */
+  --warn-ink: #fcc95a;
+  --bad-ink: #fc8886;
   --info: #60a5fa;
   --info-bg: #122238;
   --surface-2: #0f1b25;
@@ -112,8 +166,10 @@
   --color-ok-bg: var(--ok-bg);
   --color-warn: var(--warn);
   --color-warn-bg: var(--warn-bg);
+  --color-warn-ink: var(--warn-ink);
   --color-bad: var(--bad);
   --color-bad-bg: var(--bad-bg);
+  --color-bad-ink: var(--bad-ink);
   --color-info: var(--info);
   --color-info-bg: var(--info-bg);
   --color-surface-2: var(--surface-2);

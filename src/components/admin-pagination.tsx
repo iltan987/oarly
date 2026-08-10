@@ -3,9 +3,16 @@ import Link from 'next/link';
 import { normalizePage, pageCount } from '@/lib/pagination';
 
 /**
- * Prev / next links for the offset-paginated admin lists (users, clubs). Renders
- * nothing when everything fits on one page. Links, not buttons: pagination is
- * navigation, and the page number belongs in the URL so a result set can be shared.
+ * Prev / next links for the offset-paginated console lists — `/admin` (clubs),
+ * `/admin/users`, and now the owner's own `/manage/members` roster. Renders nothing when
+ * everything fits on one page. Links, not buttons: pagination is navigation, and the page
+ * number belongs in the URL so a result set can be shared.
+ *
+ * `basePath` is whatever the CALLER's public URL is, and on a tenant that is
+ * `/manage/members` rather than the internal `/s/{slug}/manage/members` — the slug lives
+ * in the hostname, and the internal form would double-prefix through the proxy rewrite.
+ * The name stays `Admin*` for now: renaming a component shared by three pages inside a
+ * task that also rewrites one of them multiplies what a reviewer has to re-verify.
  *
  * `page` is clamped against the page count rather than trusted: a caller that passes
  * the page from the URL unmodified would otherwise render a Previous link to

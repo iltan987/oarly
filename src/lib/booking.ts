@@ -10,6 +10,7 @@ import { toMinutes, utcToClubDate, zonedWallClockToUtc } from './date-tz';
 import { checkEligibility, type EligibilityReason } from './eligibility';
 import { findOrCreateSlotTx, type MaterializeBoat } from './materialize';
 import { isUniqueViolation } from './pg-errors';
+import { restrictionState } from './restriction';
 import { resolveSeating } from './seating';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -228,7 +229,23 @@ export async function cancelBooking(db: DB, input: CancelInput): Promise<CancelR
     // Serialize with the session's bookings under the same per-slot lock bookSeat uses.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${row.slotStartAt.toISOString()}))`);
 
-    await tx.update(bookings).set({ status: 'cancelled', queuePosition: null }).where(eq(bookings.id, input.bookingId));
+    // The status predicate is what makes this write safe, and it is NOT redundant with the
+    // `not_active` guard above. That guard reads `row`, which was SELECTed BEFORE the lock
+    // was acquired. Under READ COMMITTED a blocked UPDATE re-evaluates its WHERE against
+    // the row version the blocking transaction committed — and a bare `eq(id, …)` still
+    // matches a row that has meanwhile become 'cancelled'. So without this predicate, a
+    // cancel that lost the race to `markNoShow`'s cascade would silently overwrite
+    // `cancelledReason = 'penalty'` with `'member'` (and vice versa) while both reported
+    // success. Nobody noticed before `cancelledReason` existed because both writers wrote
+    // an identical `status`/`queuePosition`; now they disagree, and the losing write is
+    // the app telling a member something untrue about their own booking.
+    const [claimed] = await tx.update(bookings)
+      .set({ status: 'cancelled', cancelledReason: 'member', queuePosition: null })
+      .where(and(eq(bookings.id, input.bookingId), inArray(bookings.status, [...ACTIVE])))
+      .returning({ id: bookings.id });
+    // Lost the race. The winner already ran `applySeating` under this same lock, so there
+    // is nothing left to do and nothing to report but the truth: the seat is already gone.
+    if (!claimed) return { ok: false, error: 'not_active' };
 
     const { promotedUserId } = await applySeating(tx, row.sessionId, row.capacity, row.multisportMode);
     return promotedUserId ? { ok: true, promoted: { userId: promotedUserId, sessionId: row.sessionId } } : { ok: true };
@@ -253,7 +270,20 @@ export async function ownerRemoveBooking(db: DB, input: { clubId: string; bookin
     if (!(ACTIVE as readonly string[]).includes(row.status)) return { ok: false, error: 'not_active' };
 
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${row.slotStartAt.toISOString()}))`);
-    await tx.update(bookings).set({ status: 'cancelled', queuePosition: null }).where(eq(bookings.id, input.bookingId));
+    // `cancelledReason: 'owner'`, not the row's `source`: source records who CREATED the
+    // booking, and the member's list needs to know who ENDED it. An owner-added seat the
+    // member later cancels has source='owner' and cancelledReason='member'.
+    //
+    // Status-scoped for the reason spelled out in `cancelBooking`: the `not_active` guard
+    // above read a row SELECTed before the lock, and a bare `eq(id, …)` would overwrite a
+    // reason another writer committed while this one queued.
+    const [claimed] = await tx.update(bookings)
+      .set({ status: 'cancelled', cancelledReason: 'owner', queuePosition: null })
+      .where(and(eq(bookings.id, input.bookingId), inArray(bookings.status, [...ACTIVE])))
+      .returning({ id: bookings.id });
+    // Lost the race — and returning `not_active` rather than a bare `ok` also stops the
+    // audit insert below claiming an owner removal that did not happen.
+    if (!claimed) return { ok: false, error: 'not_active' };
     const { promotedUserId } = await applySeating(tx, row.sessionId, row.capacity, row.multisportMode);
     // Inside the transaction: the removal and its record commit together or not
     // at all. The early `not_found` / `not_active` returns above leave no row.
@@ -316,7 +346,10 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
       // Not reachable on a closed day via the UI (the Bookings view hides the add form
       // there); this guards a direct action call.
       const [member] = await tx.select({ status: memberships.status, bannedUntil: memberships.bannedUntil }).from(memberships).where(and(eq(memberships.userId, input.userId), eq(memberships.clubId, input.clubId)));
-      if (!member || member.status !== 'approved' || (member.bannedUntil != null && member.bannedUntil.getTime() > now.getTime())) return { ok: false, error: 'not_a_member' };
+      // The ban half goes through `restrictionState`, which is where the `>` (never `>=`)
+      // at the boundary is decided; the query already selects exactly the two columns it
+      // reads, so nothing about this read changes.
+      if (!member || member.status !== 'approved' || restrictionState(member, now) !== 'none') return { ok: false, error: 'not_a_member' };
 
       const foc = await findOrCreateSlotTx(tx, { clubId: input.clubId, dateISO, startAt: input.startAt, endAt, windowId: input.windowId, boats: boatsSpec });
 

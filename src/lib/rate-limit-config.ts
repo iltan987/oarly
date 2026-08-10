@@ -51,6 +51,12 @@ export const RATE_LIMITS = {
   clubRequestPerAccount: { name: 'clubRequestPerAccount', limit: 5, windowSec: 60 * 60 },
   joinRequestPerAccount: { name: 'joinRequestPerAccount', limit: 20, windowSec: 60 * 60 },
   logoUploadPerAccount: { name: 'logoUploadPerAccount', limit: 20, windowSec: 60 * 60 },
+  // Per-ACCOUNT, per the SIZING RULE above: `/account` edits one row — the caller's own —
+  // so the abuse this bounds is one account rewriting itself in a loop, which a per-IP
+  // bucket would price for a whole clubhouse instead. 20/hour is far above deliberate use
+  // (a member corrects a phone number once) and far below anything worth writing a script
+  // for.
+  accountUpdatePerAccount: { name: 'accountUpdatePerAccount', limit: 20, windowSec: 60 * 60 },
   // Amply sized: a language switch is a single deliberate click, not a synchronized rush.
   // 60/min per egress IP is set against the shared-NAT case — a club's members behind one
   // boathouse, gym, or office IP — not against a real attacker, same as every other

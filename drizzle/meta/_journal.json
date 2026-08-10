@@ -85,6 +85,20 @@
       "when": 1786220552424,
       "tag": "0011_glamorous_manta",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786310885193,
+      "tag": "0012_closed_maginty",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786316739061,
+      "tag": "0013_warm_madame_masque",
+      "breakpoints": true
     }
   ]
 }

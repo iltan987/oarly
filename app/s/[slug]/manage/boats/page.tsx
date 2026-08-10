@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 
+import { BackLink } from '@/components/back-link';
 import { db } from '@/db';
 import { listBoats } from '@/lib/boats';
 import { requireOwner } from '@/lib/membership';
@@ -14,10 +15,12 @@ export default async function BoatsPage({ params }: { params: Promise<{ slug: st
   const { slug } = await params;
   const { club } = await requireOwner(slug, '/manage/boats');
   const t = await getTranslations('manage.boats');
+  const tManage = await getTranslations('manage');
   const [boats, levels] = await Promise.all([listBoats(db, club.id), listSkillLevels(db, club.id)]);
 
   return (
     <div className="flex flex-col gap-4">
+      <BackLink href="/manage/settings" label={tManage('settings.navLabel')} />
       <div>
         <h2 className="font-heading text-lg font-semibold">{t('title')}</h2>
         <p className="text-sm text-muted-foreground">{t('intro')}</p>

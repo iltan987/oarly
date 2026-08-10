@@ -78,7 +78,11 @@ export function SkillLevelSelect({
           defaultValue={currentSkillLevelId ?? NONE_VALUE}
           onValueChange={(next) => setValue(next as string)}
         >
-          <SelectTrigger id={`skill-${membershipId}`} size="sm" className="w-36" disabled={pending}>
+          {/* `lg:w-full` is what makes the roster's `12rem` grid column mean something:
+              below `lg:` the row is a wrapping stack and the trigger is sized to itself,
+              at `lg:` it fills its column, so every select on the page shares one left
+              AND one right edge. */}
+          <SelectTrigger id={`skill-${membershipId}`} size="sm" className="w-36 lg:w-full" disabled={pending}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

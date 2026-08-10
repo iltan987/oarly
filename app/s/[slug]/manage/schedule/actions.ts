@@ -7,6 +7,8 @@ import { createWindow, deleteWindow, updateWindow, type WindowError } from '@/li
 import { windowSchema } from '@/lib/schemas';
 import { isUuid } from '@/lib/uuid';
 
+import type { ManageActionResult } from '../action-result';
+
 export type WindowFormState = { status: 'idle' | 'ok' | 'error'; error: WindowError | null };
 
 function refresh(slug: string) {
@@ -41,16 +43,29 @@ export async function saveWindowAction(slug: string, _prev: WindowFormState, for
 }
 
 /**
- * Returns `void`, so it has no error contract at all: the form that drives it cannot
- * be told anything went wrong. That makes the guard below the ONLY thing between a
- * malformed `windowId` and a 22P02 escaping to the error boundary, taking the page
- * and any unsaved edits with it. (Widening this to `ManageActionResult` is worth
- * doing and is not this fix.)
+ * The `isUuid` guard is what keeps a malformed `windowId` from reaching a `uuid` bind
+ * as a 22P02 that escapes to the error boundary, taking the page and any unsaved edits
+ * with it. Returning `ManageActionResult` is what lets the form SAY so: a refusal now
+ * reaches `useActionState` as `{ ok: false }` instead of being indistinguishable from
+ * a delete that worked.
+ *
+ * `deleteWindow` returning false is the same class of thing — the row was already gone
+ * (another tab, another owner), so nothing was deleted and no audit row was written.
+ * That is a failure the owner must see, and a `void` return could not express it.
+ *
+ * It STILL refreshes, though, and the ordering below is deliberate. The phantom row is
+ * on the owner's screen right now; the toast says "try again"; and trying again calls
+ * `deleteWindow` on the same missing row, gets false, and says "try again" once more —
+ * an unrecoverable loop that only a manual reload breaks. Revalidating first makes the
+ * retry the copy asks for a retry that can actually succeed: the row leaves, and the
+ * refusal is reported once. Only the malformed-id guard skips the refresh, because
+ * nothing on screen is stale in that case.
  */
-export async function deleteWindowAction(slug: string, formData: FormData): Promise<void> {
+export async function deleteWindowAction(slug: string, _prev: ManageActionResult | null, formData: FormData): Promise<ManageActionResult> {
   const { club, user } = await requireOwner(slug, '/manage/schedule');
   const windowId = String(formData.get('windowId'));
-  if (!isUuid(windowId)) return;
-  await deleteWindow(db, { clubId: club.id, windowId, actorId: user.id });
+  if (!isUuid(windowId)) return { ok: false };
+  const deleted = await deleteWindow(db, { clubId: club.id, windowId, actorId: user.id });
   refresh(slug);
+  return deleted ? { ok: true } : { ok: false };
 }

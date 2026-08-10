@@ -1,13 +1,13 @@
 'use client';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import { startTransition, useActionState, useEffect, useOptimistic, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { StatusPill } from '@/components/booking-status-badge';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PendingButton } from '@/components/pending-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { RosterSession } from '@/lib/roster';
 import { cn } from '@/lib/utils';
@@ -39,6 +39,7 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
 }) {
   const t = useTranslations('manage.bookings');
   const tm = useTranslations('manage');
+  const f = useFormatter();
 
   // Drives the fade-in-place on the row being removed. Base UI's Dialog renders the
   // confirm form in a portal, so the row's PendingButton-based `has-data-pending:` CSS
@@ -109,9 +110,33 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
   if (sessions.length === 0) return closed ? null : <p className="text-sm text-muted-foreground">{t('empty')}</p>;
 
   return (
-    <div className="flex flex-col gap-3">
+    // Two session cards per row at `lg:`, which halves the scroll for a club running six
+    // boats in a morning window.
+    //
+    // `items-start` keeps each card's BOX at its own content height. A grid item stretches
+    // to its row's height by default, so without it the shorter card of a pair grows to its
+    // neighbour's height and paints the difference as empty card — and its bottom edge then
+    // moves every time the OTHER card gains or loses a row. Measured at 1440px across an
+    // optimistic add and its confirmation: with this class the short card is 137px at all
+    // three moments, with 12px of padding below its last control; without it, 438 → 470 →
+    // 425, with 313 → 345 → 300px of empty card under content that never changed.
+    //
+    // What it does NOT do is hold any CONTROL still — an earlier version of this comment
+    // said it did, and the measurement that was offered as proof returns the same 0.000px
+    // either way. `Card` is `display:flex; flex-direction:column; justify-content:normal`
+    // with a single child that does not grow (`src/components/ui/card.tsx:15`), so a
+    // stretched card gains its space BELOW the content: with `items-start` deleted, all
+    // four of the untouched card's buttons stayed at 200/249/249/251, unchanged.
+    //
+    // The precondition for a control to move is something bottom-anchored inside the card,
+    // and there is none. Verified rather than assumed: `justify-content: space-between` on
+    // the card moves nothing (it has one child, so there is no space to distribute), while
+    // `margin-top: auto` on `CardContent` moves every button by +288px. If a footer or a
+    // second Card child is ever added here, that is the point at which this reasoning has
+    // to be redone — not before.
+    <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
       {sessions.map((s, i) => {
-        const time = `${fmt(s.startAt, timezone)}–${fmt(s.endAt, timezone)}`;
+        const time = `${fmt(f, s.startAt, timezone)}–${fmt(f, s.endAt, timezone)}`;
         const sessionKey = s.sessionId ?? `${s.boatTypeId}-${i}`;
         const pending = pendingAdditions.filter((p) => p.sessionKey === sessionKey);
         return (
@@ -210,65 +235,71 @@ export function BookingsRoster({ slug, sessions, timezone, closed = false, multi
         );
       })}
 
-      <Dialog open={confirming !== null} onOpenChange={(open) => { if (!open) setConfirming(null); }}>
-        <DialogContent>
-          {confirming && (
-            <form
-              action={markAction}
-              onSubmit={() => {
-                setPendingAbsenceId(confirming.bookingId);
-                setConfirming(null);
-              }}
-              className="flex flex-col gap-4"
-            >
-              <input type="hidden" name="bookingId" value={confirming.bookingId} />
-              <DialogHeader>
-                <DialogTitle>{t('confirmAbsentTitle', { name: confirming.name })}</DialogTitle>
-              </DialogHeader>
-              <p className="text-sm text-muted-foreground">
-                {confirming.session.banPermanent
-                  ? t('confirmAbsentPermanent')
-                  : confirming.session.banEndsAt === null
-                    ? t('confirmAbsentNoPenalty')
-                    : confirming.session.banLapsed
-                      ? t('confirmAbsentLapsed')
-                      : t('confirmAbsentBan', { date: fmtDate(confirming.session.banEndsAt, timezone) })}
-              </p>
-              <DialogFooter>
-                <DialogClose render={<Button type="button" variant="ghost" />}>{tm('cancel')}</DialogClose>
-                <PendingButton variant="destructive">{t('confirmAbsentCta')}</PendingButton>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/*
+        `title`/`description` are computed with `confirming?.…` because `ConfirmDialog`
+        renders its form only while `open`, and `open` here IS `confirming !== null` — the
+        empty-string branch can never reach the DOM. Keeping the `<Dialog>` mounted while
+        closed (rather than wrapping the whole thing in `{confirming && …}`) is what
+        preserves Base UI's exit animation.
 
-      <Dialog open={removing !== null} onOpenChange={(open) => { if (!open) setRemoving(null); }}>
-        <DialogContent>
-          {removing && (
-            <form
-              action={rmAction}
-              onSubmit={() => {
-                setPendingRemovalId(removing.bookingId);
-                setRemoving(null);
-              }}
-              className="flex flex-col gap-4"
-            >
-              <input type="hidden" name="bookingId" value={removing.bookingId} />
-              <DialogHeader>
-                <DialogTitle>{t('confirmRemoveTitle', { name: removing.name })}</DialogTitle>
-              </DialogHeader>
-              <p className="text-sm text-muted-foreground">{t('confirmRemoveBody')}</p>
-              <DialogFooter>
-                <DialogClose render={<Button type="button" variant="ghost" />}>{tm('cancel')}</DialogClose>
-                <PendingButton variant="destructive">{t('confirmRemoveCta')}</PendingButton>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+        `onSubmit` is the portal bridge, unchanged in substance from the hand-rolled form
+        it replaces: Base UI renders this form outside the row's subtree, so the row's
+        `has-data-pending:` `:has()` selector cannot see the submit button and the row
+        stops dimming. Setting the pending id here is what keeps the fade.
+      */}
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => { if (!open) setConfirming(null); }}
+        title={t('confirmAbsentTitle', { name: confirming?.name ?? '' })}
+        description={absenceConsequence(t, f, confirming?.session, timezone)}
+        confirmLabel={t('confirmAbsentCta')}
+        dismissLabel={tm('cancel')}
+        destructive
+        action={markAction}
+        hidden={{ bookingId: confirming?.bookingId ?? '' }}
+        onSubmit={() => {
+          if (!confirming) return;
+          setPendingAbsenceId(confirming.bookingId);
+          setConfirming(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => { if (!open) setRemoving(null); }}
+        title={t('confirmRemoveTitle', { name: removing?.name ?? '' })}
+        description={t('confirmRemoveBody')}
+        confirmLabel={t('confirmRemoveCta')}
+        dismissLabel={tm('cancel')}
+        destructive
+        action={rmAction}
+        hidden={{ bookingId: removing?.bookingId ?? '' }}
+        onSubmit={() => {
+          if (!removing) return;
+          setPendingRemovalId(removing.bookingId);
+          setRemoving(null);
+        }}
+      />
     </div>
   );
+}
+
+/**
+ * Which of the four penalty sentences a mark-absent confirmation shows. Lifted out of the
+ * JSX unchanged so the nested ternary stays readable as a `description` prop; `undefined`
+ * only occurs while the dialog is closed, where nothing renders it.
+ */
+function absenceConsequence(
+  t: ReturnType<typeof useTranslations>,
+  f: Formatter,
+  session: RosterSessionWithPenalty | undefined,
+  timezone: string,
+): string {
+  if (!session) return '';
+  if (session.banPermanent) return t('confirmAbsentPermanent');
+  if (session.banEndsAt === null) return t('confirmAbsentNoPenalty');
+  if (session.banLapsed) return t('confirmAbsentLapsed');
+  return t('confirmAbsentBan', { date: fmtDate(f, session.banEndsAt, timezone) });
 }
 
 /**
@@ -361,6 +392,19 @@ function AddMemberFields({ session, slug, multisportEnabled, onSubmitted, onAdde
   );
 }
 
-// startAt/endAt are UTC instants; render the wall-clock in the club timezone.
-const fmt = (d: Date, tz: string) => new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).format(d);
-const fmtDate = (d: Date, tz: string) => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).format(d);
+/**
+ * startAt/endAt are UTC instants; these render the wall-clock in the CLUB's timezone, in
+ * the READER's locale.
+ *
+ * Both were `new Intl.DateTimeFormat('en-GB', …)` — a hardcoded locale on a page whose
+ * default is Turkish. `fmt` is locale-invariant across tr/en (a 24-hour clock is a
+ * 24-hour clock) and was merely wrong on paper; `fmtDate` was wrong on screen, because
+ * `month: 'long'` renders "12 August" and it feeds `confirmAbsentBan`'s `{date}` — the
+ * sentence telling a Turkish owner how long they are about to ban a member for.
+ *
+ * The formatter is passed in rather than called here: `useFormatter` is a hook, and these
+ * are module-level helpers called from render and from `absenceConsequence`.
+ */
+type Formatter = ReturnType<typeof useFormatter>;
+const fmt = (f: Formatter, d: Date, tz: string) => f.dateTime(d, { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
+const fmtDate = (f: Formatter, d: Date, tz: string) => f.dateTime(d, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });

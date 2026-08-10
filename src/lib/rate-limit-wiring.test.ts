@@ -37,6 +37,7 @@ class RedirectError extends Error {
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/user-locale', () => ({ setUserLocale: vi.fn() }));
+vi.mock('@/lib/user-profile', () => ({ updateUserProfile: vi.fn() }));
 vi.mock('next/server', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   after: vi.fn(),
@@ -103,6 +104,7 @@ import { setLocale } from '@/i18n/set-locale';
 import { resetRateLimitState } from '@/lib/rate-limit';
 import { RATE_LIMITS } from '@/lib/rate-limit-config';
 
+import { saveAccountAction } from '../../app/account/actions';
 import { POST as logoSavePost } from '../../app/api/club-logo/save/route';
 import { POST as logoUploadPost } from '../../app/api/club-logo/upload/route';
 import { requestClubAction } from '../../app/request-club/actions';
@@ -259,6 +261,67 @@ describe('joinAction rate limiting', () => {
       await expect(joinAction('demo')).resolves.toBeUndefined();
     }
     await expect(joinAction('demo')).rejects.toMatchObject({ to: '/join?error=rate_limited' });
+  });
+});
+
+// --- saveAccountAction ------------------------------------------------------------------
+
+function accountFormData(): FormData {
+  const fd = new FormData();
+  fd.set('firstName', 'Ada');
+  fd.set('lastName', 'Lovelace');
+  fd.set('phone', '5551112233');
+  fd.set('birthday', '');
+  fd.set('gender', '');
+  fd.set('defaultPaymentType', 'regular');
+  return fd;
+}
+
+describe('saveAccountAction rate limiting', () => {
+  const LIMIT = RATE_LIMITS.accountUpdatePerAccount.limit;
+
+  it(`returns rate_limited on call ${RATE_LIMITS.accountUpdatePerAccount.limit + 1} within one window`, async () => {
+    currentUserId = 'account-user';
+    for (let i = 0; i < LIMIT; i += 1) {
+      expect(await saveAccountAction(null, accountFormData())).toEqual({ ok: true });
+    }
+    expect(await saveAccountAction(null, accountFormData()))
+      .toEqual({ ok: false, reason: 'rate_limited' });
+  });
+
+  it('refuses BEFORE parsing, so an exhausted caller costs nothing', async () => {
+    // An INVALID payload coming back as `rate_limited` rather than `invalid` is what
+    // proves the check sits above the zod parse and above the write.
+    currentUserId = 'account-order-user';
+    for (let i = 0; i < LIMIT; i += 1) await saveAccountAction(null, accountFormData());
+    const { updateUserProfile } = await import('@/lib/user-profile');
+    vi.mocked(updateUserProfile).mockClear();
+
+    expect(await saveAccountAction(null, new FormData()))
+      .toEqual({ ok: false, reason: 'rate_limited' });
+    expect(updateUserProfile).not.toHaveBeenCalled();
+  });
+
+  it('opens a fresh budget once the window has rolled', async () => {
+    currentUserId = 'account-window-user';
+    for (let i = 0; i < LIMIT; i += 1) await saveAccountAction(null, accountFormData());
+    expect(await saveAccountAction(null, accountFormData()))
+      .toEqual({ ok: false, reason: 'rate_limited' });
+
+    vi.setSystemTime(T0 + RATE_LIMITS.accountUpdatePerAccount.windowSec * 1000);
+    expect(await saveAccountAction(null, accountFormData())).toEqual({ ok: true });
+  });
+
+  // Per-ACCOUNT is the whole point (see the SIZING RULE in rate-limit-config.ts): two
+  // members editing their own profiles from one clubhouse IP must not share a budget.
+  it('gives a second account its own budget from the same IP', async () => {
+    currentUserId = 'account-a';
+    for (let i = 0; i < LIMIT; i += 1) await saveAccountAction(null, accountFormData());
+    expect(await saveAccountAction(null, accountFormData()))
+      .toEqual({ ok: false, reason: 'rate_limited' });
+
+    currentUserId = 'account-b';
+    expect(await saveAccountAction(null, accountFormData())).toEqual({ ok: true });
   });
 });
 

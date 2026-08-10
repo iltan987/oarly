@@ -2,11 +2,13 @@ import { eq } from 'drizzle-orm';
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 
+import { RestrictionNotice } from '@/components/restriction-notice';
 import { db } from '@/db';
 import { skillLevels } from '@/db/schema';
 import { todayInClub } from '@/lib/date-tz';
 import { computeMemberCalendar, type PaymentType } from '@/lib/member-calendar';
 import { requireMemberView } from '@/lib/membership';
+import { getRestriction } from '@/lib/restriction';
 
 import { BookCalendar } from './book-calendar';
 
@@ -29,6 +31,11 @@ export default async function BookPage({ params }: { params: Promise<{ slug: str
   // the additionalField only ever stores 'regular' | 'multisport' (default 'regular'); narrow it.
   const paymentType: PaymentType = user.defaultPaymentType === 'multisport' ? 'multisport' : 'regular';
 
+  // Costs nothing for the overwhelmingly common unrestricted member: `getRestrictions`
+  // computes the state from the row it was handed and only builds a query once something
+  // is actually restricted.
+  const restriction = await getRestriction(db, membership);
+
   const fromDateISO = todayInClub(new Date(), club.timezone);
   const days = await computeMemberCalendar(db, club.id, {
     userId: user.id,
@@ -39,18 +46,21 @@ export default async function BookPage({ params }: { params: Promise<{ slug: str
   }, { fromDateISO, days: BOOK_DAYS });
 
   return (
-    <>
-      <div className="mb-4">
+    // A flex column rather than the `mb-4` this used to carry: `RestrictionNotice` renders
+    // NOTHING for an unrestricted member, and a null child contributes no DOM node and so
+    // no gap — where a wrapper with a margin would leave a 16px hole on every healthy
+    // member's page.
+    <div className="flex flex-col gap-4">
+      <div>
         <h1 className="font-heading text-xl font-semibold">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">{t('description', { days: BOOK_DAYS })}</p>
       </div>
-      <BookCalendar
-        slug={slug}
-        days={days}
-        timeZone={club.timezone}
-        bannedUntil={membership.bannedUntil}
-        bannedPermanently={membership.status === 'banned'}
-      />
-    </>
+      {/*
+        Above the calendar, not inside it: every session below reads "ineligible", and a
+        member who does not know why reads that as the product being broken.
+      */}
+      <RestrictionNotice restriction={restriction} timeZone={club.timezone} clubPhone={club.phone} variant="card" />
+      <BookCalendar slug={slug} days={days} timeZone={club.timezone} />
+    </div>
   );
 }

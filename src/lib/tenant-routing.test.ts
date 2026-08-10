@@ -59,6 +59,19 @@ describe('routeRequest — apex host', () => {
       type: 'redirect', url: 'https://oarly.sbs/privacy', status: 301,
     });
   });
+  /**
+   * `/account` is a top-level apex route. Left out of `RESERVED_APEX_SEGMENTS` it falls
+   * into the single-non-reserved-segment branch and `oarly.sbs/account` 301s to
+   * `account.oarly.sbs` — so the user menu's Account link lands on a club that does not
+   * exist, from every host, and the page is unreachable rather than merely broken.
+   *
+   * Its own `it`, not another entry in the reserved-auth-routes loop below: that loop
+   * already passes for its existing segments, and a shared assertion whose outcome is
+   * decided by a sibling entry is not a guard for this one.
+   */
+  it('serves /account from the apex rather than 301ing it to a subdomain', () => {
+    expect(routeRequest({ ...base, pathname: '/account' })).toEqual({ type: 'next' });
+  });
   it('guards the internal tenant segment from apex access', () => {
     expect(routeRequest({ ...base, pathname: '/s/demo' })).toEqual({
       type: 'redirect', url: 'https://oarly.sbs/', status: 301,

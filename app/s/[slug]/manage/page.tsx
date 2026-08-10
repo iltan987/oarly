@@ -1,5 +1,5 @@
 import { and, count, eq } from 'drizzle-orm';
-import { Check, ChevronRight, Circle } from 'lucide-react';
+import { Check, Circle } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -11,7 +11,7 @@ import { memberships } from '@/db/schema';
 import { listBoats } from '@/lib/boats';
 import { todayInClub } from '@/lib/date-tz';
 import { requireOwner } from '@/lib/membership';
-import { getDayRoster } from '@/lib/roster';
+import { getDayRoster, rosterDayTotals } from '@/lib/roster';
 import { listWindowsWithBoats } from '@/lib/schedule';
 import { listSkillLevels } from '@/lib/skill-levels';
 
@@ -69,9 +69,14 @@ export default async function ManageOverviewPage({ params }: { params: Promise<{
   ];
   const setupComplete = checklist.every((i) => i.done);
 
-  // A club that finished setup a year ago should not be greeted by a wall of ticks
-  // every time it opens /manage. Once every item is done the checklist collapses into
-  // a <details> and the day-to-day numbers take the top slot instead.
+  // A club that finished setup a year ago should not be greeted by a wall of ticks every
+  // time it opens /manage. The checklist is a FIRST-RUN guide — the only thing that leads
+  // a brand-new owner to the setup pages at all — so it renders until every item is done
+  // and then goes away entirely.
+  //
+  // It used to collapse into a <details> instead. That was a second, worse copy of
+  // /manage/settings: four ticks where the index shows four counts, one click away, and
+  // it forced <Checklist> to be rendered twice in one file. The index replaced it.
   if (!setupComplete) {
     return (
       <div className="flex flex-col gap-4">
@@ -85,11 +90,10 @@ export default async function ManageOverviewPage({ params }: { params: Promise<{
   }
 
   const pendingCount = pending?.n ?? 0;
-  // seated includes no_show rows (kept visible so an owner can undo the mark), so
-  // count only genuinely-held seats — same rule getDayRoster uses for freeSeats.
-  const seated = today.sessions.reduce((n, s) => n + s.seated.filter((m) => m.status === 'booked').length, 0);
-  const waitlisted = today.sessions.reduce((n, s) => n + s.waitlisted.length, 0);
-  const capacity = today.sessions.reduce((n, s) => n + s.capacity, 0);
+  // Shared with /manage/bookings, which renders the same three numbers beside its date
+  // control. The `status === 'booked'` rule (seated includes no_show rows, kept visible so
+  // an owner can undo the mark) lives in the helper, once.
+  const { seated, waitlisted, capacity } = rosterDayTotals(today.sessions);
 
   return (
     <div className="flex flex-col gap-4">
@@ -123,17 +127,6 @@ export default async function ManageOverviewPage({ params }: { params: Promise<{
           </div>
         </CardContent>
       </Card>
-
-      <details className="group rounded-card border border-border bg-card">
-        <summary className="flex cursor-pointer list-none items-center gap-2 p-3 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
-          <ChevronRight aria-hidden className="size-4 shrink-0 transition-transform group-open:rotate-90" />
-          <Check aria-hidden className="size-4 shrink-0 text-ok" />
-          {t('setupCompleteSummary')}
-        </summary>
-        <div className="p-3 pt-0">
-          <Checklist items={checklist} doneLabel={t('setupDone')} todoLabel={t('setupTodo')} />
-        </div>
-      </details>
     </div>
   );
 }

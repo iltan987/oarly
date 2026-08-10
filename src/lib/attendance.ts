@@ -156,7 +156,26 @@ async function markNoShowTx(db: DB, input: { clubId: string; bookingId: string; 
 
       for (const f of future) {
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.clubId}), hashtext(${f.slotStartAt.toISOString()}))`);
-        await tx.update(bookings).set({ status: 'cancelled', queuePosition: null }).where(eq(bookings.id, f.bookingId));
+        // The one cancellation the member did not ask for and cannot otherwise account
+        // for: `cancelledReason` is what lets their bookings list say so instead of
+        // showing a bare "İptal edildi" next to seats they still expected to row.
+        //
+        // Status-scoped, and here the predicate matters MOST. `future` was SELECTed above,
+        // BEFORE any of these per-slot locks were taken, so between that read and this
+        // write the member may have cancelled this very seat themselves. Under READ
+        // COMMITTED a bare `eq(id, …)` would re-evaluate against the committed row and
+        // still match — relabelling a voluntary cancellation as 'penalty', so the member's
+        // bookings list tells them "Katılmadığın kaydedildiği için iptal edildi" about a
+        // seat they gave up of their own accord. That is the accusation this whole slice
+        // exists to avoid making.
+        const [claimed] = await tx.update(bookings)
+          .set({ status: 'cancelled', cancelledReason: 'penalty', queuePosition: null })
+          .where(and(eq(bookings.id, f.bookingId), inArray(bookings.status, [...ACTIVE])))
+          .returning({ id: bookings.id });
+        // Somebody else ended this seat first. They held this same lock to do it, so their
+        // `applySeating` has already run; re-running it would be a no-op and counting the
+        // seat in `cancelled` would overstate the cascade in the member's penalty email.
+        if (!claimed) continue;
         const { promotedUserId } = await applySeating(tx, f.sessionId, f.capacity, row.multisportMode);
         cancelled.push({ bookingId: f.bookingId, sessionId: f.sessionId });
         if (promotedUserId) promoted.push({ userId: promotedUserId, sessionId: f.sessionId });

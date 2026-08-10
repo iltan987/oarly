@@ -5,12 +5,12 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve((key: string) => key),
 }));
-vi.mock('@/lib/session', () => ({ requireAdmin: () => Promise.resolve({ id: 'a1' }) }));
+vi.mock('@/lib/session', () => ({
+  requireAdmin: () => Promise.resolve({ id: 'a1', name: 'Admin', email: 'a@b.test', image: null }),
+}));
 vi.mock('@/env', () => ({ env: { APP_URL: 'http://localhost:3000' } }));
 vi.mock('@/lib/urls', () => ({ apexUrl: () => '/sign-in', parseAppOrigin: () => ({}) }));
-vi.mock('@/components/sign-out-button', () => ({ SignOutButton: () => null }));
-vi.mock('@/components/theme-toggle', () => ({ ThemeToggle: () => null }));
-vi.mock('@/components/language-toggle', () => ({ LanguageToggle: () => null }));
+vi.mock('@/components/user-menu', () => ({ UserMenu: () => null }));
 vi.mock('./_nav', () => ({ AdminNav: () => null }));
 
 import AdminLayout from './layout';

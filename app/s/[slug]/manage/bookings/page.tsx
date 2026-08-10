@@ -9,7 +9,7 @@ import { isDateISO } from '@/lib/date-iso';
 import { addDaysISO, utcToClubDate } from '@/lib/date-tz';
 import { requireOwner } from '@/lib/membership';
 import { penaltyEndsAt } from '@/lib/penalty';
-import { getDayRoster } from '@/lib/roster';
+import { getDayRoster, rosterDayTotals } from '@/lib/roster';
 
 import { BookingsRoster } from './bookings-roster';
 import { DateJump } from './date-jump';
@@ -43,10 +43,25 @@ export default async function ManageBookingsPage({ params, searchParams }: { par
       banLapsed: !permanent && endsAt != null && endsAt.getTime() <= now.getTime(),
     };
   });
+  const totals = rosterDayTotals(roster.sessions);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-center gap-2">
+      {/*
+        Centred while the canvas is narrow, left-aligned once it is not: at `lg:` the
+        console canvas is 1024px wide and a date control floating in the middle of it is
+        what the width would otherwise buy. Left-aligned, the day's numbers have somewhere
+        to sit — beside the control that changes the day, rather than one page away on
+        /manage.
+
+        `flex-wrap` decides what happens when they do NOT fit beside it, which in Turkish
+        with a waitlist half ("7/16 dolu · 3 yedek") is 320px and 360px: they take a line of
+        their own, on one line, and the row is 56px. Without it nothing overflows — the <p>
+        is squeezed into whatever is left instead, breaking the sentence mid-phrase and
+        leaving the arrows vertically off-centre against a two-line block (a 40px row).
+        Measured; at 375px and up the two share a line either way.
+      */}
+      <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-start">
         <Link aria-label={t('prevDay')} className={buttonVariants({ size: 'icon-sm', variant: 'ghost' })} href={`/manage/bookings?date=${addDaysISO(dateISO, -1)}`}>
           <ChevronLeftIcon />
         </Link>
@@ -54,6 +69,19 @@ export default async function ManageBookingsPage({ params, searchParams }: { par
         <Link aria-label={t('nextDay')} className={buttonVariants({ size: 'icon-sm', variant: 'ghost' })} href={`/manage/bookings?date=${addDaysISO(dateISO, 1)}`}>
           <ChevronRightIcon />
         </Link>
+        {/*
+          Nothing at all on a day with no sessions: "0/0 dolu" beside the date is noise
+          on top of the roster's own "no sessions" sentence. The numbers come from
+          `rosterDayTotals`, shared with /manage — `seated` counts only `status ===
+          'booked'`, because the seated list also carries the day's no-shows.
+        */}
+        {sessions.length > 0 && (
+          <p className="text-sm text-muted-foreground">
+            <span aria-hidden className="mr-2 text-muted-foreground/60">·</span>
+            {t('daySeated', { seated: totals.seated, capacity: totals.capacity })}
+            {totals.waitlisted > 0 && ` · ${t('dayWaitlisted', { count: totals.waitlisted })}`}
+          </p>
+        )}
       </div>
       {/*
         A closed day can still hold bookings made before it was closed —

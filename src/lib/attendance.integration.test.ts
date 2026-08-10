@@ -3,13 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as schema from '@/db/schema';
 
 import { markNoShow, undoNoShow } from './attendance';
-import { ownerAddBooking } from './booking';
+import { cancelBooking, ownerAddBooking } from './booking';
 import { utcToClubDate, zonedWallClockToUtc } from './date-tz';
 
 const url = process.env.TEST_DATABASE_URL;
@@ -54,7 +54,7 @@ describe.skipIf(!url)('markNoShow', () => {
     const [slot] = await db.insert(schema.slots).values({ clubId: ctx.club.id, date: dateISO, startAt: zonedWallClockToUtc(dateISO, '07:00', TZ), endAt: zonedWallClockToUtc(dateISO, '08:00', TZ) }).returning();
     const [session] = await db.insert(schema.sessions).values({ slotId: slot.id, clubId: ctx.club.id, boatTypeId: ctx.boat.id, capacity: 2 }).returning();
     const [booking] = await db.insert(schema.bookings).values({ sessionId: session.id, clubId: ctx.club.id, userId: ctx.uid, paymentType: 'regular', status: 'booked', effectiveAt: NOW, bookingDate: dateISO }).returning();
-    return { session, booking };
+    return { slot, session, booking };
   }
 
   /**
@@ -138,6 +138,137 @@ describe.skipIf(!url)('markNoShow', () => {
     expect(cancelled.status).toBe('cancelled');
   });
 
+  /**
+   * `status = 'cancelled'` was already true of this row before `cancelledReason` existed,
+   * so asserting it proves nothing about the new column. This reads the column back and
+   * names the value, and it is the assertion that fails if the `cancelledReason: 'penalty'`
+   * write is dropped from the cascade.
+   *
+   * The waitlister and the missed booking are checked in the same test on purpose: they
+   * are the two rows `markNoShow` also writes, and they are what tells a scoped write
+   * apart from a blanket one.
+   */
+  it("stamps 'penalty' on the seats the cascade takes away, and on nothing else it writes", async () => {
+    const ctx = await seed('1w');
+    const future = await seedFutureSeat(ctx, '2026-03-12');   // inside 10 Mar + 7d
+    const waiter = await seedMember(ctx, 'waiter');
+    await db.insert(schema.bookings).values({ sessionId: future.session.id, clubId: ctx.club.id, userId: waiter, paymentType: 'regular', status: 'waitlisted', queuePosition: 1, effectiveAt: NOW, bookingDate: '2026-03-12' });
+    const filler = await seedMember(ctx, 'filler');
+    await db.insert(schema.bookings).values({ sessionId: future.session.id, clubId: ctx.club.id, userId: filler, paymentType: 'regular', status: 'booked', effectiveAt: NOW, bookingDate: '2026-03-12' });
+
+    const result = await markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+    expect(result).toMatchObject({ ok: true });
+
+    const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.clubId, ctx.club.id));
+    const byUser = (uid: string) => rows.filter((r) => r.userId === uid);
+
+    const [swallowed] = byUser(ctx.uid).filter((r) => r.id === future.booking.id);
+    expect(swallowed.cancelledReason).toBe('penalty');
+
+    // The missed booking is 'no_show' — nobody cancelled it, so no reason belongs on it.
+    const [missed] = byUser(ctx.uid).filter((r) => r.id === ctx.booking.id);
+    expect(missed.status).toBe('no_show');
+    expect(missed.cancelledReason).toBeNull();
+
+    // `applySeating` rewrote this row (waitlisted -> booked, asserted so the null below
+    // is not vacuously true of a row nothing touched); it must carry no reason.
+    const [promoted] = byUser(waiter);
+    expect(promoted.status).toBe('booked');
+    expect(promoted.cancelledReason).toBeNull();
+  });
+
+  /**
+   * The race, driven through the two real entry points rather than through hand-written
+   * SQL — because the thing under test is not "does Postgres re-evaluate a WHERE", it is
+   * "can these two functions, called as the app calls them, disagree about one row".
+   *
+   * Both `markNoShow` (which SELECTs `future` before taking any per-slot lock) and
+   * `cancelBooking` (which SELECTs its row before taking the same lock) decide "this seat
+   * is still active" from a read that predates their lock. Under READ COMMITTED the
+   * loser's UPDATE unblocks and re-evaluates against the winner's committed row — and a
+   * primary-key predicate still matches it. Before `cancelledReason` this was benign:
+   * both wrote the same `status` and `queuePosition`. Now they write different reasons,
+   * and the loser silently overwrites the winner's.
+   *
+   * The interleaving is forced with an advisory lock held by a THIRD connection on the
+   * future slot's key, so both functions are parked at their lock before either can
+   * write. Which of them Postgres then wakes first is genuinely undecided — advisory-lock
+   * waiters are not served FIFO — so the assertions are written to hold either way, and
+   * to fail either way if the status predicate is dropped:
+   *
+   * - cascade wins → `cancelBooking` must report `not_active` and the row must read
+   *   'penalty'
+   * - member wins  → `markNoShow` must leave the seat out of `result.cancelled` and the
+   *   row must read 'member'
+   *
+   * Without the predicate BOTH operations claim the seat and the row carries the loser's
+   * reason, so `exactly one claimant` fails on either path.
+   */
+  it('never lets a member cancellation and the ban cascade relabel each other', async () => {
+    const ctx = await seed('1w');
+    const future = await seedFutureSeat(ctx, '2026-03-12');   // inside 10 Mar + 7d
+
+    const blocker = new Client({ connectionString: url });
+    await blocker.connect();
+
+    /**
+     * Park until `n` advisory-lock requests are waiting. Polling `pg_locks` rather than
+     * sleeping a fixed time is what makes the interleaving a fact rather than a hope: if
+     * the callers are not actually blocked, this throws instead of quietly running the
+     * two operations in sequence and asserting nothing interesting.
+     */
+    const waitForBlocked = async (n: number) => {
+      for (let i = 0; i < 200; i++) {
+        const { rows } = await blocker.query<{ n: number }>(
+          "select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted",
+        );
+        if (rows[0].n >= n) return;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error(`expected ${n} callers parked on the slot lock; the interleaving was not achieved`);
+    };
+
+    try {
+      // Hold the FUTURE slot's lock — the same key both callers compute from
+      // (clubId, slotStartAt.toISOString()). markNoShow takes the MISSED slot's lock
+      // first and only reaches this one after its `future` SELECT has already run, which
+      // is exactly the window being tested.
+      await blocker.query('BEGIN');
+      await blocker.query('select pg_advisory_xact_lock(hashtext($1::text), hashtext($2::text))', [ctx.club.id, future.slot.startAt.toISOString()]);
+
+      const cascade = markNoShow(db, { actorId: ownerId, clubId: ctx.club.id, bookingId: ctx.booking.id, now: NOW });
+      await waitForBlocked(1);
+      // Started only now, so its own pre-lock SELECT still reads the seat as 'booked'.
+      const selfCancel = cancelBooking(db, { clubId: ctx.club.id, userId: ctx.uid, bookingId: future.booking.id, now: NOW });
+      await waitForBlocked(2);
+
+      await blocker.query('COMMIT');   // release both; Postgres picks a winner
+      const [cascadeResult, cancelResult] = await Promise.all([cascade, selfCancel]);
+
+      expect(cascadeResult.ok).toBe(true);
+      const [row] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, future.booking.id));
+      expect(row.status).toBe('cancelled');
+
+      const cascadeClaimed = cascadeResult.ok && cascadeResult.cancelled.some((c) => c.bookingId === future.booking.id);
+      // 'claimed', or the specific error — so a loser that reports the wrong error, or
+      // reports success, both fail rather than collapsing into one boolean.
+      const memberOutcome = cancelResult.ok ? 'claimed' : cancelResult.error;
+
+      // The seat can only be taken away once, so exactly one of the two may say it did it.
+      expect([cascadeClaimed, memberOutcome === 'claimed'].filter(Boolean)).toHaveLength(1);
+      // The loser has to say `not_active` — the honest answer for a seat already gone by
+      // the time its lock came free.
+      expect(memberOutcome).toBe(cascadeClaimed ? 'not_active' : 'claimed');
+      // And the reason on the row must be the CLAIMANT's, not the loser's. This is the
+      // assertion the mislabel trips: it is what stops the app telling a member they were
+      // marked absent for a seat they gave up themselves.
+      expect(row.cancelledReason).toBe(cascadeClaimed ? 'penalty' : 'member');
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => {});
+      await blocker.end();
+    }
+  });
+
   it('leaves a seat that falls after the ban ends', async () => {
     const ctx = await seed('1w');
     const later = await seedFutureSeat(ctx, '2026-03-25');    // beyond 10 Mar + 7d
@@ -147,6 +278,9 @@ describe.skipIf(!url)('markNoShow', () => {
     expect(result.cancelled).toEqual([]);
     const [kept] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, later.booking.id));
     expect(kept.status).toBe('booked');
+    // A cascade that stamped every future row rather than the ones it actually cancelled
+    // would show up here as well as in the status above.
+    expect(kept.cancelledReason).toBeNull();
   });
 
   it('cancels every future seat when the ban is permanent', async () => {
@@ -349,6 +483,10 @@ describe.skipIf(!url)('markNoShow', () => {
 
       const [still] = await db.select().from(schema.bookings).where(eq(schema.bookings.id, future.booking.id));
       expect(still.status).toBe('cancelled');
+      // Write-once, never cleared — the property `cancelledReason` being nullable with no
+      // default depends on. The undo lifts the ban, but the seat this member lost to it
+      // was still lost to it, and the row must go on saying so.
+      expect(still.cancelledReason).toBe('penalty');
     });
 
     it('rejects a booking that was never marked', async () => {

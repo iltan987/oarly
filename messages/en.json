@@ -6,8 +6,19 @@
     "signOut": "Sign out",
     "loading": "Loading…",
     "language": "Language",
-    "toggleTheme": "Toggle theme",
-    "appDescription": "Session and booking management for rowing clubs."
+    "preferences": "Preferences",
+    "userMenu": "Account and preferences",
+    "account": "Account",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
+    "privacy": "Privacy",
+    "requestClub": "Request a club",
+    "copyright": "© {year} Oarly",
+    "appDescription": "Session and booking management for rowing clubs.",
+    "loadError": "Couldn't load this page.",
+    "retry": "Try again"
   },
   "home": {
     "heroTitle": "Book the boat, skip the group chat",
@@ -15,10 +26,13 @@
     "createAccount": "Create an account",
     "signedInAs": "Signed in as {email}",
     "myClubs": "Your clubs",
-    "noClubs": "You're not a member of any club yet.",
+    "noClubsTitle": "You're not a member of any club yet",
+    "noClubsBody": "If you run a club yourself, you can request to bring it onto Oarly.",
+    "noClubsCta": "Request a club",
+    "noClubsHint": "Already a member somewhere? Open the join link your club shared with you.",
     "statusPending": "Pending",
-    "statusSuspended": "Suspended",
-    "statusRejected": "Not approved"
+    "statusRejected": "Not approved",
+    "ctaOpenClub": "Open club"
   },
   "club": {
     "joinCta": "Join this club",
@@ -28,12 +42,23 @@
     "ctaManage": "Manage club",
     "ctaGoBooking": "Go to booking",
     "ctaRequestJoin": "Request to join",
+    "ctaMyBookings": "My bookings",
+    "ctaBookingCalendar": "Booking calendar",
     "noteMember": "You're a member",
     "notePending": "Your request is awaiting approval",
-    "noteBanned": "Access to this club is suspended",
     "noteRejected": "Your request wasn't approved",
-    "statusPending": "Request pending",
-    "statusBanned": "Access suspended"
+    "statusPending": "Request pending"
+  },
+  "restriction": {
+    "pausedTitle": "Paused",
+    "pausedUntil": "Your booking access reopens by itself on {date} at {time}.",
+    "suspendedTitle": "Suspended",
+    "suspendedBody": "The club has closed your booking access, and it will not reopen by itself.",
+    "causeNoShow": "The club recorded that you did not attend the {time} session on {date}.",
+    "causeNoShowUndated": "The club recorded that you did not attend a session.",
+    "causeOther": "This restriction was applied by the club.",
+    "contact": "Only the club can lift this restriction.",
+    "callClub": "Call the club: {phone}"
   },
   "join": {
     "signInToJoin": "Sign in to join",
@@ -151,6 +176,34 @@
     "signedOutToast": "Signed out",
     "googleError": "Couldn't sign in with Google. Please try again.",
     "errorAccountNotLinked": "This email already uses password sign-in. Enter your password above."
+  },
+  "account": {
+    "title": "My account",
+    "body": "Update your personal details here.",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "phone": "Phone",
+    "email": "Email",
+    "emailDescription": "Your email address can't be changed.",
+    "passwordHint": "To change your password,",
+    "passwordLink": "use the password reset flow",
+    "birthday": "Date of birth",
+    "birthdayDescription": "Optional. Leave it empty and nothing is stored.",
+    "gender": "Gender",
+    "genderDescription": "Optional. You can leave it empty.",
+    "genderUnset": "Not set",
+    "genderFemale": "Female",
+    "genderMale": "Male",
+    "genderOther": "Other",
+    "genderPreferNotToSay": "Prefer not to say",
+    "paymentType": "Default payment method",
+    "paymentTypeDescription": "This option comes preselected when you book. It doesn't apply at clubs that don't accept MultiSport; there you pay cash.",
+    "paymentRegular": "Cash",
+    "paymentMultisport": "MultiSport",
+    "save": "Save",
+    "saved": "Your details are updated.",
+    "errorInvalid": "Check the fields and try again.",
+    "errorTooManyRequests": "You've made too many changes. Please wait a moment and try again."
   },
   "privacy": {
     "title": "Privacy & KVKK",
@@ -311,7 +364,6 @@
     "todayNone": "No sessions scheduled today.",
     "todayClosed": "The club is closed today.",
     "todayCta": "Open roster",
-    "setupCompleteSummary": "Setup complete",
     "setupTitle": "Finish setting up your club",
     "setupIntro": "Complete these to open bookings later.",
     "setupSkill": "Add skill levels",
@@ -328,12 +380,39 @@
     "skillLevel": "Level",
     "noSkillLevels": "No skill levels defined yet.",
     "none": "—",
-    "empty": "No members yet.",
+    "membersSearch": "Search by name or email",
+    "membersSearchCta": "Search",
+    "pendingMore": "{count, plural, one {# more waiting} other {# more waiting}}",
+    "paginationPrev": "Previous",
+    "paginationNext": "Next",
+    "paginationRange": "{from}–{to} of {total} members",
+    "noMembersTitle": "Nobody has joined yet",
+    "noMembersBody": "Share your club page — join requests turn up here.",
+    "noApprovedTitle": "No approved members yet",
+    "noApprovedBody": "Review the requests above; everyone you approve appears here.",
+    "noMatchTitle": "No member matches this search",
+    "noMatchBody": "Try a different name or email address.",
+    "confirmRejectTitle": "Reject the request from {name}?",
+    "confirmRejectBody": "The request leaves your lists for good. There is no undo, and this person cannot ask again.",
+    "confirmRejectCta": "Reject the request",
+    "confirmRejectKeep": "Leave it waiting",
+    "pausedBadge": "Paused until {date}",
+    "suspendedBadge": "Suspended",
     "memberApproved": "Member approved.",
     "memberRejected": "Member rejected.",
     "skillSaved": "Skill level saved.",
     "actionError": "Something went wrong. Try again.",
     "cancel": "Cancel",
+    "settings": {
+      "navLabel": "Settings",
+      "title": "Settings",
+      "intro": "Your club's setup and booking rules.",
+      "profileSummary": "{filled, plural, =0 {Nothing filled in yet} other {# of 3 details filled in}} · {socials, plural, =0 {no social links} one {# social link} other {# social links}}",
+      "skillLevelsSummary": "{count, plural, =0 {No levels yet} one {# level} other {# levels}}",
+      "boatsSummary": "{count, plural, =0 {No boats yet} one {# boat · {active, plural, =0 {none active} other {# active}}} other {# boats · {active, plural, =0 {none active} other {# active}}}}",
+      "scheduleSummary": "{windows, plural, =0 {No windows yet} one {# window across {days} days} other {# windows across {days} days}}",
+      "policiesSummary": "{mode, select, lead {Bookings open {leadDays, plural, one {# day} other {# days}} ahead} other {Bookings always open}} · {selfCancel, select, on {members can cancel} other {members cannot cancel}} · {waitlist, select, unlimited {waitlist not capped} off {waitlist off} other {waitlist capped at {waitlistCap, plural, one {# seat} other {# seats}}}}"
+    },
     "skillLevels": {
       "navLabel": "Skill levels",
       "title": "Skill levels",
@@ -394,7 +473,15 @@
       "addBoat": "+ Boat",
       "removeBoat": "Remove",
       "needBoats": "Add at least one active boat type first, on the Boats page.",
-      "weekdays": { "0": "Sunday", "1": "Monday", "2": "Tuesday", "3": "Wednesday", "4": "Thursday", "5": "Friday", "6": "Saturday" },
+      "weekdays": {
+        "0": "Sunday",
+        "1": "Monday",
+        "2": "Tuesday",
+        "3": "Wednesday",
+        "4": "Thursday",
+        "5": "Friday",
+        "6": "Saturday"
+      },
       "errors": {
         "end_before_start": "End time must be after the start time.",
         "uneven_tiling": "Session length must divide the window evenly (no leftover minutes).",
@@ -486,6 +573,8 @@
       "closed": "The club is closed this day.",
       "prevDay": "Previous day",
       "nextDay": "Next day",
+      "daySeated": "{seated}/{capacity} booked",
+      "dayWaitlisted": "{count} waitlisted",
       "remove": "Remove",
       "add": "Add",
       "selectMember": "Select member",
@@ -517,9 +606,7 @@
       "markedWithCancellations": "Absence recorded. {count} upcoming bookings were cancelled.",
       "markAlready": "That member was already marked absent.",
       "undone": "Absence removed. Any seats this penalty cancelled were not restored.",
-      "undoConflict": "This seat can no longer be restored — it has since been taken.",
-      "bannedUntilBadge": "Banned until {date}",
-      "bannedBadge": "Suspended"
+      "undoConflict": "This seat can no longer be restored — it has since been taken."
     }
   },
   "booking": {
@@ -528,6 +615,7 @@
     "closedHoliday": "Closed — public holiday",
     "closedByClub": "Closed",
     "noSessions": "No sessions this day",
+    "noSessionsHint": "Pick another day from the strip above.",
     "seatsLeft": "{count} of {capacity} seats left",
     "seatsCount": "{count, plural, one {# seat} other {# seats}}",
     "selectDay": "Select {date}",
@@ -555,13 +643,10 @@
     "locked": "Locked",
     "cancel": "Cancel",
     "myBookings": "My bookings",
-    "bannedTitle": "Booking suspended",
-    "bannedUntil": "You can't book until {date}.",
-    "bannedPermanent": "Your booking access has been suspended by the club.",
     "multisportDayTaken": "Your MultiSport card is already used for another session that day.",
     "reasons": {
       "not_approved": "Membership not approved",
-      "banned": "Temporarily suspended",
+      "banned": "You have a booking restriction",
       "skill_too_low": "Requires a higher skill level",
       "payment_not_allowed": "Payment type not allowed on this boat"
     },
@@ -577,7 +662,11 @@
     "myTitle": "My bookings",
     "upcoming": "Upcoming",
     "past": "Past",
-    "none": "Nothing here yet.",
+    "emptyUpcomingTitle": "No upcoming bookings",
+    "emptyUpcomingBody": "Browse the next few days and reserve a seat.",
+    "emptyUpcomingCta": "Book a session",
+    "emptyPastTitle": "No past bookings",
+    "emptyPastBody": "Sessions you've been to will collect here.",
     "seated": "Booked",
     "back": "Book a session",
     "cancelErrors": {
@@ -589,11 +678,17 @@
       "rate_limited": "Too many requests. Please wait a moment and try again."
     },
     "cancelled": "Cancelled",
+    "cancelledBy": {
+      "penalty": "Cancelled because the club recorded that you did not attend.",
+      "owner": "Cancelled by the club."
+    },
     "noShow": "No-show",
     "attended": "Attended",
     "cancelClosed": "Cancellation closed",
-    "cancelledToast": "Booking cancelled",
-    "loadError": "Couldn't load this page.",
-    "retry": "Try again"
+    "confirmCancelTitle": "Give up your seat?",
+    "confirmCancelBody": "Your seat goes to the first person waiting. If the session fills up, you may not get it back.",
+    "confirmCancelCta": "Give up my seat",
+    "confirmCancelKeep": "Keep my seat",
+    "cancelledToast": "Booking cancelled"
   }
 }

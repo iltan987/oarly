@@ -23,12 +23,24 @@ function currentTab(): string | null {
 }
 
 describe('AdminNav active tab', () => {
+  // "New club" was a fifth tab until Task 9 demoted it to a button beside the search on
+  // /admin: a nav names places you can be, and creating a club is something you do to the
+  // list you are already looking at. Both consoles now have four items.
+  it('offers four destinations, and creating a club is not one of them', () => {
+    renderAt('/admin');
+    expect(screen.getAllByRole('link').map((l) => l.getAttribute('href'))).toEqual([
+      '/admin',
+      '/admin/requests',
+      '/admin/users',
+      '/admin/audit',
+    ]);
+  });
+
   it.each([
     ['/admin', 'clubs'],
     ['/admin/requests', 'requests'],
     ['/admin/users', 'users'],
     ['/admin/audit', 'audit'],
-    ['/admin/clubs/new', 'newClub'],
   ])('marks %s as %s', (path, key) => {
     renderAt(path);
     expect(currentTab()).toBe(key);
@@ -42,12 +54,13 @@ describe('AdminNav active tab', () => {
     expect(currentTab()).toBe('clubs');
   });
 
-  // /admin/clubs/new is BOTH under the clubs tab's `owns` subtree and a tab of its own.
-  // Longest match wins, so exactly one tab is ever current.
-  it('marks exactly one tab, even where two prefixes match', () => {
+  // The create page is still a real route — it just is not a tab any more. It sits under
+  // the clubs tab's `owns` subtree, which is where the operator actually is while using
+  // it, and exactly one tab is current there.
+  it('keeps the clubs tab lit on the create page, and lights exactly one', () => {
     renderAt('/admin/clubs/new');
     expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-    expect(currentTab()).toBe('newClub');
+    expect(currentTab()).toBe('clubs');
   });
 
   // `/admin` is a prefix of every route in the console, so treating it as one would
@@ -56,5 +69,15 @@ describe('AdminNav active tab', () => {
     renderAt('/admin/users');
     expect(currentTab()).toBe('users');
     expect(screen.getByText('clubs')).not.toHaveAttribute('aria-current');
+  });
+
+  // The case above passes even WITHOUT `exact`, because longest match already hands
+  // `/admin/users` to the users tab. `exact` only bites on an /admin route no tab owns —
+  // where the clubs tab would otherwise be the sole prefix match and light up on a page it
+  // has nothing to do with. The route is fictional on purpose: the invariant is about the
+  // next section someone adds without touching this file.
+  it('marks nothing on an admin route no tab owns', () => {
+    renderAt('/admin/settings');
+    expect(currentTab()).toBeNull();
   });
 });

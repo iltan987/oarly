@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { type DB, db as appDb } from '@/db';
 import { memberships } from '@/db/schema';
 import { env } from '@/env';
+import { restrictionState } from '@/lib/restriction';
 import { type CurrentUser, getCurrentUser } from '@/lib/session';
 import { type Club, getClubBySlug } from '@/lib/tenant';
 import { apexUrl, clubUrl, parseAppOrigin } from '@/lib/urls';
@@ -68,8 +69,11 @@ export async function requireMember(
     redirect(`${apexUrl('/sign-in', origin)}?redirect=${encodeURIComponent(back)}`);
   }
   const membership = await self.getMembership(appDb, user.id, club.id);
-  const bannedActive = membership?.bannedUntil != null && membership.bannedUntil.getTime() > Date.now();
-  if (!membership || membership.status !== 'approved' || bannedActive) notFound();
+  // Through `restrictionState`, not a hand-rolled `bannedUntil > now`: the strictness of
+  // that comparison (`>`, never `>=`) is a decision the model owns and `checkEligibility`
+  // shares, and a second copy of it here is a second thing to keep in step.
+  if (!membership || membership.status !== 'approved') notFound();
+  if (restrictionState(membership, new Date()) !== 'none') notFound();
   return { club, user, membership };
 }
 
@@ -95,6 +99,12 @@ export async function requireMemberView(
     redirect(`${apexUrl('/sign-in', origin)}?redirect=${encodeURIComponent(back)}`);
   }
   const membership = await self.getMembership(appDb, user.id, club.id);
+  // Deliberately NOT routed through `restrictionState`, unlike `requireMember` above.
+  // This is an ADMITTANCE test over `status`, not a ban test: it asks which membership
+  // states may view the page at all. Writing it as `restrictionState(...) !== 'suspended'`
+  // says the same thing in a double negative, and dresses a status check up as a
+  // restriction check — the ban predicate it would appear to share is not the reason
+  // either status is listed here.
   if (!membership || (membership.status !== 'approved' && membership.status !== 'banned')) notFound();
   return { club, user, membership };
 }

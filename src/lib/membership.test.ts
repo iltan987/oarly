@@ -71,6 +71,29 @@ describe('requireMember', () => {
     );
     await expect(mod.requireMember('demo')).resolves.toMatchObject({ club: { id: 'club1' } });
   });
+
+  /**
+   * The half `requireMemberView` deliberately does NOT do, and — until this test — the
+   * only branch of either guard with no coverage at all. A ban gates ACQUISITION: the
+   * strict guard has to keep refusing a member serving a live timed pause even though
+   * their status is still `approved`, which is the shape a timed penalty leaves behind
+   * (`recomputeBan` only writes `status = 'banned'` for a permanent row).
+   *
+   * A LAPSED ban is asserted alongside it, because "rejects when bannedUntil is set" is
+   * satisfied by a guard that ignores the date entirely and refuses anyone who has ever
+   * been penalised.
+   */
+  it('notFound()s for an approved member serving a live timed ban, but not a lapsed one', async () => {
+    getClubBySlug.mockResolvedValue({ id: 'club1', slug: 'demo', status: 'active' });
+    getCurrentUser.mockResolvedValue({ id: 'u1', isAdmin: false });
+    const spy = vi.spyOn(mod, 'getMembership');
+
+    spy.mockResolvedValue({ id: 'm1', role: 'member', status: 'approved', bannedUntil: new Date(Date.now() + 3600_000) } as never);
+    await expect(mod.requireMember('demo')).rejects.toThrow('NOT_FOUND');
+
+    spy.mockResolvedValue({ id: 'm1', role: 'member', status: 'approved', bannedUntil: new Date(Date.now() - 3600_000) } as never);
+    await expect(mod.requireMember('demo')).resolves.toMatchObject({ club: { id: 'club1' } });
+  });
 });
 
 describe('requireMemberView', () => {

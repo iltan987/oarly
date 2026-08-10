@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 
+import { BackLink } from '@/components/back-link';
 import { db } from '@/db';
 import { countMultisportOnlyBoats } from '@/lib/boats';
 import { requireOwner } from '@/lib/membership';
@@ -14,6 +15,7 @@ export default async function PoliciesPage({ params }: { params: Promise<{ slug:
   const { slug } = await params;
   const { club } = await requireOwner(slug, '/manage/policies');
   const t = await getTranslations('manage.policies');
+  const tManage = await getTranslations('manage');
   const [settings, multisportOnlyBoatCount] = await Promise.all([
     getSchedulingSettings(db, club.id),
     countMultisportOnlyBoats(db, club.id),
@@ -21,6 +23,7 @@ export default async function PoliciesPage({ params }: { params: Promise<{ slug:
 
   return (
     <div className="flex flex-col gap-4">
+      <BackLink href="/manage/settings" label={tManage('settings.navLabel')} />
       <div>
         <h2 className="font-heading text-lg font-semibold">{t('title')}</h2>
         <p className="text-sm text-muted-foreground">{t(settings.multisportEnabled ? 'intro' : 'introNoMultisport')}</p>
