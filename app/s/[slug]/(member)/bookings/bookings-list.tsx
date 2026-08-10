@@ -11,6 +11,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
 
 import { cancelBookingAction, type CancelFormState } from './actions';
 
@@ -53,7 +54,19 @@ const initial: CancelFormState = { status: 'idle', error: null };
  */
 function CancelButton({ slug, bookingId }: { slug: string; bookingId: string }) {
   const t = useTranslations('booking');
-  const [state, formAction] = useActionState(cancelBookingAction.bind(null, slug), initial);
+  // The THIRD SLOT is not optional here. This control used to be a `PendingButton` inside
+  // the form, disabled by `useFormStatus` for the whole round trip; moving the form into a
+  // portalled dialog took that away, because `useFormStatus` only sees a form it is inside
+  // and this button is no longer inside one. `pending-button.tsx:26-28` names this exact
+  // regression ("the policies form regressed precisely by dropping the third slot").
+  //
+  // What it costs to drop it: the dialog is Base UI's default DISMISSIBLE modal, so Escape
+  // or the backdrop closes it while the cancellation is still in flight. In that window the
+  // row would look untouched and its trigger would be live again — so a member who presses
+  // Escape because "nothing happened" taps Cancel again, the second dispatch spends a token
+  // from the shared `book:acct` bucket and comes back an error, and they read a red failure
+  // for a cancellation that actually succeeded.
+  const [state, formAction, isPending] = useActionState(cancelBookingAction.bind(null, slug), initial);
   const [confirming, setConfirming] = useState(false);
 
   // The toast carries the SAME specific reason as the inline line below it — a
@@ -84,7 +97,31 @@ function CancelButton({ slug, bookingId }: { slug: string; bookingId: string }) 
 
   return (
     <div className="flex items-center gap-2">
-      <Button type="button" size="xs" variant="outline" onClick={() => setConfirming(true)}>{t('cancel')}</Button>
+      {/*
+        `data-pending` mirrors what `PendingButton` exposes, so an ancestor's
+        `has-data-pending:` CSS bridge keeps working on this row; the spinner sits BEFORE
+        the label rather than replacing it, same as `PendingButton`, so the label never
+        disappears mid-flight.
+
+        `aria-hidden` on the spinner, which `PendingButton` does not do. `ui/spinner.tsx`
+        gives it `role="status" aria-label="Loading"` — inside a button that is folded into
+        the accessible name, so mid-flight this control would rename itself from "Vazgeç"
+        to "Loading Vazgeç": an unstable accessible name, and one English word inside a
+        Turkish flow, which is the same defect the dialog's X button was removed for.
+        `disabled` is what a screen reader needs here and it already announces it; the
+        spinner is decoration.
+      */}
+      <Button
+        type="button"
+        size="xs"
+        variant="outline"
+        disabled={isPending}
+        data-pending={isPending ? '' : undefined}
+        onClick={() => setConfirming(true)}
+      >
+        {isPending && <Spinner aria-hidden />}
+        {t('cancel')}
+      </Button>
       {state.status === 'error' && <span className="text-xs text-destructive">{t(`cancelErrors.${state.error ?? 'generic'}`)}</span>}
       <ConfirmDialog
         open={confirming}

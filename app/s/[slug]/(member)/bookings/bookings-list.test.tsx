@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * `t(key)` returns the key. Asserting on the KEY, not on a class or on the Turkish
@@ -18,7 +18,7 @@ vi.mock('next-intl', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('./actions', () => ({ cancelBookingAction: vi.fn() }));
 
-import { cancelBookingAction } from './actions';
+import { cancelBookingAction, type CancelFormState } from './actions';
 import { type BookingRow, BookingsList } from './bookings-list';
 
 const START = '2026-08-13T04:00:00.000Z';
@@ -122,6 +122,18 @@ describe('the cancellation sub-line', () => {
  * still passes. The first test is the one that fails when the gate is gone, so it comes
  * first and it asserts the negative.
  */
+/**
+ * React entangles in-flight async actions on a module-global lane, so a promise left
+ * unresolved when a test ends blocks state updates in every LATER test in this file, and it
+ * survives RTL's per-test unmount. Deferring tests push their resolver here as well as
+ * calling it themselves; resolving twice is a no-op.
+ */
+const pendingResolvers: Array<() => void> = [];
+
+afterEach(() => {
+  pendingResolvers.splice(0).forEach((r) => r());
+});
+
 describe('the cancel gate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -179,6 +191,60 @@ describe('the cancel gate', () => {
 
     expect(screen.getByRole('button', { name: 'confirmCancelKeep' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'cancel' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * The regression this closes, and the reason the assertion is on the TRIGGER rather than
+   * on a call count.
+   *
+   * Before the gate this control was a `PendingButton` inside the form, disabled by
+   * `useFormStatus` for the whole round trip. The form now lives in a portalled dialog, so
+   * `useFormStatus` cannot see it from here — and the dialog is Base UI's default
+   * DISMISSIBLE modal, so Escape, the backdrop, or "Yerimi koru" closes it while the
+   * cancellation is still in flight. Without `useActionState`'s third slot the row would
+   * come back looking untouched with a live Cancel button, and a member who dismissed
+   * because "nothing happened" would dispatch a second cancellation: a spent token from the
+   * shared `book:acct` bucket and a red error for a cancellation that succeeded.
+   *
+   * A call-count assertion alone would be circular here — a disabled button cannot be
+   * clicked, so "still one call" is implied by the state being right. `toBeDisabled()` is
+   * the claim; the count is the consequence, asserted after it to show the loop is closed.
+   *
+   * The deferred action is drained by the module `afterEach`: an unresolved promise blocks
+   * React's shared transition lane and would turn this into failures in unrelated tests.
+   */
+  it('keeps the row trigger disabled while the cancellation is in flight, even after the dialog is dismissed', async () => {
+    let resolve: ((r: CancelFormState) => void) | undefined;
+    vi.mocked(cancelBookingAction).mockImplementation(
+      () => new Promise((r) => { resolve = r; pendingResolvers.push(() => r({ status: 'ok', error: null })); }),
+    );
+    renderCancellable();
+
+    fireEvent.click(screen.getByRole('button', { name: 'cancel' }));
+    const form = screen.getByRole('button', { name: 'confirmCancelCta' }).closest('form');
+    if (!form) throw new Error('confirm form not found');
+    fireEvent.submit(form);
+    await waitFor(() => expect(cancelBookingAction).toHaveBeenCalledTimes(1));
+
+    // "Yerimi koru" is a promise the dispatch has already broken, so it is disabled — a
+    // member cannot be offered a way to keep a seat that is already going.
+    expect(screen.getByRole('button', { name: 'confirmCancelKeep' })).toBeDisabled();
+
+    // Escape is NOT blocked, deliberately: it promises nothing, and blocking every exit
+    // would trap a member behind a request that never settles. This is the dismissal that
+    // used to leave the row looking untouched.
+    fireEvent.keyDown(document.querySelector('[data-slot="dialog-content"]')!, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByText('confirmCancelTitle')).not.toBeInTheDocument());
+
+    // The row is back, and it says the work is still going.
+    const trigger = screen.getByRole('button', { name: 'cancel' });
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveAttribute('data-pending');
+
+    fireEvent.click(trigger);
+    expect(cancelBookingAction).toHaveBeenCalledTimes(1);
+
+    resolve?.({ status: 'ok', error: null });
   });
 
   it('does not cancel when the member keeps their seat', () => {
