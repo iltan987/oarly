@@ -70,4 +70,14 @@ describe('AdminNav active tab', () => {
     expect(currentTab()).toBe('users');
     expect(screen.getByText('clubs')).not.toHaveAttribute('aria-current');
   });
+
+  // The case above passes even WITHOUT `exact`, because longest match already hands
+  // `/admin/users` to the users tab. `exact` only bites on an /admin route no tab owns —
+  // where the clubs tab would otherwise be the sole prefix match and light up on a page it
+  // has nothing to do with. The route is fictional on purpose: the invariant is about the
+  // next section someone adds without touching this file.
+  it('marks nothing on an admin route no tab owns', () => {
+    renderAt('/admin/settings');
+    expect(currentTab()).toBeNull();
+  });
 });

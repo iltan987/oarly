@@ -80,6 +80,23 @@ describe('ManageNav', () => {
     expect(screen.getByRole('link', { name: 'overviewNav' })).not.toHaveAttribute('aria-current');
   });
 
+  /**
+   * The test that actually kills a dropped `exact`, and it took a mutation run to find:
+   * on any route a SIBLING owns, longest-match already sends the highlight to the sibling,
+   * so removing `exact` changes nothing there and every case above still passes.
+   *
+   * It only bites on a `/manage/*` route no item owns. Overview would then be the sole
+   * prefix match and would light up on a page it has nothing to do with — and the next
+   * destination someone adds under `/manage` without touching this file (a reports page,
+   * an exports page) lands in exactly that state. Nothing current is asserted here; the
+   * route is deliberately fictional, because the invariant is about routes that do not
+   * exist yet.
+   */
+  it('marks nothing on a manage route no destination owns', () => {
+    renderAt('/manage/reports');
+    expect(currentTabs()).toEqual([]);
+  });
+
   // No `<Link>` may carry the internal `/s/{slug}/manage/...` form: the proxy rewrites
   // again on the next client-side navigation and the double prefix 404s.
   it('links to public tenant paths only', () => {
