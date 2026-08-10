@@ -6,6 +6,7 @@ import { useActionState, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { type BadgeTone, StatusPill } from '@/components/booking-status-badge';
+import { EmptyState } from '@/components/empty-state';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -380,7 +381,14 @@ export function BookCalendar({ slug, days, timeZone }: {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">{t('noSessions')}</p>
+            /*
+              Title kept verbatim (`noSessions`) — it is the fact, and it was already the
+              right words. What was missing is what to do about it, and no ACTION is
+              needed for that: the `DateStrip` with every other day on it is two elements
+              up the page, so a button here would only scroll back to a control already on
+              screen. A hint pointing at it is the whole remedy.
+            */
+            <EmptyState title={t('noSessions')} body={t('noSessionsHint')} />
           )}
         </div>
       )}

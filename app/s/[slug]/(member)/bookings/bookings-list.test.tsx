@@ -100,3 +100,46 @@ describe('the cancellation sub-line', () => {
     expect(screen.queryByText('cancelledBy.penalty')).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Both sections used to render ONE string, `booking.none`. The regression these tests
+ * exist against is a collapse back to that: the same words under both headings, or an
+ * Upcoming state that offers no way out of itself.
+ */
+describe('the empty states', () => {
+  it('offers a route to /book when there is nothing upcoming', () => {
+    render(<BookingsList slug="demo" upcoming={[]} past={[row()]} timeZone="Europe/Istanbul" />);
+
+    expect(screen.getByText('emptyUpcomingTitle')).toBeInTheDocument();
+    expect(screen.getByText('emptyUpcomingBody')).toBeInTheDocument();
+    // The PUBLIC tenant path. `/s/demo/book` here would be the bug this repo keeps
+    // re-introducing — the slug lives in the hostname.
+    expect(screen.getByRole('link', { name: 'emptyUpcomingCta' })).toHaveAttribute('href', '/book');
+  });
+
+  /**
+   * And the Past section deliberately has none: there is no action that produces a past
+   * booking. Asserted by counting links across a render where BOTH sections are empty —
+   * with one CTA in the document, a second would make this two.
+   */
+  it('offers no action for an empty Past section', () => {
+    render(<BookingsList slug="demo" upcoming={[]} past={[]} timeZone="Europe/Istanbul" />);
+
+    expect(screen.getByText('emptyPastTitle')).toBeInTheDocument();
+    expect(screen.getByText('emptyPastBody')).toBeInTheDocument();
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+  });
+
+  /**
+   * The two states are distinct keys, not one string rendered twice. `getByText` (not
+   * `getAllByText`) is doing the work: were both sections pointed at the same key, each
+   * lookup would match two nodes and throw.
+   */
+  it('says something different under each heading', () => {
+    render(<BookingsList slug="demo" upcoming={[]} past={[]} timeZone="Europe/Istanbul" />);
+
+    expect(screen.getByText('emptyUpcomingTitle')).toBeInTheDocument();
+    expect(screen.getByText('emptyPastTitle')).toBeInTheDocument();
+    expect(screen.queryByText('none')).not.toBeInTheDocument();
+  });
+});

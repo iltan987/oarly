@@ -230,3 +230,41 @@ describe('the cancellation sub-line vocabulary', () => {
     expect(enBooking.cancelledBy.member).toBeUndefined();
   });
 });
+
+/**
+ * Both `/bookings` sections used to render ONE string, `booking.none` ("Henüz bir şey
+ * yok."), under two headings that mean opposite things. The parity test compares key sets
+ * between locales and so cannot see a collapse back to one shared sentence, and the
+ * component test asserts on key names and cannot see two keys holding identical copy.
+ */
+describe('the empty-state vocabulary', () => {
+  const trBooking = tr.booking as Record<string, string>;
+  const enBooking = en.booking as Record<string, string>;
+
+  const EMPTY_KEYS = [
+    'emptyUpcomingTitle', 'emptyUpcomingBody', 'emptyUpcomingCta',
+    'emptyPastTitle', 'emptyPastBody', 'noSessionsHint',
+  ] as const;
+
+  it('still defines every empty-state key this file names, in both locales', () => {
+    expect(EMPTY_KEYS.filter((k) => typeof trBooking[k] !== 'string')).toEqual([]);
+    expect(EMPTY_KEYS.filter((k) => typeof enBooking[k] !== 'string')).toEqual([]);
+  });
+
+  it('never lets the two sections share a sentence', () => {
+    for (const catalog of [trBooking, enBooking]) {
+      expect(catalog.emptyUpcomingTitle).not.toBe(catalog.emptyPastTitle);
+      expect(catalog.emptyUpcomingBody).not.toBe(catalog.emptyPastBody);
+    }
+  });
+
+  /**
+   * The orphan, asserted gone. `booking.none` has no call site left, and the parity test
+   * compares the two catalogs to EACH OTHER — a dead key present in both is invisible to
+   * it forever. Re-adding it is how the collapsed empty state comes back.
+   */
+  it('no longer carries the one-string empty state it replaced', () => {
+    expect(trBooking.none).toBeUndefined();
+    expect(enBooking.none).toBeUndefined();
+  });
+});

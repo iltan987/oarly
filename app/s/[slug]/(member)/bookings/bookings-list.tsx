@@ -1,11 +1,15 @@
 'use client';
 
+import Link from 'next/link';
 import { useFormatter, useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 import { useActionState, useEffect } from 'react';
 import { toast } from 'sonner';
 
 import { StatusPill, toneByStatus } from '@/components/booking-status-badge';
+import { EmptyState } from '@/components/empty-state';
 import { PendingButton } from '@/components/pending-button';
+import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
 import { cancelBookingAction, type CancelFormState } from './actions';
@@ -75,14 +79,21 @@ function cancelledSubLine(t: ReturnType<typeof useTranslations>, row: BookingRow
   return null;
 }
 
-function Section({ slug, title, rows, timeZone, cancellable }: { slug: string; title: string; rows: BookingRow[]; timeZone: string; cancellable: boolean }) {
+/**
+ * `empty` is a PROP, not something derived from `cancellable`. The two sections' empty
+ * states differ in the one way that matters — Upcoming offers a way out, Past cannot —
+ * and deriving that from the cancellability flag would tie one decision to an unrelated
+ * one, so a test could pass for the wrong reason and a club that turns self-cancellation
+ * off would silently get the wrong empty state on both sections.
+ */
+function Section({ slug, title, rows, timeZone, cancellable, empty }: { slug: string; title: string; rows: BookingRow[]; timeZone: string; cancellable: boolean; empty: ReactNode }) {
   const t = useTranslations('booking');
   const f = useFormatter();
   return (
     <section className="flex flex-col gap-2">
       <h2 className="font-heading text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</h2>
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('none')}</p>
+        empty
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((row) => {
@@ -119,8 +130,48 @@ export function BookingsList({ slug, upcoming, past, timeZone }: { slug: string;
   const t = useTranslations('booking');
   return (
     <div className="flex flex-col gap-6">
-      <Section slug={slug} title={t('upcoming')} rows={upcoming} timeZone={timeZone} cancellable />
-      <Section slug={slug} title={t('past')} rows={past} timeZone={timeZone} cancellable={false} />
+      <Section
+        slug={slug}
+        title={t('upcoming')}
+        rows={upcoming}
+        timeZone={timeZone}
+        cancellable
+        /*
+          The CTA is a real `next/link`, so the tap is a prefetched navigation rather than
+          a client push, and `/book` is the PUBLIC tenant path — the slug is in the
+          hostname (proxy.ts), never in the href.
+
+          `buttonVariants(...)` on the Link, NOT `<Button render={<Link/>}>`. Base UI's
+          `Button` is `nativeButton` by default and logs an error when its `render` element
+          is not a `<button>` — and the documented fix, `nativeButton={false}`, is worse
+          here: it stamps `role="button"` onto the anchor, so a control that NAVIGATES
+          stops announcing itself as a link and drops out of a screen reader's links list.
+          The class-only form keeps the anchor an anchor and looks identical. (Three older
+          sites — `app/admin/audit/page.tsx` and `app/s/[slug]/manage/page.tsx` — still use
+          the `render={<Link/>}` form and log the same error; out of scope here.)
+
+          Deliberately NOT varied for a restricted member ("you can't book yet"): Task 6's
+          `RestrictionNotice` already sits at the top of this page and says exactly that,
+          with the date the pause lifts. A second, weaker copy of the same message dilutes
+          the first and doubles the copy that has to stay in sync.
+        */
+        empty={(
+          <EmptyState
+            title={t('emptyUpcomingTitle')}
+            body={t('emptyUpcomingBody')}
+            action={<Link href="/book" className={buttonVariants({ size: 'sm' })}>{t('emptyUpcomingCta')}</Link>}
+          />
+        )}
+      />
+      {/* No action: there is nothing a member can do to acquire a past booking. */}
+      <Section
+        slug={slug}
+        title={t('past')}
+        rows={past}
+        timeZone={timeZone}
+        cancellable={false}
+        empty={<EmptyState title={t('emptyPastTitle')} body={t('emptyPastBody')} />}
+      />
     </div>
   );
 }
