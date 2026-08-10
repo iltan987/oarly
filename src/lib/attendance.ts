@@ -258,9 +258,12 @@ async function undoNoShowTx(db: DB, input: { clubId: string; bookingId: string; 
 
     // Re-validate before restoring: between the mark and this undo, an owner may
     // have seated someone else into the freed seat (ownerAddBooking waives the
-    // booking-open gate and, like here, counts only active statuses) or the
+    // booking-open gate, and bounds capacity on 'booked' rows only — the same
+    // count as THIS function's capacity check below, not the ACTIVE set its
+    // duplicate-row check uses; see the two-counts note) or the
     // waitlist may have been promoted into it (a second absence + removal can
-    // empty a session and applySeating fills it). Either way the seat this
+    // empty a session and applySeating fills it — the removal path, not the
+    // owner add, which promotes nobody). Either way the seat this
     // booking used to hold may no longer be free, or the member may already
     // hold a fresh active row here (the owner re-seating "the same person,
     // wrong row"). resolveSeating's sticky rule never demotes a booked row to

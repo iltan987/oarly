@@ -343,8 +343,12 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
   describe('owner-add counts seated members, not the queue behind them', () => {
     const AFTER_START = new Date(START.getTime() + 60 * 60 * 1000);
 
-    /** capacity 4: four seated, one waiting, plus an unbooked walk-in. */
-    async function fullBoatWithQueue(seats: number) {
+    /**
+     * A full boat with a queue behind it, plus one unbooked walk-in. Strictly increasing
+     * `now` per booker so `resolveSeating`'s (effectiveAt, id) tie-break is deterministic
+     * and the queue comes out in the order they were seeded.
+     */
+    async function fullBoatWithQueue(seats: number, waiters = 1) {
       const s = await scenario({ seats });
       const common = { clubId: s.club.id, windowId: s.w.id, boatTypeId: s.boat.id, startAt: START, paymentType: 'regular' as const };
       const seated = [];
@@ -354,11 +358,26 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
         if (!r.ok || r.outcome !== 'seated') throw new Error('setup: expected a seat');
         seated.push({ uid, bookingId: r.bookingId });
       }
-      const waiterId = await newMember(s.club.id, 'waiter');
-      const waited = await bookSeat(db, { ...common, userId: waiterId, idempotencyKey: key(), now: new Date(NOW.getTime() + seats) });
-      if (!waited.ok || waited.outcome !== 'waitlisted') throw new Error('setup: expected a waitlist place');
+      const waiting = [];
+      for (let i = 0; i < waiters; i++) {
+        const uid = await newMember(s.club.id, `wait${i}`);
+        const r = await bookSeat(db, { ...common, userId: uid, idempotencyKey: key(), now: new Date(NOW.getTime() + seats + i) });
+        if (!r.ok || r.outcome !== 'waitlisted' || r.queuePosition !== i + 1) throw new Error('setup: expected a waitlist place');
+        waiting.push({ uid, bookingId: r.bookingId });
+      }
       const walkInId = await newMember(s.club.id, 'walkin');
-      return { s, seated, waiterId, waiterBookingId: waited.bookingId, walkInId };
+      const sessionId = (await db.select().from(schema.bookings).where(eq(schema.bookings.id, seated[0].bookingId)))[0].sessionId;
+      return { s, seated, waiting, waiterId: waiting[0].uid, waiterBookingId: waiting[0].bookingId, walkInId, sessionId };
+    }
+
+    /** The session's rows by status, for asserting a whole shape rather than one row. */
+    async function shapeOf(sessionId: string) {
+      const rows = await db.select().from(schema.bookings).where(eq(schema.bookings.sessionId, sessionId));
+      return {
+        booked: rows.filter((r) => r.status === 'booked').length,
+        waitlisted: rows.filter((r) => r.status === 'waitlisted').length,
+        no_show: rows.filter((r) => r.status === 'no_show').length,
+      };
     }
 
     it('seats the walk-in into a seat an absence freed, with someone still on the waitlist', async () => {
@@ -370,10 +389,7 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
 
       // The state the owner is looking at on /manage/bookings: 3 seated, 1 free seat,
       // 1 waiting. Asserted, not assumed — it is the whole premise of this test.
-      const before = await db.select().from(schema.bookings).where(eq(schema.bookings.sessionId, (await db.select().from(schema.bookings).where(eq(schema.bookings.id, f.seated[0].bookingId)))[0].sessionId));
-      expect(before.filter((r) => r.status === 'booked')).toHaveLength(3);
-      expect(before.filter((r) => r.status === 'waitlisted')).toHaveLength(1);
-      expect(before.filter((r) => r.status === 'no_show')).toHaveLength(1);
+      expect(await shapeOf(f.sessionId)).toEqual({ booked: 3, waitlisted: 1, no_show: 1 });
 
       const added = await ownerAddBooking(db, { actorId: ownerId, clubId: f.s.club.id, windowId: f.s.w.id, boatTypeId: f.s.boat.id, startAt: START, userId: f.walkInId, paymentType: 'regular', now: AFTER_START });
       expect(added).toMatchObject({ ok: true });
@@ -399,8 +415,37 @@ describe.skipIf(!url)('bookSeat / cancelBooking', () => {
       expect(missed.queuePosition).toBeNull();
       expect(missed.cancelledReason).toBeNull();
 
-      const all = await db.select().from(schema.bookings).where(eq(schema.bookings.sessionId, missed.sessionId));
-      expect(all.filter((r) => r.status === 'booked')).toHaveLength(4);
+      expect(await shapeOf(f.sessionId)).toEqual({ booked: 4, waitlisted: 1, no_show: 1 });
+    });
+
+    /**
+     * TWO absences and TWO waiting — the shape where the seat the owner fills is not the
+     * last free one. An owner add seats ONE named member and moves nobody else: this
+     * session has already started (`markNoShow` requires `startAt <= now`, and it is the
+     * only thing in the codebase that can leave a free seat with a live queue behind it),
+     * so a promotion here hands a seat to somebody who cannot possibly take it — and
+     * `ownerAddBooking` reports no promotion, so nothing would ever tell them.
+     *
+     * This is the test the single-absence pair above cannot give: with `booked` one short
+     * of capacity, `applySeating` has no free seat left after the insert and is a no-op
+     * either way, so it passes with the promotion left in.
+     */
+    it('seats only the member the owner named, promoting nobody, when two seats were freed', async () => {
+      const f = await fullBoatWithQueue(4, 2);
+      for (const i of [0, 1]) {
+        expect(await markNoShow(db, { actorId: ownerId, clubId: f.s.club.id, bookingId: f.seated[i].bookingId, now: AFTER_START })).toMatchObject({ ok: true });
+      }
+      expect(await shapeOf(f.sessionId)).toEqual({ booked: 2, waitlisted: 2, no_show: 2 });
+
+      const added = await ownerAddBooking(db, { actorId: ownerId, clubId: f.s.club.id, windowId: f.s.w.id, boatTypeId: f.s.boat.id, startAt: START, userId: f.walkInId, paymentType: 'regular', now: AFTER_START });
+      expect(added).toMatchObject({ ok: true });
+
+      // One row moved: the walk-in's. The second freed seat stays open for the owner to
+      // fill with whoever actually turned up.
+      expect(await shapeOf(f.sessionId)).toEqual({ booked: 3, waitlisted: 2, no_show: 2 });
+      const queue = await db.select().from(schema.bookings).where(inArray(schema.bookings.id, f.waiting.map((w) => w.bookingId)));
+      expect(queue.map((r) => r.status)).toEqual(['waitlisted', 'waitlisted']);
+      expect([...queue].sort((a, b) => (a.queuePosition ?? 0) - (b.queuePosition ?? 0)).map((r) => r.queuePosition)).toEqual([1, 2]);
     });
 
     // The guard that must not regress, and the one the pre-existing 'rejects a full

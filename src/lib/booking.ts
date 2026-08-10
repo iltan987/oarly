@@ -389,8 +389,6 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
       // re-seat its own already-started session, so an absence leaves
       // `booked = capacity - 1` with a waitlisted row still behind it, and the owner
       // seating the person who actually turned up was refused as `session_full`.
-      // `applySeating` on the next line is what keeps this honest — it fills the seat
-      // from the queue whenever this count was the low one.
       const boatSessions = foc.sessions.filter((s) => s.boatTypeId === input.boatTypeId && s.status === 'open').sort((a, b) => (a.id < b.id ? -1 : 1));
       if (boatSessions.length === 0) return { ok: false, error: 'no_session' };
       const seatedRows = await tx.select({ sessionId: bookings.sessionId }).from(bookings).where(and(inArray(bookings.sessionId, boatSessions.map((s) => s.id)), eq(bookings.status, 'booked')));
@@ -399,8 +397,36 @@ export async function ownerAddBooking(db: DB, input: OwnerAddInput): Promise<Own
       const target = boatSessions.find((s) => (seatedCount.get(s.id) ?? 0) < s.capacity);
       if (!target) return { ok: false, error: 'session_full' };
 
+      // An owner add seats exactly the member the owner named and moves nobody else, so
+      // there is deliberately NO `applySeating` here — unlike every path that FREES a
+      // seat (`cancelBooking`, `ownerRemoveBooking`, `markNoShow`'s cascade), which owes
+      // the queue a promotion and reports it so the member gets told.
+      //
+      // The distinction is not stylistic. The seat count above is the only reason this
+      // insert can leave a seat still free, and `markNoShow` on its own session is the
+      // only thing in this codebase that can produce that state (every other writer of
+      // `bookings.status` ends in `applySeating`; `sessions.capacity` is written once, at
+      // materialization). `markNoShow` requires `startAt <= now`. So every promotion
+      // `applySeating` could fire here would be into a session that has ALREADY STARTED —
+      // handing a seat to somebody who cannot possibly take it. Worse, this function
+      // discards the promoted id and `ownerAddBookingAction` sends no mail, so they would
+      // never be told, and could then be marked absent and penalised for missing a
+      // session nobody told them they were in. Two absences and two waiting is enough:
+      // one owner add would move two rows into seats.
+      //
+      // What that costs: `applySeating` also normalises `queuePosition` (null on seated
+      // rows, 1-based on the rest, ordered by priority/effectiveAt/id). Nothing needs
+      // normalising after THIS insert. The row goes in seated with `queuePosition` at its
+      // column default of NULL — what a seated row gets anyway — and inserting a seated
+      // row changes neither the membership nor the relative order of the waitlist pool
+      // `resolveSeating` ranks, so it would rewrite the stored positions with the
+      // identical values. What is genuinely given up is an incidental repair: an owner
+      // add no longer re-normalises a queue some other path left inconsistent. Nothing
+      // designates this function as that repair point, and nothing today leaves one.
+      //
+      // The freed seats this add does not fill stay open, exactly as `markNoShow` left
+      // them, for the owner to fill with whoever actually turned up.
       const [inserted] = await tx.insert(bookings).values({ sessionId: target.id, clubId: input.clubId, userId: input.userId, paymentType: input.paymentType, status: 'booked', effectiveAt: now, source: 'owner', bookingDate: dateISO }).returning({ id: bookings.id });
-      await applySeating(tx, target.id, target.capacity, club.multisportMode);
       await logAudit(tx, {
         actorUserId: input.actorId,
         clubId: input.clubId,
