@@ -157,22 +157,23 @@ describe('AdminClubsPage search and pagination', () => {
   });
 
   /**
-   * No Base UI dev-console error from this page. The primitive logs "expected a native
-   * <button>" whenever a `Button` renders a non-button element, and five older call sites
-   * elsewhere in this console still do; `/admin` had none before Task 9 and must not have
-   * gained one. Spying on `console.error` is the only way to see it from a test — it is a
-   * runtime warning, not a thrown error, so nothing else in the suite can fail on it.
+   * What these three cases do NOT catch, said plainly rather than papered over with a test
+   * that looks like it does.
+   *
+   * `<Button render={<Link/>}>` — no `nativeButton` prop at all — passes every assertion
+   * above, and rightly: Base UI leaves the `<a>` alone, so it is still a link and still
+   * announces as one. Its only defect is a dev-console error on every render, and that is
+   * genuinely unguardable here. `@base-ui/utils/error` dedupes by message in a module-level
+   * `Set` and exposes `reset()` to clear it, so a `console.error` spy in this file reports
+   * nothing once any earlier test in the same file has rendered the same warning — a spy
+   * assertion here would pass while the warning fired, which is worse than no assertion.
+   * `@base-ui/utils` is a transitive package and does not resolve from this project, so
+   * `reset()` is not reachable without adding a dependency for a test.
+   *
+   * `buttonVariants` is therefore chosen on its merits — a control that navigates should be
+   * a link, with no primitive in between — and the absence of the warning is a consequence,
+   * not something this file proves.
    */
-  it('logs no Base UI button warning', async () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      await renderPage([mkRow('active')]);
-      const messages = spy.mock.calls.map((c) => String(c[0]));
-      expect(messages.filter((m) => m.includes('acts as a button'))).toEqual([]);
-    } finally {
-      spy.mockRestore();
-    }
-  });
 
   it('passes the trimmed search term through and keeps it in the box', async () => {
     await renderPage([mkRow('active')], { q: '  boğaz  ' });
