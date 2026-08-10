@@ -400,7 +400,7 @@
     "pausedBadge": "Paused until {date}",
     "suspendedBadge": "Suspended",
     "liftSuspension": "Lift suspension",
-    "liftSuspensionFor": "Lift the suspension on {name}",
+    "liftSuspensionFor": "Lift suspension: {name}",
     "suspensionLifted": "Suspension lifted.",
     "memberApproved": "Member approved.",
     "memberRejected": "Member rejected.",

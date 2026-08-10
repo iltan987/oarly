@@ -49,14 +49,20 @@ function mkRow(name: string, restriction: RosterRow['restriction']): RosterRow {
     skillLevelId: null,
     restriction,
     badgeLabel: restriction === 'none' ? null : `${restriction}Badge`,
-    liftLabel: `liftSuspensionFor:${name}`,
+    // Shaped like the real catalog string (`Askıyı kaldır: {name}`), so the fixture
+    // cannot pass a test that the production copy would fail.
+    liftLabel: `${LABELS.lift}: ${name}`,
   };
 }
 
 const SUSPENDED = mkRow('Askıdaki', 'suspended');
+// A SECOND suspended row, so "one hoisted dispatcher must not reach the other rows'
+// controls" is a claim this fixture can actually falsify. With one, there is no other
+// lift button to check.
+const SUSPENDED_TWO = mkRow('İkinci Askıdaki', 'suspended');
 const PAUSED = mkRow('Duraklatılan', 'paused');
 const PLAIN = mkRow('Serbest', 'none');
-const ROWS = [SUSPENDED, PAUSED, PLAIN];
+const ROWS = [SUSPENDED, SUSPENDED_TWO, PAUSED, PLAIN];
 
 function renderRoster(rows: RosterRow[] = ROWS) {
   return render(
@@ -81,21 +87,29 @@ describe('MembersRoster: where the lift appears', () => {
    */
   it('offers the lift on a suspension and on nothing else', () => {
     renderRoster();
-    expect(screen.getAllByRole('button', { name: SUSPENDED.liftLabel })).toHaveLength(1);
+    // Counted over the whole list, not per row: exactly as many lift forms as there are
+    // suspended members, so rendering it everywhere fails here.
+    expect(screen.getAllByRole('button', { name: /^liftSuspension: / })).toHaveLength(2);
     expect(rowOf('Duraklatılan')).toHaveTextContent('pausedBadge');
     expect(rowOf('Duraklatılan').querySelector('form')).toBeNull();
     expect(rowOf('Serbest').querySelector('form')).toBeNull();
   });
 
   /**
-   * Its accessible name NAMES the member. Twenty-five rows of "Askıyı kaldır" are
-   * twenty-five controls a screen-reader user cannot tell apart, on a page where the
-   * wrong one reinstates the wrong person.
+   * Its accessible name names the member, AND contains the visible label.
+   *
+   * The second half is the one that is easy to lose: an `aria-label` REPLACES the visible
+   * text, so an accessible name that merely mentions the member ("{name} adlı üyenin
+   * askısını kaldırın") leaves a voice-control user saying "click Askıyı kaldır" with
+   * nothing to click — WCAG 2.5.3, the rule `restriction-notice.tsx:127-133` already
+   * states for the club's phone link. Checked here as wiring; the catalog strings that
+   * have to satisfy it are checked at the bottom of this file.
    */
-  it('names the member in the control’s accessible name, not just in the row', () => {
+  it('names the member in the control’s accessible name without hiding the visible one', () => {
     renderRoster();
     const lift = screen.getByRole('button', { name: SUSPENDED.liftLabel });
     expect(lift).toHaveTextContent(LABELS.lift);
+    expect(lift.getAttribute('aria-label')).toContain(LABELS.lift);
     expect(rowOf('Askıdaki')).toContainElement(lift);
   });
 
@@ -144,13 +158,22 @@ describe('MembersRoster in-flight feedback', () => {
     const row = rowOf('Askıdaki');
     expect(row).toHaveClass('has-data-pending:opacity-40', 'transition-opacity');
 
+    // Both captured BEFORE the submit: `PendingButton` renders a spinner alongside its
+    // label while pending, which changes that button's accessible name — so a second
+    // lookup after the dispatch would silently return nothing and assert on `undefined`.
     const lift = screen.getByRole('button', { name: SUSPENDED.liftLabel });
+    const otherLift = screen.getByRole('button', { name: SUSPENDED_TWO.liftLabel });
     fireEvent.submit(lift.closest('form')!);
     await waitFor(() => expect(lift).toHaveAttribute('data-pending'));
 
-    // One row's `<form>` is one `useFormStatus` scope, so hoisting the dispatcher must not
-    // reach the other rows' controls — the defect `PendingButton` exists to prevent.
-    expect(screen.getByRole('button', { name: `skill-${PAUSED.membershipId}` })).not.toBeDisabled();
+    // The SECOND suspended row's lift, which is the assertion that needed a second row to
+    // exist at all. One row's `<form>` is one `useFormStatus` scope, so the single hoisted
+    // dispatcher must not reach it — reuse one `pending` flag across the list and every
+    // lift on the page greys out together, the defect `PendingButton` exists to prevent.
+    expect(otherLift).not.toHaveAttribute('data-pending');
+    expect(otherLift).not.toBeDisabled();
+    // …and only the acting row dims. The bridge is `:has()` over the row's own subtree.
+    expect(rowOf('İkinci Askıdaki').querySelector('[data-pending]')).toBeNull();
 
     resolve?.({ ok: true });
     await waitFor(() => expect(lift).not.toHaveAttribute('data-pending'));
@@ -175,7 +198,7 @@ describe('MembersRoster in-flight feedback', () => {
     fireEvent.submit(screen.getByRole('button', { name: SUSPENDED.liftLabel }).closest('form')!);
     await waitFor(() => expect(liftSuspensionAction).toHaveBeenCalledTimes(1));
 
-    const lifted: RosterRow[] = [{ ...SUSPENDED, restriction: 'none', badgeLabel: null }, PAUSED, PLAIN];
+    const lifted: RosterRow[] = [{ ...SUSPENDED, restriction: 'none', badgeLabel: null }, SUSPENDED_TWO, PAUSED, PLAIN];
     rerender(
       <MembersRoster slug="demo" rows={lifted} skillLevels={[{ id: 'lvl', name: 'Başlangıç' }]} labels={LABELS} />,
     );
@@ -209,7 +232,7 @@ describe('MembersRoster layout, which the lift must not disturb', () => {
    */
   it('keeps three cells in every row, including the one with no badge and no lift', () => {
     renderRoster();
-    for (const name of ['Askıdaki', 'Duraklatılan', 'Serbest']) {
+    for (const name of ['Askıdaki', 'İkinci Askıdaki', 'Duraklatılan', 'Serbest']) {
       expect(rowOf(name).children).toHaveLength(3);
     }
     expect(rowOf('Serbest').children[1]).toBeEmptyDOMElement();
@@ -244,5 +267,20 @@ describe('the lift copy', () => {
     // becomes the same string on all 25 rows.
     expect(manage.liftSuspensionFor).toContain('{name}');
     expect(manage.liftSuspension).not.toContain('{name}');
+  });
+
+  /**
+   * WCAG 2.5.3, Label in Name — the rule `src/components/restriction-notice.tsx:127-133`
+   * states for the club's phone link, and this was the only control in the codebase
+   * breaking it. An `aria-label` REPLACES the visible text, so an accessible name that
+   * merely mentions the member ("{name} adlı üyenin askısını kaldırın") leaves a
+   * voice-control user saying "click Askıyı kaldır" with nothing to click.
+   *
+   * Asserted against the CATALOGS, not against a fixture: this is a property of the
+   * copy, and a translator rewriting `liftSuspensionFor` is exactly who would break it.
+   */
+  it.each([['tr', trMessages], ['en', enMessages]] as const)('%s keeps the visible label inside the accessible one', (_locale, messages) => {
+    const manage = messages.manage as unknown as Record<string, string>;
+    expect(manage.liftSuspensionFor).toContain(manage.liftSuspension);
   });
 });

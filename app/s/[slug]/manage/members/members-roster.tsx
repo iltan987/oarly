@@ -28,7 +28,20 @@ export type RosterRow = {
   restriction: 'none' | 'paused' | 'suspended';
   /** The badge's words, or null when the member is not restricted at all. */
   badgeLabel: string | null;
-  /** The lift control's accessible name. Names the member — 25 rows, 25 different names. */
+  /**
+   * The lift control's accessible name. Names the member — 25 rows of one label are 25
+   * controls a screen-reader user cannot tell apart, on a page where the wrong one
+   * reinstates the wrong person.
+   *
+   * It must CONTAIN the visible label (WCAG 2.5.3, Label in Name), which is the rule
+   * `src/components/restriction-notice.tsx:127-133` already states for the club's phone
+   * link: the accessible name adds what a screen reader cannot infer, it does not
+   * REPLACE what is on screen. An `aria-label` overrides the visible text entirely, so
+   * "Askıyı kaldır" + `aria-label="{name} adlı üyenin askısını kaldırın"` leaves a
+   * voice-control user saying "click Askıyı kaldır" with nothing to click — on the one
+   * control that gives a member their access back. Held by the catalog
+   * (`Askıyı kaldır: {name}`) and asserted in `members-roster.test.tsx`.
+   */
   liftLabel: string;
 };
 

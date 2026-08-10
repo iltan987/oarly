@@ -400,7 +400,7 @@
     "pausedBadge": "{date} tarihine kadar duraklatıldı",
     "suspendedBadge": "Askıda",
     "liftSuspension": "Askıyı kaldır",
-    "liftSuspensionFor": "{name} adlı üyenin askısını kaldırın",
+    "liftSuspensionFor": "Askıyı kaldır: {name}",
     "suspensionLifted": "Askı kaldırıldı",
     "memberApproved": "Üye onaylandı",
     "memberRejected": "Üye reddedildi",
