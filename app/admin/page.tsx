@@ -58,13 +58,23 @@ export default async function AdminClubsPage({ searchParams }: {
   return (
     <>
       <CreatedToast created={one(sp.created) === '1'} />
-      {/* A plain GET form, so the search lands in the URL and is shareable. The submit
-          is a plain Button, not PendingButton: `useFormStatus` reports nothing for a
-          browser navigation, so it would render a control that never shows progress. */}
-      <form method="get" action="/admin" className="mb-6 flex gap-2">
-        <Input name="q" defaultValue={q ?? ''} placeholder={t('clubsSearch')} aria-label={t('clubsSearch')} />
-        <Button type="submit" size="sm">{t('clubsSearchCta')}</Button>
-      </form>
+      {/* "New club" was a fifth nav tab until Task 9. A nav names places you can be, and
+          creating a club is something you do TO the list you are already looking at — so
+          it sits beside the search, on the page it acts on, and both consoles are left
+          with four destinations.
+
+          The form is a plain GET, so the search lands in the URL and is shareable. Its
+          submit is a plain Button, not PendingButton: `useFormStatus` reports nothing for
+          a browser navigation, so it would render a control that never shows progress. */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <form method="get" action="/admin" className="flex min-w-0 flex-1 gap-2">
+          <Input name="q" defaultValue={q ?? ''} placeholder={t('clubsSearch')} aria-label={t('clubsSearch')} />
+          <Button type="submit" size="sm">{t('clubsSearchCta')}</Button>
+        </form>
+        <Button size="sm" variant="outline" render={<Link href="/admin/clubs/new" />}>
+          {t('newClub')}
+        </Button>
+      </div>
 
       {rows.length === 0 ? (
         // Two different facts, two different sentences. "No clubs yet." under a search

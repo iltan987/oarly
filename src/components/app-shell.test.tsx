@@ -60,7 +60,7 @@ describe('AppShell', () => {
    * trivially and this test would pass while proving nothing.
    */
   it('gives every width the same header container, however different their content columns', () => {
-    const widths: ShellWidth[] = ['sm', 'md', '2xl', '3xl', '4xl'];
+    const widths: ShellWidth[] = ['sm', 'md', '2xl', '3xl', '4xl', '[90rem]'];
     const headers = new Set<string>();
     const mains = new Set<string>();
     for (const width of widths) {
@@ -87,6 +87,10 @@ describe('AppShell', () => {
     ['2xl', 'max-w-2xl'],
     ['3xl', 'max-w-3xl'],
     ['4xl', 'max-w-4xl'],
+    // The console width, and the only one that equals the header's own container. It is
+    // still the CONTENT column: the header is `max-w-[90rem]` because it always was, not
+    // because a caller asked for that width.
+    ['[90rem]', 'max-w-[90rem]'],
   ] as const)('maps width=%s onto the content column class %s', (width, expected) => {
     // Every entry of the WIDTH record, not just one: a single-case test cannot tell a
     // correct table from one where four rows point at the same class.

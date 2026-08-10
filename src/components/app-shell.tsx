@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
  * The Tailwind suffix, not an invented vocabulary, so a reviewer can diff `width="md"`
  * against the `max-w-md` this replaced by eye.
  */
-export type ShellWidth = 'sm' | 'md' | '2xl' | '3xl' | '4xl';
+export type ShellWidth = 'sm' | 'md' | '2xl' | '3xl' | '4xl' | '[90rem]';
 
 /**
  * A static literal record, NOT `` `max-w-${width}` ``. Tailwind's scanner reads source
@@ -19,6 +19,12 @@ const WIDTH: Record<ShellWidth, string> = {
   '2xl': 'max-w-2xl',
   '3xl': 'max-w-3xl',
   '4xl': 'max-w-4xl',
+  // The consoles only. `ConsoleShell` puts a sidebar and a canvas side by side inside this
+  // column, so the column has to be the FULL header container width or the two together
+  // could not reach it. Deliberately spelled the same as HEADER_CONTAINER's own literal:
+  // this is the one width that is supposed to equal the header's, and a reader should be
+  // able to see that by eye rather than resolve a shared constant.
+  '[90rem]': 'max-w-[90rem]',
 };
 
 /**
