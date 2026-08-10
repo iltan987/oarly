@@ -115,6 +115,65 @@ describe('AdminClubsPage search and pagination', () => {
     expect(listClubsForAdmin).toHaveBeenCalledWith({}, { q: undefined, page: 1, pageSize: 25 });
   });
 
+  /**
+   * The destination of Task 9's demotion, and until review it was untested at both ends:
+   * `_nav.test.tsx` asserts the console offers four tabs and that creating a club is not
+   * one of them, so deleting this button left `/admin/clubs/new` unreachable from the UI
+   * with the whole suite green — the nav test would have gone on *confirming* the
+   * disappearance.
+   *
+   * Asserted as a LINK, not by class or position: it renders through
+   * `Button render={<Link/>}`, and what matters to an operator is that the create page is
+   * one click from the list it acts on.
+   */
+  it('offers the create page beside the search, since it is no longer a tab', async () => {
+    await renderPage([mkRow('active')]);
+    expect(screen.getByRole('link', { name: 'newClub' })).toHaveAttribute('href', '/admin/clubs/new');
+  });
+
+  // It is on the page whether or not the list has anything in it — an empty platform is
+  // exactly when an operator needs to create the first club.
+  it('offers the create page even when no club exists yet', async () => {
+    await renderPage([]);
+    expect(screen.getByRole('link', { name: 'newClub' })).toBeInTheDocument();
+  });
+
+  /**
+   * `getByRole('link')` above is doing real work, so this states why.
+   *
+   * The control shipped for one commit as `<Button nativeButton={false} render={<Link/>}>`,
+   * which was a fix for a Base UI dev-console error and which stamps `role="button"` onto
+   * the `<a>`. It looked identical, it navigated identically, and it announced as a button
+   * — off the screen-reader links list, with the semantics of something that acts rather
+   * than somewhere you go. `getByRole('link')` is what refused it.
+   */
+  it('announces the create page as a link, not as a button with an href', async () => {
+    await renderPage([mkRow('active')]);
+    const create = screen.getByRole('link', { name: 'newClub' });
+    expect(create.tagName).toBe('A');
+    expect(create).not.toHaveAttribute('role');
+    // And it still LOOKS like a button — the whole reason it went through buttonVariants.
+    expect(create.className).toContain('inline-flex');
+  });
+
+  /**
+   * No Base UI dev-console error from this page. The primitive logs "expected a native
+   * <button>" whenever a `Button` renders a non-button element, and five older call sites
+   * elsewhere in this console still do; `/admin` had none before Task 9 and must not have
+   * gained one. Spying on `console.error` is the only way to see it from a test — it is a
+   * runtime warning, not a thrown error, so nothing else in the suite can fail on it.
+   */
+  it('logs no Base UI button warning', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await renderPage([mkRow('active')]);
+      const messages = spy.mock.calls.map((c) => String(c[0]));
+      expect(messages.filter((m) => m.includes('acts as a button'))).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('passes the trimmed search term through and keeps it in the box', async () => {
     await renderPage([mkRow('active')], { q: '  boğaz  ' });
     expect(listClubsForAdmin).toHaveBeenCalledWith({}, { q: 'boğaz', page: 1, pageSize: 25 });

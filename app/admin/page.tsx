@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { AdminPagination } from '@/components/admin-pagination';
 import { type BadgeTone, StatusPill } from '@/components/booking-status-badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { db } from '@/db';
@@ -71,15 +71,24 @@ export default async function AdminClubsPage({ searchParams }: {
           <Input name="q" defaultValue={q ?? ''} placeholder={t('clubsSearch')} aria-label={t('clubsSearch')} />
           <Button type="submit" size="sm">{t('clubsSearchCta')}</Button>
         </form>
-        {/* `nativeButton={false}` because the rendered element is an <a>, not a <button>.
-            Base UI logs an error at runtime otherwise ("expected a native <button>"), and
-            it is right to: it is what tells the primitive to stop assuming native button
-            semantics it is not getting. Several older `render={<Link/>}` call sites in
-            this console still trip it and are ticketed separately; this one does not add
-            to the pile. */}
-        <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/admin/clubs/new" />}>
+        {/* A LINK wearing the button's clothes — `buttonVariants`, not `<Button render={
+            <Link/>}>`. This control navigates; it does not act. It must announce as a link,
+            keep the browser's open-in-new-tab and copy-address affordances, and be in the
+            links list of a screen reader.
+
+            Both Base UI shapes get that wrong, and the second one only looked right:
+            `<Button render={<Link/>}>` logs "expected a native <button>" on every render,
+            and `nativeButton={false}` silences that by stamping `role="button"` onto the
+            <a> — which trades a dev-console line for a real accessibility change, turning
+            the create-club link into a button that happens to have an href. This call site
+            shipped in the second shape until `app/admin/page.test.tsx`'s
+            `getByRole('link')` refused to find it.
+
+            Composing the variants directly involves no Base UI component at all, so there
+            is nothing to warn and nothing to re-role. */}
+        <Link href="/admin/clubs/new" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
           {t('newClub')}
-        </Button>
+        </Link>
       </div>
 
       {rows.length === 0 ? (
