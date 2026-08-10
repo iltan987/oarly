@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * `t(key)` returns the key. Asserting on the KEY, not on a class or on the Turkish
@@ -18,6 +18,7 @@ vi.mock('next-intl', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('./actions', () => ({ cancelBookingAction: vi.fn() }));
 
+import { cancelBookingAction } from './actions';
 import { type BookingRow, BookingsList } from './bookings-list';
 
 const START = '2026-08-13T04:00:00.000Z';
@@ -39,6 +40,18 @@ function row(over: Partial<BookingRow> = {}): BookingRow {
 /** Cancelled rows are never "upcoming" on the real page, so they arrive in `past`. */
 function renderPast(...rows: BookingRow[]) {
   return render(<BookingsList slug="demo" upcoming={[]} past={rows} timeZone="Europe/Istanbul" />);
+}
+
+/** A live seat the member is allowed to cancel — the only row that renders the gate. */
+function renderCancellable(over: Partial<BookingRow> = {}) {
+  return render(
+    <BookingsList
+      slug="demo"
+      upcoming={[row({ status: 'booked', cancelledReason: null, canCancel: true, ...over })]}
+      past={[]}
+      timeZone="Europe/Istanbul"
+    />,
+  );
 }
 
 describe('the cancellation sub-line', () => {
@@ -98,6 +111,91 @@ describe('the cancellation sub-line', () => {
     renderPast(row({ status: 'no_show', cancelledReason: 'penalty' }));
     expect(screen.getByText('noShow')).toBeInTheDocument();
     expect(screen.queryByText('cancelledBy.penalty')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The gate on self-cancellation, and the SHAPE of these two tests is the point.
+ *
+ * A file containing only "confirming dispatches the action" is a no-op that reads like a
+ * kill: delete the dialog, wire the row's button straight back to `formAction`, and it
+ * still passes. The first test is the one that fails when the gate is gone, so it comes
+ * first and it asserts the negative.
+ */
+describe('the cancel gate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Resolved even in the tests that expect NO dispatch. `useActionState` writes whatever
+    // the action returns straight into `state`, so an un-stubbed mock returning `undefined`
+    // crashes the next render on `state.status` — and a gate-deleted build would then fail
+    // these tests with a TypeError instead of with the assertion, which is a muddier signal
+    // than "the action was called". Verified: with the gate removed, the first test fails
+    // on `expect(cancelBookingAction).not.toHaveBeenCalled()`.
+    vi.mocked(cancelBookingAction).mockResolvedValue({ status: 'ok', error: null });
+  });
+
+  it('does NOT cancel the booking when the row button is tapped — it only asks', () => {
+    renderCancellable();
+
+    fireEvent.click(screen.getByRole('button', { name: 'cancel' }));
+
+    // The action must not have run…
+    expect(cancelBookingAction).not.toHaveBeenCalled();
+    // …and something must have been asked, or "not called" would also be satisfied by a
+    // button wired to nothing at all.
+    expect(screen.getByText('confirmCancelTitle')).toBeInTheDocument();
+    expect(screen.getByText('confirmCancelBody')).toBeInTheDocument();
+  });
+
+  it('cancels the booking only once the dialog is confirmed', async () => {
+    renderCancellable();
+
+    fireEvent.click(screen.getByRole('button', { name: 'cancel' }));
+    const form = screen.getByRole('button', { name: 'confirmCancelCta' }).closest('form');
+    if (!form) throw new Error('confirm form not found');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(cancelBookingAction).toHaveBeenCalledTimes(1));
+    const call = vi.mocked(cancelBookingAction).mock.calls[0];
+    expect(call[0]).toBe('demo');
+    expect((call[2] as FormData).get('bookingId')).toBe('b1');
+  });
+
+  /**
+   * "Keep my seat" must not be the trigger's word. Both controls answering to `cancel` is
+   * the degenerate "Vazgeç / Vazgeç" the brief rules out, and it is a regression ONE
+   * CHARACTER EDIT produces (`dismissLabel={t('cancel')}`) — so it is asserted at the call
+   * site and not only inside `ConfirmDialog`.
+   *
+   * The negative is what kills it, and it works because Base UI marks the page behind an
+   * open dialog `aria-hidden` + inert: the row's own Cancel button leaves the accessibility
+   * tree while the dialog is up, so the ONLY way a control named `cancel` can be found here
+   * is if the dismiss control is the one carrying that name.
+   */
+  it('offers a dismiss control whose name is not the trigger\'s', () => {
+    renderCancellable();
+
+    fireEvent.click(screen.getByRole('button', { name: 'cancel' }));
+
+    expect(screen.getByRole('button', { name: 'confirmCancelKeep' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'cancel' })).not.toBeInTheDocument();
+  });
+
+  it('does not cancel when the member keeps their seat', () => {
+    renderCancellable();
+
+    fireEvent.click(screen.getByRole('button', { name: 'cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'confirmCancelKeep' }));
+
+    expect(cancelBookingAction).not.toHaveBeenCalled();
+  });
+
+  /** No trigger at all when the club has closed cancellation, so no gate to open either. */
+  it('renders no cancel control when the row cannot be cancelled', () => {
+    renderCancellable({ canCancel: false });
+
+    expect(screen.queryByRole('button', { name: 'cancel' })).not.toBeInTheDocument();
+    expect(screen.getByText('cancelClosed')).toBeInTheDocument();
   });
 });
 

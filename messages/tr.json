@@ -657,6 +657,10 @@
     "noShow": "Gelmedi",
     "attended": "Katıldı",
     "cancelClosed": "İptal kapalı",
+    "confirmCancelTitle": "Yerini bırakmak istiyor musun?",
+    "confirmCancelBody": "Yerin bekleme listesindeki ilk kişiye geçer. Seans dolarsa geri alamayabilirsin.",
+    "confirmCancelCta": "Yerimi bırak",
+    "confirmCancelKeep": "Yerimi koru",
     "cancelledToast": "Rezervasyon iptal edildi",
     "loadError": "Bu sayfa yüklenemedi.",
     "retry": "Tekrar dene"

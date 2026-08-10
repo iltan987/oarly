@@ -3,13 +3,13 @@
 import Link from 'next/link';
 import { useFormatter, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import { useActionState, useEffect } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { StatusPill, toneByStatus } from '@/components/booking-status-badge';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { PendingButton } from '@/components/pending-button';
-import { buttonVariants } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
 import { cancelBookingAction, type CancelFormState } from './actions';
@@ -28,24 +28,76 @@ export type BookingRow = {
 
 const initial: CancelFormState = { status: 'idle', error: null };
 
+/**
+ * Cancelling a seat is GATED, and it is the only member-facing action in this codebase
+ * that was not.
+ *
+ * `cancelBooking` calls `applySeating` inside the same transaction, so on a full session
+ * the waitlist promotes the instant it commits — the seat is gone before the row has
+ * finished re-rendering, and rebooking means the back of a queue the club may cap at zero.
+ * An action whose undo may be impossible is the class that confirms. Every comparable
+ * action here already does (mark-absent, owner-remove, approve/reject, suspend, admin
+ * toggle, ownership transfer); this was the exception, on the surface with the smallest
+ * tap targets — an `xs` button in a dense row on a 320px phone.
+ *
+ * Recorded against it, because it is a real cost and not a strawman: friction discourages
+ * exactly the behaviour a club wants, since an early cancellation is what frees the seat
+ * for someone else. The mitigation is that the gate is ONE extra tap — no typed
+ * confirmation, no cooling-off — and the body tells the member the thing that makes the
+ * tap worth it: where the seat goes.
+ *
+ * The dismiss label is `confirmCancelKeep` ("Yerimi koru"), never `cancel`. The trigger is
+ * already `booking.cancel` ("Vazgeç"), so reusing it would render the dialog as
+ * "Vazgeç / Vazgeç" — two controls with one accessible name, which is how an "are you
+ * sure?" stops being a second decision (`decision-buttons.tsx:80-81`).
+ */
 function CancelButton({ slug, bookingId }: { slug: string; bookingId: string }) {
   const t = useTranslations('booking');
   const [state, formAction] = useActionState(cancelBookingAction.bind(null, slug), initial);
+  const [confirming, setConfirming] = useState(false);
 
   // The toast carries the SAME specific reason as the inline line below it — a
   // generic "something went wrong" alongside a specific reason just contradicts
   // itself. (It also kept the owner-facing `manage` namespace on a member page.)
+  //
+  // The dialog closes HERE rather than in the confirm button's `onSubmit`, so it stays up
+  // — with `PendingButton`'s spinner in it — for the whole round trip. Closing on submit
+  // would leave a member on a page where nothing at all changed until the toast landed,
+  // which is the defect the roster's `pendingRemovalId` bridge exists to fix; here the
+  // dialog is still on screen, so it can just carry the spinner itself.
+  //
+  // The `handled` ref is the pattern `decision-buttons.tsx:31-45` and `admin-toggle.tsx`
+  // already use, and it is load-bearing here for the same reason plus one more: each
+  // resolved action produces a FRESH state object, so identity distinguishes "a new result
+  // arrived" from "this effect re-ran". `useTranslations` returns a new `t` on every
+  // render, and `t` is in the dependency array — without the ref, any re-render of this
+  // row (a sibling's revalidation, a theme change) would re-fire the toast and re-close a
+  // dialog the member had since reopened.
+  const handled = useRef<CancelFormState | null>(null);
   useEffect(() => {
+    if (state.status === 'idle' || state === handled.current) return;
+    handled.current = state;
+    setConfirming(false);
     if (state.status === 'ok') toast.success(t('cancelledToast'));
-    else if (state.status === 'error') toast.error(t(`cancelErrors.${state.error ?? 'generic'}`));
+    else toast.error(t(`cancelErrors.${state.error ?? 'generic'}`));
   }, [state, t]);
 
   return (
-    <form action={formAction} className="flex items-center gap-2">
-      <input type="hidden" name="bookingId" value={bookingId} />
-      <PendingButton size="xs" variant="outline">{t('cancel')}</PendingButton>
+    <div className="flex items-center gap-2">
+      <Button type="button" size="xs" variant="outline" onClick={() => setConfirming(true)}>{t('cancel')}</Button>
       {state.status === 'error' && <span className="text-xs text-destructive">{t(`cancelErrors.${state.error ?? 'generic'}`)}</span>}
-    </form>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={t('confirmCancelTitle')}
+        description={t('confirmCancelBody')}
+        confirmLabel={t('confirmCancelCta')}
+        dismissLabel={t('confirmCancelKeep')}
+        destructive
+        action={formAction}
+        hidden={{ bookingId }}
+      />
+    </div>
   );
 }
 

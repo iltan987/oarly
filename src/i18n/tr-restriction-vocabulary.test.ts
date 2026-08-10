@@ -232,6 +232,75 @@ describe('the cancellation sub-line vocabulary', () => {
 });
 
 /**
+ * Task 8's additions to the same page, guarded for the same reason as everything above:
+ * every component test in this repo mocks next-intl and asserts on KEY NAMES, so nothing
+ * in `pnpm test` can see a word of this copy. `bookings-list.test.tsx` proves the dismiss
+ * control is not the trigger control; only this file can prove it does not SAY the same
+ * thing as the trigger, or that the body still explains where the seat goes.
+ */
+describe('the self-cancellation confirm vocabulary', () => {
+  const trBooking = tr.booking as Record<string, string>;
+  const enBooking = en.booking as Record<string, string>;
+
+  const CONFIRM_KEYS = ['confirmCancelTitle', 'confirmCancelBody', 'confirmCancelCta', 'confirmCancelKeep'] as const;
+
+  it('still defines every confirm key this file names, in both locales', () => {
+    // First and separately: a rename leaves every check below testing `undefined` against
+    // a regex — passing while asserting nothing.
+    expect(CONFIRM_KEYS.filter((k) => typeof trBooking[k] !== 'string')).toEqual([]);
+    expect(CONFIRM_KEYS.filter((k) => typeof enBooking[k] !== 'string')).toEqual([]);
+  });
+
+  /**
+   * Three controls appear in this flow — the row trigger (`cancel`), the dialog's dismiss
+   * and the dialog's confirm — and no two of them may read alike. `booking.cancel` is
+   * "Vazgeç", which is ALSO the dismiss label of the /book confirm dialog
+   * (`book-calendar.tsx:232`), so reaching for it here is the obvious mistake: it produces
+   * "Vazgeç / Vazgeç" and the second decision stops being one
+   * (`decision-buttons.tsx:80-81`).
+   */
+  it('gives the trigger, the dismiss and the confirm three different words', () => {
+    for (const catalog of [trBooking, enBooking]) {
+      expect(catalog.confirmCancelKeep).not.toBe(catalog.cancel);
+      expect(catalog.confirmCancelCta).not.toBe(catalog.cancel);
+      expect(catalog.confirmCancelKeep).not.toBe(catalog.confirmCancelCta);
+    }
+  });
+
+  /**
+   * And the dismiss must say what it DOES — keep the seat — rather than "never mind". This
+   * is the half a rename cannot fake: a dismiss reading "Kapat"/"Close" satisfies the
+   * distinctness test above and still leaves the member guessing which button abandons
+   * their seat.
+   */
+  it('names the safe choice after its consequence, not after dismissing a dialog', () => {
+    expect(trBooking.confirmCancelKeep).toMatch(/koru/i);
+    expect(enBooking.confirmCancelKeep).toMatch(/keep/i);
+  });
+
+  /**
+   * The body is the whole justification for the extra tap. `cancelBooking` calls
+   * `applySeating` in the same transaction, so on a full session the waitlist promotes on
+   * commit — a body reduced to "Emin misin?" / "Are you sure?" adds friction and tells the
+   * member nothing they did not already know.
+   */
+  it('says where the seat actually goes', () => {
+    expect(trBooking.confirmCancelBody).toMatch(/bekleme listes/i);
+    expect(enBooking.confirmCancelBody).toMatch(/waiting|waitlist/i);
+  });
+
+  /**
+   * `askı` is the vocabulary of a judgement passed on a person, and this dialog is about a
+   * member's OWN voluntary act. Borrowing the restriction card's heaviest word here would
+   * make a member's own decision read as a sanction — the same rule the cancellation
+   * sub-line above obeys, applied to the one string addressed TO the member.
+   */
+  it('never frames the member\'s own choice with the suspension word', () => {
+    for (const key of CONFIRM_KEYS) expect(trBooking[key]).not.toMatch(SUSPENSION_ROOT);
+  });
+});
+
+/**
  * Both `/bookings` sections used to render ONE string, `booking.none` ("Henüz bir şey
  * yok."), under two headings that mean opposite things. The parity test compares key sets
  * between locales and so cannot see a collapse back to one shared sentence, and the
